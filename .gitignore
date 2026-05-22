@@ -1,0 +1,41 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build output (Tauri)
+src-tauri/target/
+src-tauri/Cargo.lock
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Local
+.env
+.env.local
+*.local
+
+# Backup (사용자 로컬 백업 폴더)
+backups/
+*.gddproject
+
+# Claude / agent state
+.claude/
+
+# Logs
+*.log
+
+# Bundle은 빌드 산출물이지만 GitHub Pages용으로 커밋
+# (CI에서 빌드하지 않고 정적 호스팅 — bundle.jsx는 트래킹)
+# bundle.jsx  ← 주석 처리: 커밋에 포함

@@ -1,0 +1,474 @@
+/* === Slide renderers for each type ===
+   All slides render into a 1280x720 frame and are inline-editable via contentEditable.
+   onChange(updaterFn) lets edits patch the slide.data tree. */
+
+const E = (tag, props, ...children) => React.createElement(tag, props, ...children);
+
+/* ------ tiny helpers ------ */
+function Editable({ value, onChange, tag = 'span', placeholder = '...', className, style, multiline = false, readOnly = false }) {
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (ref.current && ref.current.textContent !== (value || '')) {
+      ref.current.textContent = value || '';
+    }
+  }, [value]);
+  const handleInput = (e) => onChange && onChange(e.currentTarget.textContent);
+  const handleKey = (e) => {
+    if (!multiline && e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
+  };
+  return React.createElement(tag, {
+    ref,
+    className,
+    style,
+    contentEditable: !readOnly,
+    suppressContentEditableWarning: true,
+    onInput: handleInput,
+    onKeyDown: handleKey,
+    'data-placeholder': placeholder,
+    spellCheck: false,
+  });
+}
+
+function SlideFooter({ section, sectionName, page, totalPages }) {
+  return (
+    <div className="footer">
+      <div className="left">
+        {section && <span>{section}</span>}
+        {sectionName && <><span className="dash"></span><span>{sectionName}</span></>}
+      </div>
+      <div className="page">{String(page).padStart(2, '0')} / {String(totalPages).padStart(2, '0')}</div>
+    </div>
+  );
+}
+
+function TopTag({ section, sectionName, title }) {
+  if (!section && !title) return null;
+  return (
+    <div className="top-tag">
+      {section && <span className="num">{section}</span>}
+      {sectionName && <span className="sect-title">{sectionName}</span>}
+      {title && <span style={{color:'#7d8590'}}>{title}</span>}
+    </div>
+  );
+}
+
+/* ------ 1. Cover ------ */
+function CoverSlide({ data, patch, page, totalPages }) {
+  return (
+    <div className="slide cover">
+      {data.imageSrc ? (
+        <div className="cover-bg-img" style={{ backgroundImage: `url(${data.imageSrc})` }}></div>
+      ) : (
+        <div className="bg-grid"></div>
+      )}
+      <div className="cover-shade"></div>
+      <div className="cover-mark">
+        <span className="bar"></span>
+        <Editable tag="span" value={data.product} onChange={(v) => patch({ product: v })} />
+      </div>
+      <div className="cover-team">
+        <Editable tag="span" value={data.team} onChange={(v) => patch({ team: v })} />
+      </div>
+      <div className="cover-center">
+        <Editable tag="div" className="cover-title" value={data.title} onChange={(v) => patch({ title: v })} />
+        <Editable tag="div" className="cover-subtitle" value={data.subtitle} onChange={(v) => patch({ subtitle: v })} />
+      </div>
+      <div className="cover-meta">
+        <Editable tag="div" className="author" value={data.author} onChange={(v) => patch({ author: v })} />
+        <Editable tag="div" value={data.date} onChange={(v) => patch({ date: v })} />
+      </div>
+      <div className="accent-line"></div>
+    </div>
+  );
+}
+
+/* ------ 2. History (version table) ------ */
+function HistorySlide({ data, patch, page, totalPages }) {
+  const updateRow = (i, key, val) => {
+    const rows = [...(data.rows || [])];
+    rows[i] = { ...rows[i], [key]: val };
+    patch({ rows });
+  };
+  return (
+    <div className="slide">
+      <TopTag />
+      <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
+      <table className="history-table">
+        <thead>
+          <tr>
+            <th style={{ width: '12%' }}>버전</th>
+            <th style={{ width: '16%' }}>변경일자</th>
+            <th style={{ width: '14%' }}>page</th>
+            <th>내용</th>
+            <th style={{ width: '16%' }}>작성자</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(data.rows || []).map((r, i) => (
+            <tr key={i}>
+              <td className="ver"><Editable value={r.ver} onChange={(v) => updateRow(i, 'ver', v)} /></td>
+              <td><Editable value={r.date} onChange={(v) => updateRow(i, 'date', v)} /></td>
+              <td><Editable value={r.page} onChange={(v) => updateRow(i, 'page', v)} /></td>
+              <td><Editable value={r.content} onChange={(v) => updateRow(i, 'content', v)} multiline /></td>
+              <td><Editable value={r.author} onChange={(v) => updateRow(i, 'author', v)} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <SlideFooter sectionName="문서 이력" page={page} totalPages={totalPages} />
+    </div>
+  );
+}
+
+/* ------ 3. TOC ------ */
+function TocSlide({ data, patch, page, totalPages }) {
+  const updateEntry = (i, key, val) => {
+    const entries = [...(data.entries || [])];
+    entries[i] = { ...entries[i], [key]: val };
+    patch({ entries });
+  };
+  return (
+    <div className="slide toc">
+      <div className="toc-label">— TABLE OF CONTENTS</div>
+      <Editable tag="div" className="toc-heading" value={data.title || 'CONTENTS'} onChange={(v) => patch({ title: v })} />
+      <div className="toc-grid">
+        {(data.entries || []).map((e, i) => (
+          <div className="toc-entry" key={i}>
+            <Editable className="num" value={e.num} onChange={(v) => updateEntry(i, 'num', v)} />
+            <div style={{ flex: 1 }}>
+              <Editable className="name" tag="div" value={e.name} onChange={(v) => updateEntry(i, 'name', v)} />
+              <Editable className="sub" tag="div" value={e.sub} onChange={(v) => updateEntry(i, 'sub', v)} multiline />
+            </div>
+          </div>
+        ))}
+      </div>
+      <SlideFooter sectionName="목차" page={page} totalPages={totalPages} />
+    </div>
+  );
+}
+
+/* ------ 4. Section divider ------ */
+function SectionDividerSlide({ data, patch, page, totalPages }) {
+  return (
+    <div className="slide section-divider">
+      <div className="sd-num">{data.num}</div>
+      <div className="sd-tag">
+        <span className="bar"></span>
+        <span>CHAPTER {data.num}</span>
+      </div>
+      <Editable tag="div" className="sd-title" value={data.title} onChange={(v) => patch({ title: v })} />
+      <Editable tag="div" className="sd-subtitle" value={data.subtitle} onChange={(v) => patch({ subtitle: v })} multiline />
+    </div>
+  );
+}
+
+/* ------ 5. Intent (4 cards) ------ */
+function IntentSlide({ data, patch, page, totalPages }) {
+  const updateCard = (i, key, val) => {
+    const cards = [...(data.cards || [])];
+    cards[i] = { ...cards[i], [key]: val };
+    patch({ cards });
+  };
+  return (
+    <div className="slide">
+      <TopTag section={data.section} sectionName={data.sectionName} />
+      <Editable tag="h1" className="intent-title" value={data.title} onChange={(v) => patch({ title: v })} />
+      <Editable tag="div" className="intent-tagline" value={data.tagline} onChange={(v) => patch({ tagline: v })} multiline />
+      <div className="intent-grid">
+        {(data.cards || []).map((c, i) => (
+          <div className="intent-card" key={i}>
+            <Editable className="idx" value={c.idx} onChange={(v) => updateCard(i, 'idx', v)} />
+            <Editable tag="div" className="head" value={c.head} onChange={(v) => updateCard(i, 'head', v)} multiline />
+            <Editable tag="div" className="desc" value={c.desc} onChange={(v) => updateCard(i, 'desc', v)} multiline />
+          </div>
+        ))}
+      </div>
+      <SlideFooter section={data.section} sectionName={data.sectionName} page={page} totalPages={totalPages} />
+    </div>
+  );
+}
+
+/* ------ 6. Terms (definition table) ------ */
+function TermsSlide({ data, patch, page, totalPages }) {
+  const updateRow = (i, key, val) => {
+    const rows = [...(data.rows || [])];
+    rows[i] = { ...rows[i], [key]: val };
+    patch({ rows });
+  };
+  return (
+    <div className="slide">
+      <TopTag section={data.section} sectionName={data.sectionName} />
+      <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
+      <table className="terms-table">
+        <thead>
+          <tr>
+            <th>용어</th>
+            <th>정의</th>
+            <th>비고</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(data.rows || []).map((r, i) => (
+            <tr key={i}>
+              <td className="term"><Editable value={r.term} onChange={(v) => updateRow(i, 'term', v)} /></td>
+              <td className="def"><Editable value={r.def} onChange={(v) => updateRow(i, 'def', v)} multiline /></td>
+              <td className="note"><Editable value={r.note} onChange={(v) => updateRow(i, 'note', v)} multiline /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <SlideFooter section={data.section} sectionName={data.sectionName} page={page} totalPages={totalPages} />
+    </div>
+  );
+}
+
+/* ------ 7. Rules (block list) ------ */
+function RulesSlide({ data, patch, page, totalPages }) {
+  const updateBlock = (i, key, val) => {
+    const blocks = [...(data.blocks || [])];
+    blocks[i] = { ...blocks[i], [key]: val };
+    patch({ blocks });
+  };
+  const updateItem = (bi, ii, val) => {
+    const blocks = [...(data.blocks || [])];
+    const items = [...(blocks[bi].items || [])];
+    items[ii] = val;
+    blocks[bi] = { ...blocks[bi], items };
+    patch({ blocks });
+  };
+  const useGrid = (data.blocks || []).length > 2;
+  return (
+    <div className="slide">
+      <TopTag section={data.section} sectionName={data.sectionName} />
+      <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
+      <div className={useGrid ? 'rules-grid' : 'rules-wrap'} style={{ flex: 1, minHeight: 0 }}>
+        {(data.blocks || []).map((b, i) => (
+          <div className="rule-block" key={i}>
+            <Editable tag="div" className="head" value={b.head} onChange={(v) => updateBlock(i, 'head', v)} />
+            <ul>
+              {(b.items || []).map((it, ii) => (
+                <li key={ii}><Editable value={it} onChange={(v) => updateItem(i, ii, v)} multiline /></li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+      <SlideFooter section={data.section} sectionName={data.sectionName} page={page} totalPages={totalPages} />
+    </div>
+  );
+}
+
+/* ------ 8. Data table ------ */
+function DataTableSlide({ data, patch, page, totalPages }) {
+  const updateCell = (i, key, val) => {
+    const rows = [...(data.rows || [])];
+    rows[i] = { ...rows[i], [key]: val };
+    patch({ rows });
+  };
+  return (
+    <div className="slide">
+      <TopTag section={data.section} sectionName={data.sectionName} />
+      <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
+      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+        <table className="data-table">
+          <thead>
+            <tr>
+              {(data.columns || []).map((c, i) => (
+                <th key={i} style={c.width ? { width: c.width } : undefined}>{c.label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {(data.rows || []).map((r, i) => (
+              <tr key={i}>
+                {(data.columns || []).map((c, ci) => (
+                  <td key={ci} className={c.key === 'field' || c.key === 'table' ? 'tag' : ''}>
+                    <Editable value={r[c.key] || ''} onChange={(v) => updateCell(i, c.key, v)} multiline />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <SlideFooter section={data.section} sectionName={data.sectionName} page={page} totalPages={totalPages} />
+    </div>
+  );
+}
+
+/* ------ 9. Flow chart ------ */
+function FlowSlide({ data, patch, page, totalPages }) {
+  const updateNode = (i, val) => {
+    const nodes = [...(data.nodes || [])];
+    nodes[i] = { ...nodes[i], label: val };
+    patch({ nodes });
+  };
+  return (
+    <div className="slide">
+      <TopTag section={data.section} sectionName={data.sectionName} />
+      <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
+      <div className="flow-wrap">
+        <div className="flow-chart">
+          {(data.nodes || []).map((n, i) => (
+            <React.Fragment key={i}>
+              <div className={'flow-node ' + (n.kind || 'process')}>
+                <Editable value={n.label} onChange={(v) => updateNode(i, v)} multiline />
+              </div>
+              {i < (data.nodes || []).length - 1 && <div className="flow-arrow"></div>}
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+      <SlideFooter section={data.section} sectionName={data.sectionName} page={page} totalPages={totalPages} />
+    </div>
+  );
+}
+
+/* ------ 10. UI design ------ */
+function UiDesignSlide({ data, patch, page, totalPages }) {
+  const updateCallout = (i, key, val) => {
+    const cs = [...(data.callouts || [])];
+    cs[i] = { ...cs[i], [key]: val };
+    patch({ callouts: cs });
+  };
+
+  /** 자동 배치 폴백: callout에 x/y가 없을 때 균등 배치(가장자리 우선). */
+  const callouts = data.callouts || [];
+  const positions = callouts.map((c, i) => {
+    if (typeof c.x === 'number' && typeof c.y === 'number') {
+      return { x: Math.max(2, Math.min(98, c.x)), y: Math.max(2, Math.min(98, c.y)) };
+    }
+    // 가장자리 시계방향 자동 배치
+    const fallbacks = [
+      { x: 12, y: 15 }, { x: 88, y: 15 }, { x: 88, y: 50 },
+      { x: 88, y: 85 }, { x: 12, y: 85 }, { x: 12, y: 50 },
+      { x: 50, y: 15 }, { x: 50, y: 85 },
+    ];
+    return fallbacks[i % fallbacks.length];
+  });
+
+  return (
+    <div className="slide">
+      <TopTag section={data.section} sectionName={data.sectionName} />
+      <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
+      <div className="ui-design-wrap">
+        <div className="ui-mockup">
+          <div className="mock-bar"><span></span><span></span><span></span></div>
+          <div className="mock-canvas">
+            {data.imageSrc ? (
+              <img src={data.imageSrc} alt="UI mockup" className="ui-mockup-img" />
+            ) : (
+              <>
+                <div className="ui-mockup-grid"></div>
+                <div className="placeholder">
+                  <div className="lbl">UI MOCKUP</div>
+                  <div className="desc">화면 시안 placeholder<br />드래그하여 이미지 첨부</div>
+                </div>
+              </>
+            )}
+            {/* 콜아웃 넘버링 배지 오버레이 */}
+            {callouts.map((c, i) => (
+              <div
+                key={i}
+                className="ui-callout-badge"
+                style={{ left: `${positions[i].x}%`, top: `${positions[i].y}%` }}
+                title={c.name}
+              >
+                {i + 1}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="ui-callouts">
+          {callouts.map((c, i) => (
+            <div className="ui-callout" key={i}>
+              <div className="num">{i + 1}</div>
+              <div className="text" style={{ flex: 1 }}>
+                <Editable tag="div" className="name" value={c.name} onChange={(v) => updateCallout(i, 'name', v)} />
+                <Editable tag="div" className="desc" value={c.desc} onChange={(v) => updateCallout(i, 'desc', v)} multiline />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <SlideFooter section={data.section} sectionName={data.sectionName} page={page} totalPages={totalPages} />
+    </div>
+  );
+}
+
+/* ------ 11. Resources ------ */
+function ResourcesSlide({ data, patch, page, totalPages }) {
+  const updateCat = (i, key, val) => {
+    const cats = [...(data.categories || [])];
+    cats[i] = { ...cats[i], [key]: val };
+    patch({ categories: cats });
+  };
+  const updateItem = (ci, ii, val) => {
+    const cats = [...(data.categories || [])];
+    const items = [...(cats[ci].items || [])];
+    items[ii] = val;
+    cats[ci] = { ...cats[ci], items };
+    patch({ categories: cats });
+  };
+  return (
+    <div className="slide">
+      <TopTag section={data.section} sectionName={data.sectionName} />
+      <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
+      <div className="resources-grid">
+        {(data.categories || []).map((c, i) => (
+          <div className="resource-cat" key={i}>
+            <div className="cat-head">
+              <Editable className="cat-name" value={c.name} onChange={(v) => updateCat(i, 'name', v)} />
+              <Editable className="cat-count" value={c.count} onChange={(v) => updateCat(i, 'count', v)} />
+            </div>
+            <ul>
+              {(c.items || []).map((it, ii) => (
+                <li key={ii}><Editable value={it} onChange={(v) => updateItem(i, ii, v)} multiline /></li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+      <SlideFooter section={data.section} sectionName={data.sectionName} page={page} totalPages={totalPages} />
+    </div>
+  );
+}
+
+/* ------ Type registry ------ */
+const SLIDE_RENDERERS = {
+  'cover': CoverSlide,
+  'history': HistorySlide,
+  'toc': TocSlide,
+  'section-divider': SectionDividerSlide,
+  'intent': IntentSlide,
+  'terms': TermsSlide,
+  'rules': RulesSlide,
+  'data-table': DataTableSlide,
+  'flow': FlowSlide,
+  'ui-design': UiDesignSlide,
+  'resources': ResourcesSlide,
+};
+
+const SLIDE_LABELS = {
+  'cover': '표지',
+  'history': '문서 이력',
+  'toc': '목차',
+  'section-divider': '섹션 구분',
+  'intent': '기획 의도',
+  'terms': '용어 정의',
+  'rules': '규칙',
+  'data-table': '데이터 테이블',
+  'flow': '플로우 차트',
+  'ui-design': 'UI/UX',
+  'resources': '필요 리소스',
+};
+
+function SlideRenderer({ slide, patch, page, totalPages }) {
+  const R = SLIDE_RENDERERS[slide.type] || (() => <div className="slide"><div>Unknown type: {slide.type}</div></div>);
+  return <R data={slide.data || {}} patch={patch} page={page} totalPages={totalPages} />;
+}
+
+Object.assign(window, {
+  SlideRenderer, SLIDE_RENDERERS, SLIDE_LABELS,
+  Editable, SlideFooter, TopTag,
+});

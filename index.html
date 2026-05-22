@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1280, initial-scale=1" />
+<title>GDD 메이커 — 게임 기획서 빌더</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234cc2ff'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='ui-monospace,monospace' font-weight='800' font-size='20' fill='%23061018'%3EG%3C/text%3E%3C/svg%3E" />
+<script>
+/* 브라우저 확장(번역기/패스워드 매니저/애드블락 등)이 일으키는 노이즈만 정확히 swallow.
+   우리 앱의 진짜 에러는 그대로 콘솔에 노출됨. */
+(function () {
+  var EXT_NOISE_PATTERNS = [
+    /listener indicated an asynchronous response/i,
+    /message channel closed before a response was received/i,
+    /Extension context invalidated/i,
+    /The message port closed before a response was received/i,
+  ];
+  function isExtensionNoise(reason) {
+    if (!reason) return false;
+    var msg = '';
+    if (typeof reason === 'string') msg = reason;
+    else if (reason.message) msg = String(reason.message);
+    else { try { msg = String(reason); } catch (e) { msg = ''; } }
+    return EXT_NOISE_PATTERNS.some(function (re) { return re.test(msg); });
+  }
+  window.addEventListener('unhandledrejection', function (e) {
+    if (isExtensionNoise(e.reason)) e.preventDefault();
+  });
+  window.addEventListener('error', function (e) {
+    if (isExtensionNoise(e.error || e.message)) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }
+  }, true);
+})();
+</script>
+<link rel="stylesheet" href="styles.css" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/gh/gitbrent/PptxGenJS@v3.12.0/dist/pptxgen.bundle.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script src="storage.js"></script>
+<script src="usage.js"></script>
+<script src="validators.js"></script>
+<script src="export-formats.js"></script>
+<script src="consistency-check.js"></script>
+<script src="stats.js"></script>
+<script src="gemini-adapter.js"></script>
+<script src="data.js"></script>
+<!-- 모든 .jsx 파일을 단일 bundle.jsx로 합쳐 babel-standalone에 전달.
+     빌드: node build.js — GitHub Actions에서도 자동 실행. -->
+<script type="text/babel" data-presets="react" src="bundle.jsx"></script>
+</body>
+</html>

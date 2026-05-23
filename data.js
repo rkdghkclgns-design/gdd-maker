@@ -875,10 +875,12 @@ ${contextBlock}
 | 절차적 단계·조건 분기·상태 전이 (예: 카드 강화 흐름, 매칭 → 로딩 → 게임 → 결과) | **flow** (분기는 decision 노드) |
 | 시스템 간 시간 순서가 있는 호출·응답 (예: 클라/서버/DB 사이의 요청-응답 흐름) | **sequence-diagram** |
 | 컴포넌트·서비스·데이터 저장소 사이의 정적 의존 관계 | **diagram** |
-| 객체·엔티티 구조와 그 관계 (상속/컴포지션) | **class-diagram** |
+| **객체·엔티티 구조와 그 관계 (상속/구현/컴포지션/집합/연관/의존)** — 캐릭터/아이템/카드 등 OOP 모델이 있는 시스템은 거의 항상 1장 필요 | **class-diagram** |
 | 정적 규칙·상수·밸런싱 값·정책 (예: "강화 성공률 100%", "최소 100 파편") | **rules** (정적 항목만, 분기 로직 금지) |
 | 키 비주얼·카드 일러스트·캐릭터·장면·무드보드 | **image-embed** (imagePrompt 채우기) |
 | 화면 레이아웃 + 영역 콜아웃 | **ui-design** (imagePrompt 채우기) |
+
+**⚠ class-diagram 적극 활용**: GDD 에 캐릭터/유닛/카드/아이템/스킬/Buff/세션/매치 등 OOP 모델이 등장하면 **반드시 1장 이상 class-diagram 슬라이드 포함**. 데이터 테이블만으로는 클래스 간 관계(상속/컴포지션/연관)를 표현할 수 없다. data-table 과 class-diagram 은 보완 관계 — 함께 사용.
 
 ⚠ **금지 패턴**: rules.blocks.items 안에 "[조건] → [동작] → [엣지케이스]" 같은 절차적 분기를 텍스트로 길게 나열하지 말 것. 이런 절차는 **반드시 flow 또는 sequence-diagram 슬라이드로 분리**한다. rules는 그 절차에 사용되는 *정적 상수/임계치*만 담는다 (예: "강화 성공률 100%", "재화 카드 1장 = 강화 1회").
 
@@ -894,7 +896,13 @@ ${contextBlock}
   - 추천: 4~6 단계 = vertical/1, 6~8 단계 = horizontal/1, 9~12 단계 = horizontal/2 또는 vertical/2, 13개 이상 = grid.
 - **diagram**: 서버/클라/DB/외부 서비스의 역할 분리를 명확히. edges 라벨은 실제 호출명이나 이벤트명에 가깝게 ("session.create", "match.end").
 - **sequence-diagram**: 참여자 3~6명. 호출은 sync/async/return 구분. 최소 1개의 return 메시지 포함.
-- **class-diagram**: 가시성 prefix(+/-/#) 명시, 시그니처에 타입 포함. 관계는 inherit/implement/compose/aggregate/assoc/depend 중 선택.
+- **class-diagram**: classes 5~8개, relations 5~10개. 각 class 에:
+  - \`name\`: PascalCase 영문 클래스명 (예: \`Player\`, \`Card\`, \`InventorySlot\`)
+  - \`stereotype\`: <<entity>> | <<interface>> | <<abstract>> | <<enum>> | <<service>> 중 적절히
+  - \`attrs\`: 가시성 prefix(+/-/#) + name + ":" + 타입. 예: \`-hp: int\`, \`+name: string\`, \`#level: int\`
+  - \`methods\`: 가시성 prefix + name + 인자 + ":" + 반환타입. 예: \`+takeDamage(amount: int): void\`, \`+equip(item: Item): bool\`
+  - \`col\`: 0~3, \`row\`: 0+ — 한 화면에 모이도록 배치
+  - relations: kind = inherit(상속) / implement(구현) / compose(▣ 컴포지션) / aggregate(◇ 집합) / assoc(연관) / depend(점선 의존). label 에 multiplicity (\`1\`, \`1..*\`, \`0..1\`) 명시.
 - **ui-design.callouts**: 각 callout이 트리거 상호작용("탭 시", "롱프레스 시")과 그 결과 상태 변화를 함께 기술. 4~6개 권장. **x, y는 0~100 정수 (이미지 안에서의 퍼센트 위치)**. imagePrompt가 묘사하는 화면 레이아웃과 일치하는 위치를 골라야 한다 (예: 좌상단 미니맵=10,15 / 중앙 크로스헤어=50,50 / 우상단 자원=85,12 / 하단 액션바=50,88). callout 순서는 사용자가 시선을 옮길 자연스러운 순서로.
 - **section-divider.imagePrompt**: 각 섹션의 분위기를 한 컷으로 압축한 영문 컨셉 아트. 배경에 깔리므로 어두운 톤·구도가 단순하면 좋다. 비어 있어도 되지만 가급적 채워라.
 - **image-embed**: 텍스트로만 설명하면 모호한 시각 요소(카드 디자인 무드, 캐릭터 룩, 게임 장면, 아이콘 세트)에 한해 사용. imagePrompt 는 카메라 앵글·조명·재질·스타일 키워드 포함. caption 은 한국어로, "왜 이 이미지를 참조 자료로 두었는지"를 한 줄로 적는다.

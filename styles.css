@@ -1009,13 +1009,16 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .slide.section-divider .sd-title { position: absolute; left: 72px; bottom: 110px; font-size: 72px; font-weight: 800; letter-spacing: -0.02em; z-index: 2; text-shadow: 0 4px 24px rgba(0,0,0,0.55); }
 .slide.section-divider .sd-subtitle { position: absolute; left: 72px; bottom: 56px; right: 72px; font-size: 18px; color: #b1bac4; line-height: 1.6; max-width: 720px; z-index: 2; text-shadow: 0 2px 8px rgba(0,0,0,0.5); }
 
-/* Image-embed slide */
-.image-embed-headline {
+/* Image-embed slide & UI design 공통 헤드라인 */
+.image-embed-headline,
+.ui-design-headline {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
+.ui-design-headline .h-title { margin-bottom: 0; flex: 1; min-width: 0; }
+.ui-design-prompt { margin-top: 6px; margin-bottom: 10px; }
 .image-embed-headline .h-title { margin-bottom: 0; }
 .image-embed-actions {
   display: flex;

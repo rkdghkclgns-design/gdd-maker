@@ -2222,6 +2222,42 @@ function App({ onStateChange }) {
                 toast(`사용하지 않는 이미지 ${n}개 정리`, 'ok');
               } catch (e) { toast('정리 실패', 'err'); }
             }},
+            { id: 'gen-missing-images', title: '🍌 누락된 이미지 모두 생성', sub: '현재 GDD 에서 imageSrc 가 비어있는 슬라이드 모두 일괄 생성', shortcut: 'CMD', keywords: ['이미지', '생성', 'image', 'banana', '누락', 'missing'], run: async () => {
+              if (selection.type !== 'gdd' || !project) { toast('기획서를 선택하세요', 'err'); return; }
+              const targets = (project.slides || [])
+                .map((s, idx) => ({ s, idx }))
+                .filter(({ s }) => ['cover', 'section-divider', 'ui-design', 'image-embed'].includes(s.type) && !s.data?.imageSrc);
+              if (targets.length === 0) { toast('누락된 이미지가 없습니다', 'ok'); return; }
+              if (!confirm(`${targets.length}개 슬라이드의 누락 이미지를 nano-banana 로 생성합니다.\n예상 비용: 약 $${(targets.length * 0.03).toFixed(2)}.\n진행하시겠습니까?`)) return;
+              commitNow(`누락 이미지 ${targets.length}개 일괄 생성`);
+              setIsGenerating(true);
+              let ok = 0, fail = 0;
+              try {
+                for (const { s, idx } of targets) {
+                  let p = s.data?.imagePrompt;
+                  if (!p || !p.trim()) {
+                    p = synthesizeImagePrompt(s, { title: project.title, subtitle: project.subtitle });
+                  }
+                  if (!p) { fail++; continue; }
+                  try {
+                    const src = await window.gemini.generateImage(p);
+                    // 각 이미지 생성 직후 setProject 로 즉시 반영 — 진행률 시각화
+                    setProject(pr => ({
+                      ...pr,
+                      slides: (pr.slides || []).map((sl, i) => i === idx ? { ...sl, data: { ...sl.data, imageSrc: src, imagePrompt: p } } : sl),
+                      updatedAt: new Date().toISOString().slice(0, 10),
+                    }));
+                    ok++;
+                    toast(`(${ok + fail}/${targets.length}) "${s.data?.title || s.type}" 생성`, '');
+                  } catch (e) {
+                    fail++;
+                  }
+                }
+                toast(`완료 — 성공 ${ok}장${fail ? ` / 실패 ${fail}장` : ''}`, ok > 0 ? 'ok' : 'err');
+              } finally {
+                setIsGenerating(false);
+              }
+            }},
             { id: 'shortcuts', title: '⌨ 단축키 도움말', sub: '?', shortcut: 'CMD', keywords: ['shortcut', '단축키', 'help', '도움말'], run: () => setShowShortcuts(true) },
             { id: 'undo', title: '↶ 실행 취소', sub: `${navigator.platform.match(/Mac/) ? '⌘' : 'Ctrl'}+Z`, shortcut: 'CMD', keywords: ['undo', '취소', 'revert'], run: () => { if (!undo()) toast('취소할 항목 없음', ''); } },
             { id: 'redo', title: '↷ 다시 실행', sub: `${navigator.platform.match(/Mac/) ? '⌘' : 'Ctrl'}+⇧+Z`, shortcut: 'CMD', keywords: ['redo', '다시'], run: () => { if (!redo()) toast('재실행할 항목 없음', ''); } },

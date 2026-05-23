@@ -679,21 +679,62 @@ function FlowSlide({ data, patch, page, totalPages }) {
 
 /* ------ 10. UI design ------ */
 function UiDesignSlide({ data, patch, page, totalPages }) {
+  const fileRef = React.useRef(null);
+  const [generating, setGenerating] = React.useState(false);
+  const [promptDraft, setPromptDraft] = React.useState('');
+
   const updateCallout = (i, key, val) => {
     const cs = [...(data.callouts || [])];
     cs[i] = { ...cs[i], [key]: val };
     patch({ callouts: cs });
   };
 
-  /** 자동 배치 폴백: callout에 x/y가 없을 때 균등 배치(가장자리 우선).
-   *  배지가 28px + 2px 흰 테두리 + translate(-50%, -50%) 이므로 절반(~16px)이
-   *  컨테이너 밖으로 나가지 않도록 safe area [4, 96] 으로 clamp. */
+  const onPick = (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => patch({ imageSrc: reader.result });
+    reader.readAsDataURL(f);
+  };
+  const onDrop = (e) => {
+    e.preventDefault();
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!f || !f.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = () => patch({ imageSrc: reader.result });
+    reader.readAsDataURL(f);
+  };
+
+  const generate = async (promptText) => {
+    const p = (promptText || data.imagePrompt || '').trim();
+    if (!p) {
+      if (window.gddToast) window.gddToast('영문 imagePrompt 를 입력하세요', 'err');
+      return;
+    }
+    if (!window.gemini || !window.gemini.generateImage) {
+      if (window.gddToast) window.gddToast('Gemini API 키를 먼저 설정하세요', 'err');
+      return;
+    }
+    setGenerating(true);
+    try {
+      const src = await window.gemini.generateImage(p);
+      patch({ imageSrc: src, imagePrompt: p });
+      setPromptDraft('');
+      if (window.gddToast) window.gddToast('🍌 UI 목업 생성 완료', 'ok');
+    } catch (e) {
+      if (window.gddToast) window.gddToast('이미지 생성 실패: ' + (e?.message || e), 'err');
+    } finally {
+      setGenerating(false);
+    }
+  };
+  const hasPrompt = !!(data.imagePrompt && data.imagePrompt.trim());
+
+  /** 자동 배치 폴백: callout에 x/y가 없을 때 균등 배치(가장자리 우선). [4,96] clamp. */
   const callouts = data.callouts || [];
   const positions = callouts.map((c, i) => {
     if (typeof c.x === 'number' && typeof c.y === 'number') {
       return { x: Math.max(4, Math.min(96, c.x)), y: Math.max(4, Math.min(96, c.y)) };
     }
-    // 가장자리 시계방향 자동 배치
     const fallbacks = [
       { x: 12, y: 15 }, { x: 88, y: 15 }, { x: 88, y: 50 },
       { x: 88, y: 85 }, { x: 12, y: 85 }, { x: 12, y: 50 },
@@ -705,24 +746,67 @@ function UiDesignSlide({ data, patch, page, totalPages }) {
   return (
     <div className="slide">
       <TopTag section={data.section} sectionName={data.sectionName} />
-      <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
+      <div className="ui-design-headline">
+        <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
+        <div className="image-embed-actions">
+          <button
+            className="mini-btn ai"
+            onClick={() => generate()}
+            disabled={generating || !hasPrompt}
+            title={hasPrompt ? 'imagePrompt 로 UI 목업 생성' : '먼저 imagePrompt 를 입력하세요'}
+          >{generating ? '생성 중…' : '🍌 AI 목업 생성'}</button>
+          <button className="mini-btn" onClick={() => fileRef.current?.click()} title="파일 첨부">📎 파일</button>
+        </div>
+      </div>
+      {/* imagePrompt 편집 — 영문 프롬프트 */}
+      <Editable
+        tag="div"
+        className="image-embed-prompt ui-design-prompt"
+        value={data.imagePrompt}
+        onChange={(v) => patch({ imagePrompt: v })}
+        multiline
+        placeholder="🍌 영문 UI 목업 프롬프트 (예: A clean dark sci-fi game HUD with HP bar top-left, minimap top-right, action bar bottom, 16:9)"
+      />
+      <input type="file" accept="image/*" ref={fileRef} style={{ display: 'none' }} onChange={onPick} />
       <div className="ui-design-wrap">
-        <div className="ui-mockup">
+        <div className="ui-mockup"
+             onDragOver={(e) => e.preventDefault()}
+             onDrop={onDrop}>
           <div className="mock-bar"><span></span><span></span><span></span></div>
           <div className="mock-canvas">
-            {data.imageSrc ? (
+            {generating ? (
+              <div className="placeholder" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+                <div className="banana-spin">🍌</div>
+                <div className="lbl">GENERATING…</div>
+                <div className="desc">nano-banana 로 UI 목업 생성 중</div>
+              </div>
+            ) : data.imageSrc ? (
               <img src={data.imageSrc} alt="UI mockup" className="ui-mockup-img" />
             ) : (
               <>
                 <div className="ui-mockup-grid"></div>
                 <div className="placeholder">
                   <div className="lbl">UI MOCKUP</div>
-                  <div className="desc">화면 시안 placeholder<br />드래그하여 이미지 첨부</div>
+                  <div className="desc">클릭하여 첨부 · 드래그 · AI 생성 모두 가능</div>
+                  <div className="image-embed-inline-gen" style={{ marginTop: 14, width: 'min(80%, 480px)' }}>
+                    <textarea
+                      value={promptDraft || data.imagePrompt || ''}
+                      onChange={(e) => setPromptDraft(e.target.value)}
+                      placeholder="또는 영문 프롬프트로 UI 목업 생성 (예: A dark sci-fi game HUD…)"
+                      rows={2}
+                      spellCheck={false}
+                    />
+                    <button
+                      className="btn primary"
+                      onClick={(e) => { e.stopPropagation(); generate(promptDraft || data.imagePrompt); }}
+                      disabled={generating || !((promptDraft || data.imagePrompt || '').trim())}
+                    >🍌 AI 생성</button>
+                  </div>
                 </div>
               </>
             )}
             {/* 콜아웃 넘버링 배지 오버레이 */}
-            {callouts.map((c, i) => (
+            {!generating && callouts.map((c, i) => (
               <div
                 key={i}
                 className="ui-callout-badge"
@@ -739,8 +823,8 @@ function UiDesignSlide({ data, patch, page, totalPages }) {
             <div className="ui-callout" key={i}>
               <div className="num">{i + 1}</div>
               <div className="text" style={{ flex: 1 }}>
-                <Editable tag="div" className="name" value={c.name} onChange={(v) => updateCallout(i, 'name', v)} />
-                <Editable tag="div" className="desc" value={c.desc} onChange={(v) => updateCallout(i, 'desc', v)} multiline />
+                <Editable tag="div" className="name" value={c.name} onChange={(v) => updateCallout(i, 'name', v)} markdown />
+                <Editable tag="div" className="desc" value={c.desc} onChange={(v) => updateCallout(i, 'desc', v)} multiline markdown />
               </div>
             </div>
           ))}

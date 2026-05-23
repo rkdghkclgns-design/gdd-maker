@@ -274,11 +274,66 @@ function SectionDividerSlide({ data, patch, page, totalPages }) {
 /* ------ 4b. Image embed (참고 이미지) ------
  * 인라인 AI 생성 지원: imagePrompt 필드 편집 + ✦ AI 생성 버튼.
  * 비어 있는 placeholder 상태에서도 바로 prompt 입력 + 생성 가능.
+ * 이미지 pan/zoom: 마우스 드래그로 위치 이동, 휠로 확대/축소.
  */
 function ImageEmbedSlide({ data, patch, page, totalPages }) {
   const fileRef = React.useRef(null);
+  const wrapRef = React.useRef(null);
   const [generating, setGenerating] = React.useState(false);
   const [promptDraft, setPromptDraft] = React.useState('');
+  const [dragging, setDragging] = React.useState(false);
+  const transform = data.imageTransform || { scale: 1, x: 0, y: 0 };
+
+  // 마우스 휠로 zoom — passive 리스너 회피를 위해 useEffect 로 직접 부착
+  React.useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || !data.imageSrc) return;
+    const onWheel = (e) => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.08 : 0.92;
+      const cur = data.imageTransform || { scale: 1, x: 0, y: 0 };
+      const newScale = Math.max(0.2, Math.min(8, cur.scale * factor));
+      patch({ imageTransform: { ...cur, scale: newScale } });
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [data.imageSrc, data.imageTransform, patch]);
+
+  // 마우스 드래그 (pan) — window 단위 리스너로 cursor 가 영역을 벗어나도 추적
+  const startDrag = (e) => {
+    if (!data.imageSrc) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(true);
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const start = { ...transform };
+    const onMove = (ev) => {
+      patch({ imageTransform: { scale: start.scale, x: start.x + (ev.clientX - startX), y: start.y + (ev.clientY - startY) } });
+    };
+    const onUp = () => {
+      setDragging(false);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  const resetTransform = (e) => {
+    e.stopPropagation();
+    patch({ imageTransform: { scale: 1, x: 0, y: 0 } });
+  };
+  const fitTransform = (e) => {
+    // 컨테이너 전체에 맞추기 — scale 1, position 중앙
+    e.stopPropagation();
+    patch({ imageTransform: { scale: 1, x: 0, y: 0 } });
+  };
+  const zoomBtn = (factor) => (e) => {
+    e.stopPropagation();
+    const cur = data.imageTransform || { scale: 1, x: 0, y: 0 };
+    patch({ imageTransform: { ...cur, scale: Math.max(0.2, Math.min(8, cur.scale * factor)) } });
+  };
 
   const onPick = (e) => {
     const f = e.target.files && e.target.files[0];
@@ -346,10 +401,13 @@ function ImageEmbedSlide({ data, patch, page, totalPages }) {
         multiline
         placeholder="🍌 영문 이미지 프롬프트 (예: A frozen-in-time street scene with floating debris, cyan glow, cinematic lighting, ultra-detailed concept art)"
       />
-      <div className="image-embed-wrap"
-           onDragOver={(e) => e.preventDefault()}
-           onDrop={onDrop}
-           onClick={() => !data.imageSrc && !generating && fileRef.current?.click()}>
+      <div
+        ref={wrapRef}
+        className={'image-embed-wrap' + (dragging ? ' dragging' : '') + (data.imageSrc ? ' has-image' : '')}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={onDrop}
+        onClick={() => !data.imageSrc && !generating && fileRef.current?.click()}
+      >
         <input type="file" accept="image/*" ref={fileRef} style={{ display: 'none' }} onChange={onPick} />
         {generating ? (
           <div className="empty image-embed-loading">
@@ -358,9 +416,29 @@ function ImageEmbedSlide({ data, patch, page, totalPages }) {
           </div>
         ) : data.imageSrc ? (
           <>
-            <img src={data.imageSrc} alt="reference" />
+            <img
+              src={data.imageSrc}
+              alt="reference"
+              draggable={false}
+              onMouseDown={startDrag}
+              style={{
+                transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
+                transformOrigin: 'center center',
+                cursor: dragging ? 'grabbing' : 'grab',
+                userSelect: 'none',
+                transition: dragging ? 'none' : 'transform 0.12s ease-out',
+              }}
+            />
+            <div className="image-embed-transform-bar">
+              <button onClick={zoomBtn(0.85)} title="축소 (휠 ↓)">−</button>
+              <span className="zoom-label">{Math.round(transform.scale * 100)}%</span>
+              <button onClick={zoomBtn(1.15)} title="확대 (휠 ↑)">+</button>
+              <span className="sep"></span>
+              <button onClick={fitTransform} title="전체에 맞추기">⤢ 맞춤</button>
+              <button onClick={resetTransform} title="위치·크기 초기화">↻ 초기화</button>
+            </div>
             <div className="image-embed-overlay-actions">
-              <button onClick={(e) => { e.stopPropagation(); fileRef.current?.click(); }} title="파일 교체">↻ 교체</button>
+              <button onClick={(e) => { e.stopPropagation(); fileRef.current?.click(); }} title="파일 교체">↻ 파일</button>
               {hasPrompt && (
                 <button onClick={(e) => { e.stopPropagation(); generate(); }} title="AI 재생성">🍌 재생성</button>
               )}

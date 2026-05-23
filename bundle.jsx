@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-23T06:06:00.967Z
+   생성 시각: 2026-05-23T06:18:51.907Z
 */
 
 // ============================================================
@@ -856,11 +856,66 @@ function SectionDividerSlide({ data, patch, page, totalPages }) {
 /* ------ 4b. Image embed (참고 이미지) ------
  * 인라인 AI 생성 지원: imagePrompt 필드 편집 + ✦ AI 생성 버튼.
  * 비어 있는 placeholder 상태에서도 바로 prompt 입력 + 생성 가능.
+ * 이미지 pan/zoom: 마우스 드래그로 위치 이동, 휠로 확대/축소.
  */
 function ImageEmbedSlide({ data, patch, page, totalPages }) {
   const fileRef = React.useRef(null);
+  const wrapRef = React.useRef(null);
   const [generating, setGenerating] = React.useState(false);
   const [promptDraft, setPromptDraft] = React.useState('');
+  const [dragging, setDragging] = React.useState(false);
+  const transform = data.imageTransform || { scale: 1, x: 0, y: 0 };
+
+  // 마우스 휠로 zoom — passive 리스너 회피를 위해 useEffect 로 직접 부착
+  React.useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || !data.imageSrc) return;
+    const onWheel = (e) => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.08 : 0.92;
+      const cur = data.imageTransform || { scale: 1, x: 0, y: 0 };
+      const newScale = Math.max(0.2, Math.min(8, cur.scale * factor));
+      patch({ imageTransform: { ...cur, scale: newScale } });
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [data.imageSrc, data.imageTransform, patch]);
+
+  // 마우스 드래그 (pan) — window 단위 리스너로 cursor 가 영역을 벗어나도 추적
+  const startDrag = (e) => {
+    if (!data.imageSrc) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(true);
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const start = { ...transform };
+    const onMove = (ev) => {
+      patch({ imageTransform: { scale: start.scale, x: start.x + (ev.clientX - startX), y: start.y + (ev.clientY - startY) } });
+    };
+    const onUp = () => {
+      setDragging(false);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  const resetTransform = (e) => {
+    e.stopPropagation();
+    patch({ imageTransform: { scale: 1, x: 0, y: 0 } });
+  };
+  const fitTransform = (e) => {
+    // 컨테이너 전체에 맞추기 — scale 1, position 중앙
+    e.stopPropagation();
+    patch({ imageTransform: { scale: 1, x: 0, y: 0 } });
+  };
+  const zoomBtn = (factor) => (e) => {
+    e.stopPropagation();
+    const cur = data.imageTransform || { scale: 1, x: 0, y: 0 };
+    patch({ imageTransform: { ...cur, scale: Math.max(0.2, Math.min(8, cur.scale * factor)) } });
+  };
 
   const onPick = (e) => {
     const f = e.target.files && e.target.files[0];
@@ -928,10 +983,13 @@ function ImageEmbedSlide({ data, patch, page, totalPages }) {
         multiline
         placeholder="🍌 영문 이미지 프롬프트 (예: A frozen-in-time street scene with floating debris, cyan glow, cinematic lighting, ultra-detailed concept art)"
       />
-      <div className="image-embed-wrap"
-           onDragOver={(e) => e.preventDefault()}
-           onDrop={onDrop}
-           onClick={() => !data.imageSrc && !generating && fileRef.current?.click()}>
+      <div
+        ref={wrapRef}
+        className={'image-embed-wrap' + (dragging ? ' dragging' : '') + (data.imageSrc ? ' has-image' : '')}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={onDrop}
+        onClick={() => !data.imageSrc && !generating && fileRef.current?.click()}
+      >
         <input type="file" accept="image/*" ref={fileRef} style={{ display: 'none' }} onChange={onPick} />
         {generating ? (
           <div className="empty image-embed-loading">
@@ -940,9 +998,29 @@ function ImageEmbedSlide({ data, patch, page, totalPages }) {
           </div>
         ) : data.imageSrc ? (
           <>
-            <img src={data.imageSrc} alt="reference" />
+            <img
+              src={data.imageSrc}
+              alt="reference"
+              draggable={false}
+              onMouseDown={startDrag}
+              style={{
+                transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
+                transformOrigin: 'center center',
+                cursor: dragging ? 'grabbing' : 'grab',
+                userSelect: 'none',
+                transition: dragging ? 'none' : 'transform 0.12s ease-out',
+              }}
+            />
+            <div className="image-embed-transform-bar">
+              <button onClick={zoomBtn(0.85)} title="축소 (휠 ↓)">−</button>
+              <span className="zoom-label">{Math.round(transform.scale * 100)}%</span>
+              <button onClick={zoomBtn(1.15)} title="확대 (휠 ↑)">+</button>
+              <span className="sep"></span>
+              <button onClick={fitTransform} title="전체에 맞추기">⤢ 맞춤</button>
+              <button onClick={resetTransform} title="위치·크기 초기화">↻ 초기화</button>
+            </div>
             <div className="image-embed-overlay-actions">
-              <button onClick={(e) => { e.stopPropagation(); fileRef.current?.click(); }} title="파일 교체">↻ 교체</button>
+              <button onClick={(e) => { e.stopPropagation(); fileRef.current?.click(); }} title="파일 교체">↻ 파일</button>
               {hasPrompt && (
                 <button onClick={(e) => { e.stopPropagation(); generate(); }} title="AI 재생성">🍌 재생성</button>
               )}
@@ -7288,6 +7366,30 @@ function App({ onStateChange }) {
   );
 }
 
+/* === 이미지 프롬프트 폴백 합성 ===
+ * AI 가 imagePrompt 를 빼먹은 슬라이드를 위해 title/caption/subtitle/team 으로부터
+ * 영문 이미지 생성 프롬프트를 합성. 한국어 키워드는 그대로 두되 nano-banana 가
+ * 의미를 파악할 수 있게 영문 컨텍스트 키워드 + 스타일 + 16:9 키워드를 덧붙임.
+ */
+function synthesizeImagePrompt(slide, parsedRoot) {
+  if (!slide) return '';
+  const d = slide.data || {};
+  const root = parsedRoot || {};
+  const topic = [d.title, d.caption, d.subtitle, root.title, root.subtitle]
+    .filter(s => typeof s === 'string' && s.trim())
+    .slice(0, 3)
+    .join(', ');
+  if (!topic) return '';
+  const styleByType = {
+    'cover': 'cinematic key art cover, dramatic lighting, ultra-detailed, bold composition, 16:9 aspect ratio',
+    'section-divider': 'atmospheric chapter concept art, moody lighting, dark background with negative space for text, cinematic 16:9',
+    'ui-design': 'clean game UI mockup, dark sci-fi theme, hud elements, high-fidelity wireframe, 16:9 aspect ratio',
+    'image-embed': 'high-detail concept art reference, painterly digital art, cinematic lighting, 16:9 aspect ratio',
+  };
+  const style = styleByType[slide.type] || styleByType['image-embed'];
+  return `Game design reference: ${topic}. Style: ${style}, professional game art, vivid colors, high contrast.`;
+}
+
 /* === AI generation via window.gemini.complete === */
 async function aiGenerateGdd(command, existingTitles, attachments, context) {
   const prompt = window.buildAiPrompt(command, existingTitles, attachments, context);
@@ -7341,31 +7443,40 @@ async function aiGenerateGdd(command, existingTitles, attachments, context) {
   // nano-banana: 참고 이미지 자동 생성
   // - cover 슬라이드: 표지 배경
   // - ui-design 슬라이드: UI 목업 이미지
-  // - section-divider 슬라이드: 섹션 컨셉 아트 (imagePrompt 있는 경우)
-  // - image-embed 슬라이드: 참고 이미지 (imagePrompt 있는 경우)
+  // - section-divider 슬라이드: 섹션 컨셉 아트
+  // - image-embed 슬라이드: 참고 이미지
+  // imagePrompt 가 비어있으면 slide.title/caption/subtitle 로부터 폴백 프롬프트 합성
   // 실패해도 GDD 생성은 정상 완료(이미지만 비어있음)
   const imageJobs = [];
   const coverIdx = slides.findIndex(s => s.type === 'cover');
-  if (coverIdx >= 0 && parsed.coverImagePrompt) {
-    imageJobs.push((async () => {
-      try {
-        const src = await window.gemini.generateImage(parsed.coverImagePrompt);
-        slides[coverIdx].data = { ...slides[coverIdx].data, imageSrc: src, imagePrompt: parsed.coverImagePrompt };
-      } catch (e) { /* swallow */ }
-    })());
-  }
-  slides.forEach((s, idx) => {
-    const t = s.type;
-    const p = s.data?.imagePrompt;
-    if (!p) return;
-    if (t === 'ui-design' || t === 'section-divider' || t === 'image-embed') {
+  if (coverIdx >= 0) {
+    const coverPrompt = parsed.coverImagePrompt || synthesizeImagePrompt(slides[coverIdx], parsed);
+    if (coverPrompt) {
       imageJobs.push((async () => {
         try {
-          const src = await window.gemini.generateImage(p);
-          slides[idx].data = { ...slides[idx].data, imageSrc: src };
+          const src = await window.gemini.generateImage(coverPrompt);
+          slides[coverIdx].data = { ...slides[coverIdx].data, imageSrc: src, imagePrompt: coverPrompt };
         } catch (e) { /* swallow */ }
       })());
     }
+  }
+  slides.forEach((s, idx) => {
+    if (s.type === 'cover') return; // 위에서 처리됨
+    if (!['ui-design', 'section-divider', 'image-embed'].includes(s.type)) return;
+    // imagePrompt 가 비어있으면 폴백 합성 — 이미지 누락 방지
+    let p = s.data?.imagePrompt;
+    if (!p || !p.trim()) {
+      p = synthesizeImagePrompt(s, parsed);
+      if (!p) return;
+      // 합성된 프롬프트도 slide.data 에 저장해서 UI 에서 보이도록
+      slides[idx].data = { ...slides[idx].data, imagePrompt: p };
+    }
+    imageJobs.push((async () => {
+      try {
+        const src = await window.gemini.generateImage(p);
+        slides[idx].data = { ...slides[idx].data, imageSrc: src };
+      } catch (e) { /* swallow */ }
+    })());
   });
   if (imageJobs.length) {
     await Promise.allSettled(imageJobs);
@@ -7511,24 +7622,32 @@ async function aiEditGdd(currentProject, command, attachments) {
     try { window.gddToast(`${opFailures}개 변경 작업 실패 (스킵됨)`, 'err'); } catch {}
   }
 
-  // 2) 새/변경 슬라이드의 imagePrompt 가 있으면 nano-banana 로 이미지 생성.
-  // id 기반으로 트래킹 → 이후 ops 가 같은 슬라이드를 다시 교체해도 race 가 안 생긴다.
+  // 2) 새/변경 슬라이드 중 이미지 대상에 대해 nano-banana 로 이미지 생성.
+  //    imagePrompt 가 비어있으면 synthesizeImagePrompt 로 폴백 합성 — 이미지 누락 방지.
+  //    id 기반으로 트래킹 → 이후 ops 가 같은 슬라이드를 다시 교체해도 race 가 안 생긴다.
   const imageTargets = newOrChanged
-    .filter(s => s.data?.imagePrompt && ['cover', 'ui-design', 'section-divider', 'image-embed'].includes(s.type))
-    .map(s => ({ id: s.id, prompt: s.data.imagePrompt }));
+    .filter(s => ['cover', 'ui-design', 'section-divider', 'image-embed'].includes(s.type))
+    .map(s => {
+      let p = s.data?.imagePrompt;
+      if (!p || !p.trim()) p = synthesizeImagePrompt(s, currentProject || {});
+      return p ? { id: s.id, prompt: p, synthesized: !s.data?.imagePrompt } : null;
+    })
+    .filter(Boolean);
   if (imageTargets.length > 0) {
     const results = await Promise.allSettled(imageTargets.map(t => window.gemini.generateImage(t.prompt)));
-    const idToSrc = {};
+    const idToUpdate = {};
     results.forEach((r, i) => {
       if (r.status === 'fulfilled' && typeof r.value === 'string') {
-        idToSrc[imageTargets[i].id] = r.value;
+        idToUpdate[imageTargets[i].id] = { src: r.value, syntheticPrompt: imageTargets[i].synthesized ? imageTargets[i].prompt : null };
       }
     });
-    if (Object.keys(idToSrc).length > 0) {
+    if (Object.keys(idToUpdate).length > 0) {
       slides = slides.map(s => {
-        const src = idToSrc[s.id];
-        if (!src) return s;
-        return { ...s, data: { ...s.data, imageSrc: src } };
+        const u = idToUpdate[s.id];
+        if (!u) return s;
+        const patchData = { ...s.data, imageSrc: u.src };
+        if (u.syntheticPrompt) patchData.imagePrompt = u.syntheticPrompt;
+        return { ...s, data: patchData };
       });
     }
   }

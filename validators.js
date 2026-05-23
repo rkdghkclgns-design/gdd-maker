@@ -32,7 +32,7 @@
     },
     'image-embed': {
       required: ['title'],
-      defaults: { section: '03', sectionName: '참고 이미지', title: '참고 이미지', caption: '', imagePrompt: '', imageSrc: null },
+      defaults: { section: '03', sectionName: '참고 이미지', title: '참고 이미지', caption: '', imagePrompt: '', imageSrc: null, imageTransform: null },
     },
     intent: {
       required: ['title'],

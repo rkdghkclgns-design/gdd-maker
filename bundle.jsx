@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-23T08:17:16.689Z
+   생성 시각: 2026-05-23T08:22:41.566Z
 */
 
 // ============================================================
@@ -2184,79 +2184,86 @@ function usePanZoom(slideData, patch, opts) {
   const NODE_SELECTORS = opts.nodeSelectors || '.diagram-node, .seq-participant, .cls-box, .sm-state, button, select, input, textarea, [contenteditable=true]';
   const initial = slideData?._viewTransform || { scale: 1, x: 0, y: 0 };
   const [transform, setTransform] = React.useState(initial);
+  const transformRef = React.useRef(transform);
   const wrapRef = React.useRef(null);
   const [dragging, setDragging] = React.useState(false);
 
-  // patch 가 슬라이드 변경 시 호출되어 부모 state 가 갱신될 때 동기화
+  // transformRef 는 매 transform 변경 시 동기화 — 이벤트 핸들러가 closure 없이 최신 값 조회
+  React.useEffect(() => { transformRef.current = transform; }, [transform]);
+
+  // 외부에서 _viewTransform 이 바뀌면 동기화 (다른 슬라이드 선택 등)
   React.useEffect(() => {
     const t = slideData?._viewTransform;
-    if (t && (t.scale !== transform.scale || t.x !== transform.x || t.y !== transform.y)) {
+    if (t && (t.scale !== transformRef.current.scale || t.x !== transformRef.current.x || t.y !== transformRef.current.y)) {
+      transformRef.current = t;
       setTransform(t);
     }
-    // 의도적으로 transform 은 deps 에서 제외 — 외부 변경에만 반응
+    // 의도적으로 transform 은 deps 에서 제외
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slideData?._viewTransform?.scale, slideData?._viewTransform?.x, slideData?._viewTransform?.y]);
 
-  // 휠 줌 — passive 회피
+  // 공통 — transform 변경 + ref 동기화 + persist. setState updater 사용 X (부작용 분리).
+  const applyTransform = (next) => {
+    transformRef.current = next;
+    setTransform(next);
+    if (patch) patch({ _viewTransform: next });
+  };
+
+  // 휠 줌 — passive 회피. transformRef 로 최신값 읽음.
   React.useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
     const onWheel = (e) => {
-      if (e.ctrlKey || e.metaKey) return; // 시스템 줌은 양보
+      if (e.ctrlKey || e.metaKey) return;
       e.preventDefault();
       const factor = e.deltaY < 0 ? 1.08 : 0.92;
-      setTransform(t => {
-        const rect = el.getBoundingClientRect();
-        const cx = e.clientX - rect.left;
-        const cy = e.clientY - rect.top;
-        const newScale = Math.max(0.2, Math.min(8, t.scale * factor));
-        // 커서 기준 줌: 새 transform 으로 같은 캔버스 좌표가 같은 화면 위치에 오도록 x/y 보정
-        const k = newScale / t.scale;
-        const nx = cx - k * (cx - t.x);
-        const ny = cy - k * (cy - t.y);
-        const next = { scale: newScale, x: nx, y: ny };
-        if (patch) patch({ _viewTransform: next });
-        return next;
-      });
+      const cur = transformRef.current;
+      const rect = el.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+      const newScale = Math.max(0.2, Math.min(8, cur.scale * factor));
+      const k = newScale / cur.scale;
+      const nx = cx - k * (cx - cur.x);
+      const ny = cy - k * (cy - cur.y);
+      applyTransform({ scale: newScale, x: nx, y: ny });
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
+    // applyTransform 은 closure 안에서 transformRef.current 만 읽으므로 안정. patch 변경에만 반응.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patch]);
 
   // 마우스 드래그 (pan) — 노드/버튼이 아닌 빈 영역만
   const startDrag = (e) => {
     if (e.target.closest(NODE_SELECTORS)) return;
-    if (e.button !== 0) return; // 좌클릭만
+    if (e.button !== 0) return;
     e.preventDefault();
     setDragging(true);
-    const start = { ...transform };
+    const start = { ...transformRef.current };
     const sx = e.clientX, sy = e.clientY;
     const onMove = (ev) => {
-      setTransform({ scale: start.scale, x: start.x + (ev.clientX - sx), y: start.y + (ev.clientY - sy) });
+      const next = { scale: start.scale, x: start.x + (ev.clientX - sx), y: start.y + (ev.clientY - sy) };
+      transformRef.current = next;
+      setTransform(next);
+      // 드래그 중에는 patch 호출 안 함 — onUp 에서 한 번에 persist
     };
     const onUp = (ev) => {
       setDragging(false);
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
-      // 드래그 종료 시 한 번만 persist
       const finalT = { scale: start.scale, x: start.x + (ev.clientX - sx), y: start.y + (ev.clientY - sy) };
+      transformRef.current = finalT;
+      setTransform(finalT);
       if (patch) patch({ _viewTransform: finalT });
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
   };
 
-  const reset = () => {
-    const next = { scale: 1, x: 0, y: 0 };
-    setTransform(next);
-    if (patch) patch({ _viewTransform: next });
-  };
+  const reset = () => applyTransform({ scale: 1, x: 0, y: 0 });
   const zoomBy = (factor) => {
-    setTransform(t => {
-      const next = { ...t, scale: Math.max(0.2, Math.min(8, t.scale * factor)) };
-      if (patch) patch({ _viewTransform: next });
-      return next;
-    });
+    const cur = transformRef.current;
+    applyTransform({ ...cur, scale: Math.max(0.2, Math.min(8, cur.scale * factor)) });
   };
 
   return { wrapRef, transform, dragging, startDrag, reset, zoomBy };

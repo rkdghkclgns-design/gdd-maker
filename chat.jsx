@@ -106,18 +106,28 @@ function ChatTab({ project, isConcept, onSendCommand, isGenerating, generationMo
             ))}
           </div>
         )}
-        <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
           <button
             className={'chip ' + (generationMode === 'ai' ? 'active' : '')}
             style={generationMode === 'ai' ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : null}
             onClick={() => setGenerationMode('ai')}
+            title="단일 호출 — 빠르고 저렴 (~$0.05)"
           >
-            <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)' }}>AI</span> Gemini 생성
+            <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)' }}>AI</span> 표준 생성
+          </button>
+          <button
+            className={'chip ' + (generationMode === 'deep' ? 'active' : '')}
+            style={generationMode === 'deep' ? { borderColor: '#88dfb0', color: '#88dfb0' } : null}
+            onClick={() => setGenerationMode('deep')}
+            title="Outline → Flesh-out → Self-critique 3단계. 슬라이드당 3~5배 깊이. 비용 ~$0.15."
+          >
+            <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)' }}>DEEP</span> 심층 생성
           </button>
           <button
             className={'chip ' + (generationMode === 'demo' ? 'active' : '')}
             style={generationMode === 'demo' ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : null}
             onClick={() => setGenerationMode('demo')}
+            title="AI 호출 없이 템플릿 채움 (무료)"
           >
             <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)' }}>FAST</span> 데모
           </button>

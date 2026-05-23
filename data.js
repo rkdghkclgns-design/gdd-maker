@@ -1142,6 +1142,158 @@ cover, history, toc, section-divider, intent, terms, rules, data-table, flow, di
 - 모든 string 값은 한국어 (영문 식별자/imagePrompt/snake_case 필드명 제외).`;
 }
 
+/* ---- 2단계 AI 파이프라인: Outline → Flesh-out ---- */
+/* outline: 슬라이드 구조만 생성 (저비용, Flash). flesh: 각 슬라이드 8~10개씩 묶어 상세 (Pro). */
+function buildOutlinePrompt(command, existingTitles, attachments, context) {
+  const textBlocks = (attachments || []).filter(a => a.kind === 'text').map((a, i) => `\n[첨부 텍스트 ${i+1}: ${a.name}]\n${a.value.slice(0, 1200)}`).join('\n');
+  const contextBlock = renderContextBlock(context);
+  const domain = classifyDomain(command, context?.plan?.title || '');
+  return `${SENIOR_PERSONA}
+
+# 임무
+30년차 게임 메이커. **GDD 의 슬라이드 골격만 먼저 빠르게 설계한다.** 각 슬라이드의 type, 제목, 한 줄 의도만 출력. 상세 내용은 출력하지 말 것.
+
+요청: "${command}"
+${textBlocks}
+${contextBlock}
+
+기존 기획서 목록: ${(existingTitles || []).join(', ') || '(없음)'}
+
+# 출력 형식 (JSON 만, 코드블록 없이)
+{
+  "title": "기획서 제목",
+  "subtitle": "한 줄 부제",
+  "badge": "MVP|CORE|DRAFT|SYSTEM 중 하나",
+  "domain": "${domain}",
+  "outline": [
+    { "type": "cover", "title": "...", "intent": "왜 이 슬라이드가 필요한지 한 줄" },
+    { "type": "history", "title": "문서 이력", "intent": "..." },
+    { "type": "toc", "title": "CONTENTS", "intent": "..." },
+    { "type": "section-divider", "title": "01 개요", "intent": "개요 섹션 진입" },
+    { "type": "intent", "title": "기획 의도", "intent": "..." },
+    /* ... 22~32 슬라이드 전체 */
+  ]
+}
+
+# 필수 포함 슬라이드 (22~32장)
+cover, history, toc, [개요: divider+intent+terms], [시스템: divider+flow+sequence-diagram+diagram+state-machine+class-diagram+rules], [데이터: divider+data-table×2+balance-table], [API: divider+api-contract×2~3+telemetry], [품질: divider+acceptance-criteria×2], [UI: divider+ui-design×2+image-embed×3], [관리: divider+risk-register+roadmap+resources]
+
+각 슬라이드의 intent 는 "이 슬라이드에서 무엇을 다룰 것인가" 한 줄로. 상세 내용은 다음 단계에서 채움.
+
+# 출력 규칙
+JSON 만. 코드블록 펜스 금지. outline 배열은 22~32개.`;
+}
+
+function buildFleshOutPrompt(outlineRoot, slidesToFlesh, allOutline, command, context) {
+  const ctxBlock = renderContextBlock(context);
+  return `${SENIOR_PERSONA}
+
+# 임무
+GDD 슬라이드 골격이 이미 정해진 상태. 아래 N 개 슬라이드의 상세 내용만 채워서 반환한다.
+
+# 기획서 메타
+title: "${outlineRoot.title || ''}"
+subtitle: "${outlineRoot.subtitle || ''}"
+badge: "${outlineRoot.badge || ''}"
+원본 명령: "${command}"
+
+${ctxBlock}
+
+# 전체 슬라이드 골격 (참고용 — 다른 슬라이드와 정합성 유지)
+${(allOutline || []).map((o, i) => `[${i+1}] ${o.type} · "${o.title}" — ${o.intent || ''}`).join('\n')}
+
+# 이번 단계에서 채울 슬라이드들
+${slidesToFlesh.map((o, i) => `### ${i+1}. type=${o.type} · "${o.title}"\nintent: ${o.intent || ''}`).join('\n\n')}
+
+# 출력 형식 (JSON 만)
+{
+  "slides": [
+    /* 위 N 개 슬라이드를 그 순서대로 — 각 슬라이드는 다음 구조 */
+    { "type": "...", "data": { /* 그 type 에 맞는 모든 필드. 표준 schema 그대로 */ } }
+  ]
+}
+
+# 품질 기준 (상세)
+- 모든 텍스트는 한국어. snake_case 식별자/영문 imagePrompt 만 영문.
+- 마크다운(**굵게**, \`code\`, 리스트) 적극 활용.
+- 모든 배열 필드는 표준 최소 개수 채움 (rules.items 4~6, data-table.rows 8~16, flow.nodes 6~12, terms.rows 8~12, etc.)
+- 절대 빈 배열 금지. "TBD"/"적절한"/"충분한" 금지.
+- image-embed/section-divider/ui-design/cover 는 imagePrompt 영문 필수.
+- 다른 슬라이드와 용어·필드명 일관성 유지.
+
+# 슬라이드 타입별 schema 요약 (이번에 다루는 타입만)
+${[...new Set(slidesToFlesh.map(o => o.type))].map(t => slideTypeBrief(t)).join('\n\n')}
+
+# 출력 규칙
+JSON 만. 코드블록 펜스 금지.`;
+}
+
+function slideTypeBrief(t) {
+  const briefs = {
+    'cover': '{ product, title, subtitle, team, author, date }',
+    'history': '{ rows: [{ ver, date, page, content, author }] }  // rows 3~6개',
+    'toc': '{ title: "CONTENTS", entries: [{ num, name, sub }] }',
+    'section-divider': '{ num, title, subtitle, imagePrompt: 영문 컨셉 아트 }',
+    'intent': '{ section, sectionName, title, tagline, cards: [{ idx, head, desc }] }  // cards 4~6개, desc 끝에 측정 지표',
+    'terms': '{ section, sectionName, title, rows: [{ term, def, note }] }  // rows 8~12개',
+    'rules': '{ section, sectionName, title, blocks: [{ head, items[] }] }  // blocks 2~3개, items 정적 규칙만',
+    'data-table': '{ section, sectionName, title, columns: [{ key, label, width }], rows: [{ ... }] }  // rows 8~16개, 모든 row 객체는 모든 column key 포함',
+    'flow': '{ section, sectionName, title, direction: vertical|horizontal|grid, lines: 1|2, nodes: [{ kind: start|process|decision|end, label }] }  // nodes 6~12개',
+    'diagram': '{ section, sectionName, title, nodes: [{ id, label, sub, kind: start|process|decision|end|service|data, col, row }], edges: [{ from, to, label, kind: solid|dashed|thin }] }',
+    'sequence-diagram': '{ section, sectionName, title, participants: [{ id, name, kind: actor|system|service|data }], messages: [{ from, to, label, kind: sync|async|return }] }  // messages 8~14개',
+    'class-diagram': '{ section, sectionName, title, classes: [{ id, name, stereotype, attrs[], methods[], col, row }], relations: [{ from, to, kind: inherit|implement|compose|aggregate|assoc|depend, label }] }  // attrs/methods 는 가시성 prefix(+/-/#) 필수',
+    'ui-design': '{ section, sectionName, title, imagePrompt: 영문, callouts: [{ name, desc, x, y }] }  // callouts 5~8개, x/y 는 0~100',
+    'image-embed': '{ section, sectionName, title, caption, imagePrompt: 영문 }',
+    'resources': '{ section, sectionName, title, categories: [{ name, count, guideline, items: [{ name, spec, example }] }] }  // categories 4~5개',
+    'balance-table': '{ section, sectionName, title, formula, vars: [{ name, formula, range, defaultValue, sensitivity, notes }], curve?: { x[], y[], xLabel, yLabel } }  // vars 6~12개',
+    'state-machine': '{ section, sectionName, title, states: [{ id, name, kind: initial|normal|final|error, onEnter, onExit, invariants[] }], transitions: [{ from, event, guard, to, action }] }  // states 4~8개, transitions 6~12개',
+    'api-contract': '{ section, sectionName, title, endpoint, method, auth, request: 문자열 JSON 스키마, response: 문자열 JSON 스키마, errors: [{ code, message, when }], idempotencyKey, slaMs, notes }  // errors 3~6개',
+    'acceptance-criteria': '{ section, sectionName, title, userStory: { as, want, soThat }, criteria: [{ id, given, when, then, edgeCases[] }] }  // criteria 3~6개',
+    'telemetry': '{ section, sectionName, title, events: [{ name, when, props: [{ key, type, required, note }], kpi }], funnels: [{ name, steps[], goal }] }  // events 5~10개',
+    'risk-register': '{ section, sectionName, title, risks: [{ id, title, impact: 1-5, likelihood: 1-5, mitigation, owner, status: open|mitigated|accepted|closed }] }  // risks 4~8개',
+    'roadmap': '{ section, sectionName, title, phases: [{ name, start: YYYY.MM, end: YYYY.MM, deliverables[], dependsOn[] }] }  // phases 4~6개',
+  };
+  return `**${t}**: ${briefs[t] || '(스키마 미정)'}`;
+}
+
+/* Self-critique 프롬프트 — GDD 가 완성된 후 약한 슬라이드 식별 */
+function buildCritiquePrompt(project) {
+  const slides = (project.slides || []).map((s, i) => {
+    const d = s.data || {};
+    return `[${i+1}] id=${s.id} type=${s.type} title="${d.title || ''}"`;
+  }).join('\n');
+  return `${SENIOR_PERSONA}
+
+# 임무
+이미 작성된 GDD 의 약한 슬라이드를 식별하고 무엇을 보강해야 하는지 출력하라.
+
+# GDD 메타
+title: "${project.title || ''}"
+subtitle: "${project.subtitle || ''}"
+총 ${(project.slides || []).length}장
+
+# 슬라이드 목록
+${slides}
+
+# 평가 기준
+- 수치 구체성 (TBD/적절한/충분한 등 모호어 사용 → 약함)
+- 절차/조건 분기가 rules 텍스트로만 나열되어 있고 flow 없음 → 약함
+- imagePrompt 누락 → 약함
+- terms 에 있는 용어가 다른 슬라이드에서 사용 안 됨 → 약함
+- data-table 의 rows 가 너무 적거나 빈 셀 많음 → 약함
+- api-contract 의 request/response 가 비어있음 → 약함
+
+# 출력 형식 (JSON 만)
+{
+  "summary": "전반적 평가 한국어 한 문단",
+  "weakSlides": [
+    { "slideId": "<id>", "reasons": ["이유 1", "이유 2"], "suggestion": "어떻게 보강할지 한국어로 구체적" }
+  ]
+}
+
+JSON 만. 코드블록 펜스 금지.`;
+}
+
 Object.assign(window, {
   uid, now,
   SENIOR_PERSONA,
@@ -1153,6 +1305,10 @@ Object.assign(window, {
   generateDemoGdd,
   buildAiPrompt,
   buildAiEditPrompt,
+  buildOutlinePrompt,
+  buildFleshOutPrompt,
+  buildCritiquePrompt,
+  slideTypeBrief,
   parseAiJson,
   summarizeGddForContext,
   renderContextBlock,

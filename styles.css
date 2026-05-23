@@ -519,6 +519,8 @@ input, textarea, select { font-family: inherit; color: inherit; }
   z-index: 2;
 }
 .thumb.active .num { color: var(--accent); background: rgba(0,0,0,0.7); }
+.thumb.child { margin-left: 14px; border-left: 2px solid var(--accent, #4cc2ff); }
+.thumb.child .num { background: var(--accent-soft, rgba(76,194,255,0.12)); color: var(--accent, #4cc2ff); }
 /* 16:9 컨테이너 — 폭에 맞춰 자동 16:9 비율 유지 */
 .thumb-canvas {
   width: 100%;

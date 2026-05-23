@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-23T06:55:12.772Z
+   생성 시각: 2026-05-23T07:08:01.015Z
 */
 
 // ============================================================
@@ -4655,18 +4655,28 @@ function ChatTab({ project, isConcept, onSendCommand, isGenerating, generationMo
             ))}
           </div>
         )}
-        <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
           <button
             className={'chip ' + (generationMode === 'ai' ? 'active' : '')}
             style={generationMode === 'ai' ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : null}
             onClick={() => setGenerationMode('ai')}
+            title="단일 호출 — 빠르고 저렴 (~$0.05)"
           >
-            <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)' }}>AI</span> Gemini 생성
+            <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)' }}>AI</span> 표준 생성
+          </button>
+          <button
+            className={'chip ' + (generationMode === 'deep' ? 'active' : '')}
+            style={generationMode === 'deep' ? { borderColor: '#88dfb0', color: '#88dfb0' } : null}
+            onClick={() => setGenerationMode('deep')}
+            title="Outline → Flesh-out → Self-critique 3단계. 슬라이드당 3~5배 깊이. 비용 ~$0.15."
+          >
+            <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)' }}>DEEP</span> 심층 생성
           </button>
           <button
             className={'chip ' + (generationMode === 'demo' ? 'active' : '')}
             style={generationMode === 'demo' ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : null}
             onClick={() => setGenerationMode('demo')}
+            title="AI 호출 없이 템플릿 채움 (무료)"
           >
             <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)' }}>FAST</span> 데모
           </button>
@@ -6204,6 +6214,32 @@ function TopBar({ project, view, setView, onDownload, isDownloading, onRename, t
   );
 }
 
+/* === 장르 템플릿용 — 슬라이드 type 별 최소 시드 (사용자가 AI 로 채우기 전 placeholder) === */
+const SLIDE_TEMPLATES_FOR_GENRE = {
+  'cover': { product: '신규 게임', title: '게임 제목', subtitle: '한 줄 부제', team: 'TEAM', author: '작성자', date: '26.05.23' },
+  'history': { title: '문서 이력', rows: [{ ver: 'Ver00', date: '26.05.23', page: '-', content: '최초 작성', author: '작성자' }] },
+  'toc': { title: 'CONTENTS', entries: [{ num: '01', name: '개요', sub: '게임 컨셉 및 용어' }] },
+  'section-divider': { num: '01', title: '섹션', subtitle: '설명', imagePrompt: '' },
+  'intent': { section: '01', sectionName: '개요', title: '기획 의도', tagline: '', cards: [] },
+  'terms': { section: '01', sectionName: '개요', title: '용어 정의', rows: [] },
+  'rules': { section: '02', sectionName: '시스템', title: '규칙', blocks: [] },
+  'data-table': { section: '04', sectionName: '데이터', title: '테이블', columns: [{ key: 'field', label: 'Field', width: '22%' }, { key: 'type', label: 'Type', width: '14%' }, { key: 'desc', label: '설명' }], rows: [] },
+  'flow': { section: '02', sectionName: '플로우', title: '플로우 차트', direction: '', lines: 1, nodes: [] },
+  'diagram': { section: '02', sectionName: '시스템 구조', title: '시스템 구조', nodes: [], edges: [] },
+  'sequence-diagram': { section: '02', sectionName: '시퀀스', title: '시퀀스 다이어그램', participants: [], messages: [] },
+  'class-diagram': { section: '02', sectionName: '클래스', title: '클래스 다이어그램', classes: [], relations: [] },
+  'state-machine': { section: '02', sectionName: '상태 머신', title: '상태 머신', states: [], transitions: [] },
+  'ui-design': { section: '03', sectionName: 'UI/UX', title: '화면 설계', imagePrompt: '', callouts: [] },
+  'image-embed': { section: '03', sectionName: '참고 이미지', title: '참고 이미지', caption: '', imagePrompt: '' },
+  'resources': { section: '05', sectionName: '필요 리소스', title: '필요 리소스', categories: [] },
+  'balance-table': { section: '04', sectionName: '밸런싱', title: '수치 밸런싱', formula: '', vars: [], curve: null },
+  'api-contract': { section: '02', sectionName: 'API 계약', title: 'API 계약', endpoint: '/api/...', method: 'POST', auth: 'bearer', request: '', response: '', errors: [], slaMs: 200, idempotencyKey: '', notes: '' },
+  'acceptance-criteria': { section: '03', sectionName: '수락 기준', title: '수락 기준', userStory: { as: '', want: '', soThat: '' }, criteria: [] },
+  'telemetry': { section: '04', sectionName: '텔레메트리', title: '텔레메트리', events: [], funnels: [] },
+  'risk-register': { section: '06', sectionName: '위험 등기부', title: '위험 등기부', risks: [] },
+  'roadmap': { section: '06', sectionName: '로드맵', title: '로드맵', phases: [] },
+};
+
 /* === downloadBlob 헬퍼 — 텍스트/JSON/YAML 등을 즉시 다운로드 === */
 function downloadBlob(content, filename, mime) {
   const blob = new Blob([content], { type: mime || 'text/plain' });
@@ -7026,15 +7062,16 @@ function Thumbs({ slides, currentIdx, setCurrentIdx, onAddSlide, onDeleteSlide, 
     <div className="thumbs" tabIndex={-1}>
       {slides.map((s, i) => {
         const isActive = i === currentIdx;
+        const isChild = !!(s.data?._parent && s.data._parent.slideId);
         return (
           <div
-            className={'thumb ' + (isActive ? 'active' : '')}
+            className={'thumb ' + (isActive ? 'active' : '') + (isChild ? ' child' : '')}
             key={s.id}
             ref={isActive ? activeRef : null}
             onClick={() => setCurrentIdx(i)}
-            title={`슬라이드 ${i + 1}`}
+            title={isChild ? `↳ "${s.data._parent.slideTitle || ''}" 의 드릴다운` : `슬라이드 ${i + 1}`}
           >
-            <span className="num">{String(i + 1).padStart(2, '0')}</span>
+            <span className="num">{isChild ? '↳' : ''}{String(i + 1).padStart(2, '0')}</span>
             <div className="thumb-actions">
               {i > 0 && (
                 <button title="위로" onClick={(e) => { e.stopPropagation(); onMoveSlide(i, -1); }}>↑</button>
@@ -7531,6 +7568,15 @@ function App({ onStateChange }) {
       if (generationMode === 'demo') {
         await new Promise(r => setTimeout(r, 700));
         result = window.generateDemoGdd(fullCommand);
+      } else if (generationMode === 'deep') {
+        // 2단계 파이프라인 — 깊이↑, 비용 약 2.5배
+        const ctx = concept ? buildGddContext(concept) : null;
+        result = await aiGenerateGddTwoStage(fullCommand, state.projects.map(p => p.title), attachments, ctx, {
+          selfCritique: true,
+          onProgress: ({ stage, message }) => {
+            try { toast(`[${stage}] ${message}`, ''); } catch {}
+          },
+        });
       } else {
         const ctx = concept ? buildGddContext(concept) : null;
         result = await aiGenerateGdd(fullCommand, state.projects.map(p => p.title), attachments, ctx);
@@ -8391,6 +8437,27 @@ function App({ onStateChange }) {
                 toast(`사용하지 않는 이미지 ${n}개 정리`, 'ok');
               } catch (e) { toast('정리 실패', 'err'); }
             }},
+            { id: 'drill-down', title: '✦ 현재 슬라이드 드릴다운 생성', sub: '현재 슬라이드의 핵심 부분을 더 상세한 슬라이드로 확장 (parent-child)', shortcut: 'CMD', keywords: ['drill', '드릴다운', '상세', 'detail', '확장'], run: async () => {
+              if (selection.type !== 'gdd' || !project) { toast('기획서를 선택하세요', 'err'); return; }
+              const cur = (project.slides || [])[currentIdx];
+              if (!cur) return;
+              const ask = prompt(`"${cur.data?.title || cur.type}" 슬라이드의 어느 부분을 더 상세히 다룰까요?\n예: "decision 노드 'HP ≤ 0' 의 sub-flow", "Player 클래스의 state-machine", "first criterion 의 edge case 4개 추가"`);
+              if (!ask) return;
+              commitNow('드릴다운 생성');
+              setIsGenerating(true);
+              try {
+                // aiEditGdd 의 add op 와 동일한 흐름이지만 메타에 parentRef 를 명시
+                const parentRef = { slideId: cur.id, slideTitle: cur.data?.title || '', anchor: ask };
+                const editPrompt = `현재 슬라이드 (${cur.type} "${cur.data?.title || ''}") 의 다음 부분을 더 상세한 1~2개의 새 슬라이드로 확장하라:\n\n"${ask}"\n\n새 슬라이드를 add op 로 현재 슬라이드 바로 뒤에 삽입. 각 슬라이드의 data._parent 필드에 ${JSON.stringify(parentRef)} 그대로 포함.`;
+                const { project: updated, summary } = await aiEditGdd(project, editPrompt, []);
+                setProject(_ => updated);
+                toast(`드릴다운 — ${summary}`, 'ok');
+              } catch (e) {
+                toast('드릴다운 실패: ' + e.message, 'err');
+              } finally {
+                setIsGenerating(false);
+              }
+            }},
             { id: 'gen-missing-images', title: '🍌 누락된 이미지 모두 생성', sub: '현재 GDD 에서 imageSrc 가 비어있는 슬라이드 모두 일괄 생성', shortcut: 'CMD', keywords: ['이미지', '생성', 'image', 'banana', '누락', 'missing'], run: async () => {
               if (selection.type !== 'gdd' || !project) { toast('기획서를 선택하세요', 'err'); return; }
               const targets = (project.slides || [])
@@ -8497,6 +8564,41 @@ function App({ onStateChange }) {
                 toast('balance.csv 다운로드 완료', 'ok');
               } catch (e) { toast('실패: ' + e.message, 'err'); }
             }},
+            ...((window.gddGenres?.GENRES || []).map(g => ({
+              id: 'genre-' + g.id,
+              title: `🎮 [장르] ${g.name} 빈 기획서`,
+              sub: g.description,
+              shortcut: 'CMD',
+              keywords: ['장르', 'genre', 'template', g.name, ...(g.keywords || [])],
+              run: () => {
+                // 장르의 coreSlides 를 시드로 빈 GDD 생성
+                const slides = (g.coreSlides || []).map((type, i) => {
+                  const template = SLIDE_TEMPLATES_FOR_GENRE[type] || { title: `${i + 1}. ${SLIDE_LABELS[type] || type}` };
+                  return { id: window.uid(), type, data: { ...template, title: template.title || `${SLIDE_LABELS[type] || type}` } };
+                });
+                commitNow(`장르 템플릿: ${g.name}`);
+                const fresh = {
+                  id: 'gdd-' + window.uid(),
+                  title: `${g.name} — 새 기획서`,
+                  subtitle: g.description,
+                  team: 'TEAM',
+                  author: '작성자',
+                  badge: g.badge,
+                  version: 'Ver00',
+                  updatedAt: new Date().toISOString().slice(0, 10),
+                  slides,
+                  history: [],
+                  comments: [],
+                };
+                setState(s => ({
+                  ...s,
+                  projects: [...s.projects, fresh],
+                  selection: { type: 'gdd', id: fresh.id },
+                }));
+                setCurrentIdx(0);
+                toast(`"${g.name}" 장르 템플릿 (${slides.length}장) 생성. AI 채팅에서 명령으로 채우거나 슬라이드 클릭하여 직접 편집.`, 'ok');
+              },
+            }))),
             { id: 'export-all', title: '⤓ 모든 개발 산출물 한꺼번에', sub: 'TS + JSON Schema + Zod + XState + OpenAPI + Gherkin + CSV', shortcut: 'CMD', keywords: ['all', 'export', '모두', '일괄'], run: () => {
               if (!project) { toast('기획서를 선택하세요', 'err'); return; }
               try {
@@ -8546,6 +8648,147 @@ function App({ onStateChange }) {
       </TweaksPanel>
     </div>
   );
+}
+
+/* === 2단계 AI 파이프라인 ===
+ * Outline → Flesh-out 분할 호출. 각 호출에 충분한 토큰을 할당해
+ * 슬라이드당 깊이를 단일 호출 대비 3~5배 향상.
+ * 1) Outline: 슬라이드 구조만 (type+title+intent). Flash 모델 권장.
+ * 2) Flesh-out: 6~8개씩 배치 병렬 호출, 각 슬라이드 data 상세 채움.
+ * 3) (선택) Self-critique: 약한 슬라이드 식별 → 재생성.
+ */
+async function aiGenerateGddTwoStage(command, existingTitles, attachments, context, opts) {
+  opts = opts || {};
+  const onProgress = opts.onProgress || (() => {});
+
+  /* ---- Stage 1: Outline ---- */
+  onProgress({ stage: 'outline', message: '슬라이드 구조 설계 중…' });
+  const outlinePrompt = window.buildOutlinePrompt(command, existingTitles, attachments, context);
+  let outlineRaw;
+  try {
+    const imageAttachments = (attachments || []).filter(a => a.kind === 'image');
+    if (imageAttachments.length > 0) {
+      const parts = [
+        { text: outlinePrompt },
+        ...imageAttachments.slice(0, 3).map(a => window.gemini.imagePartFromDataUrl(a.src)).filter(Boolean),
+      ];
+      outlineRaw = await window.gemini.complete({ contents: [{ role: 'user', parts }] });
+    } else {
+      outlineRaw = await window.gemini.complete(outlinePrompt);
+    }
+  } catch (e) {
+    throw new Error('Outline 단계 실패: ' + (e?.message || e));
+  }
+  const outline = window.parseAiJson(outlineRaw);
+  if (!outline || !Array.isArray(outline.outline)) throw new Error('Outline JSON 파싱 실패');
+
+  /* ---- Stage 2: Flesh-out (배치 병렬) ---- */
+  const batchSize = 7;
+  const batches = [];
+  for (let i = 0; i < outline.outline.length; i += batchSize) {
+    batches.push(outline.outline.slice(i, i + batchSize));
+  }
+  onProgress({ stage: 'flesh', message: `상세 내용 생성 중… (${batches.length}개 배치)` });
+
+  const fleshOutBatch = async (batch, batchIdx) => {
+    const prompt = window.buildFleshOutPrompt(outline, batch, outline.outline, command, context);
+    try {
+      const raw = await window.gemini.complete(prompt);
+      const parsed = window.parseAiJson(raw);
+      if (parsed && Array.isArray(parsed.slides)) {
+        onProgress({ stage: 'flesh', message: `배치 ${batchIdx + 1}/${batches.length} 완료` });
+        return parsed.slides;
+      }
+    } catch (e) {
+      onProgress({ stage: 'flesh', message: `배치 ${batchIdx + 1} 실패 — 빈 슬라이드로 진행` });
+    }
+    // 폴백: outline 만 가진 빈 슬라이드
+    return batch.map(o => ({ type: o.type, data: { title: o.title, sectionName: o.intent } }));
+  };
+
+  // 배치 직렬 호출 — Gemini 동시성 제한 회피
+  const allSlides = [];
+  for (let bi = 0; bi < batches.length; bi++) {
+    const batchSlides = await fleshOutBatch(batches[bi], bi);
+    allSlides.push(...batchSlides);
+  }
+
+  /* ---- 슬라이드 schema 검증 + 자동 보정 ---- */
+  const rawSlides = allSlides.map(s => ({ id: window.uid(), type: s.type, data: s.data || {} }));
+  const allFixes = [];
+  const slides = rawSlides.map(s => {
+    if (window.validateSlide) {
+      const r = window.validateSlide(s);
+      allFixes.push(...r.fixes);
+      return r.slide;
+    }
+    return s;
+  });
+  if (allFixes.length && window.gddToast) {
+    try { window.gddToast(`AI 응답 ${allFixes.length}개 항목 자동 보정`, 'ok'); } catch {}
+  }
+
+  /* ---- 이미지 생성 (cover/section-divider/ui-design/image-embed) ---- */
+  onProgress({ stage: 'images', message: '참고 이미지 생성 중…' });
+  const imageJobs = [];
+  slides.forEach((s, idx) => {
+    if (!['cover', 'ui-design', 'section-divider', 'image-embed'].includes(s.type)) return;
+    let p = s.data?.imagePrompt;
+    if (!p || !p.trim()) p = synthesizeImagePrompt(s, outline);
+    if (!p) return;
+    slides[idx].data = { ...slides[idx].data, imagePrompt: p };
+    imageJobs.push((async () => {
+      try {
+        const src = await window.gemini.generateImage(p);
+        slides[idx].data = { ...slides[idx].data, imageSrc: src };
+      } catch {}
+    })());
+  });
+  if (imageJobs.length) await Promise.allSettled(imageJobs);
+
+  /* ---- (선택) Self-critique → 약한 슬라이드 재생성 ---- */
+  if (opts.selfCritique) {
+    onProgress({ stage: 'critique', message: 'GDD 자체 비평 중…' });
+    try {
+      const project = { title: outline.title, subtitle: outline.subtitle, slides };
+      const critiqueRaw = await window.gemini.complete(window.buildCritiquePrompt(project));
+      const critique = window.parseAiJson(critiqueRaw);
+      const weakIds = new Set((critique?.weakSlides || []).map(w => w.slideId));
+      if (weakIds.size > 0) {
+        onProgress({ stage: 'critique', message: `${weakIds.size}개 약한 슬라이드 재생성 중…` });
+        const weakOutlines = slides
+          .map((s, i) => ({ s, i }))
+          .filter(({ s }) => weakIds.has(s.id))
+          .map(({ s, i }) => ({ ...outline.outline[i], _idx: i, _id: s.id, _suggestion: critique.weakSlides.find(w => w.slideId === s.id)?.suggestion }));
+        const reFleshPrompt = window.buildFleshOutPrompt(outline, weakOutlines, outline.outline, command + '\n\n# 추가 지시\n약한 슬라이드를 다음 제안에 맞춰 재작성:\n' + weakOutlines.map(o => `- ${o._id}: ${o._suggestion}`).join('\n'), context);
+        const reRaw = await window.gemini.complete(reFleshPrompt);
+        const reparsed = window.parseAiJson(reRaw);
+        if (reparsed && Array.isArray(reparsed.slides)) {
+          reparsed.slides.forEach((ns, j) => {
+            const w = weakOutlines[j];
+            if (!w) return;
+            const validated = window.validateSlide ? window.validateSlide({ id: w._id, type: ns.type || slides[w._idx].type, data: ns.data || {} }) : { slide: { id: w._id, type: ns.type, data: ns.data } };
+            slides[w._idx] = validated.slide;
+          });
+        }
+      }
+    } catch (e) { /* swallow */ }
+  }
+
+  return {
+    id: 'gdd-' + window.uid(),
+    title: outline.title || '제목 없음',
+    subtitle: outline.subtitle || '',
+    team: outline.team || 'TEAM',
+    author: outline.author || '작성자',
+    version: 'Ver00',
+    updatedAt: new Date().toISOString().slice(0, 10),
+    command,
+    badge: outline.badge || 'AI',
+    slides,
+    history: [],
+    comments: [],
+  };
 }
 
 /* === 이미지 프롬프트 폴백 합성 ===

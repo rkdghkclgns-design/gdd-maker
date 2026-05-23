@@ -134,6 +134,38 @@
 
 ---
 
+## 🆕 Phase 1+2+3 신규 자산 — 호출 패턴
+
+### 신규 슬라이드 7종
+- balance-table / state-machine / api-contract / acceptance-criteria / telemetry / risk-register / roadmap
+- 각각 validators.js / slides.jsx / styles.css / export-formats.js / doc-export.jsx / data.js prompt 6개 파일 모두 반영됨
+- 새 슬라이드 타입 추가 시 이 7개를 패턴으로 참고
+
+### `window.gddQualityGate.scoreProject(project)`
+- 7개 차원 점수표 반환 → TopBar 의 🎯 배지에 즉시 노출
+- 70점 미만 시 PPTX 다운로드 전 confirm 으로 경고
+- 사용자가 직접 보강 항목 보려면 Cmd+K → "🎯 품질 점수 확인"
+
+### `window.gddExportAdapters.*`
+- exportTypeScript / exportJsonSchema / exportZod / exportXState / exportOpenApi / exportGherkin / exportBalanceCsv / exportAll
+- 모두 string 반환. 호출자가 `downloadBlob(content, filename, mime)` 으로 다운로드
+- Cmd+K 에 단일 export 7종 + "모두 한꺼번에" 액션 존재
+
+### `window.gddGenres.GENRES` (10종)
+- pvp-shooter / deckbuilder-roguelike / auto-runner / action-rpg / match-3 / sim-management / story-adventure / social-life / mmo / sandbox-creative
+- 각 장르의 `coreSlides[]` 가 표준 슬라이드 스택 (22~36장)
+- Cmd+K 의 "🎮 [장르] X 빈 기획서" 액션으로 즉시 생성
+
+### 2단계 AI 파이프라인 (`aiGenerateGddTwoStage`)
+- Outline (단일 호출, 슬라이드 구조만) → Flesh-out (배치 7개씩 직렬, 각 슬라이드 깊이) → Self-critique (약한 슬라이드 식별 → 재생성)
+- ChatTab 의 [DEEP 심층 생성] 모드 선택 시 활성. 비용 약 3배지만 슬라이드당 깊이 3~5배.
+- onProgress 콜백으로 진행 단계를 toast 로 표시
+
+### 드릴다운 (parent-child 슬라이드)
+- Cmd+K 의 "✦ 현재 슬라이드 드릴다운 생성" 액션
+- 자식 슬라이드의 `data._parent = { slideId, slideTitle, anchor }` 로 부모 추적
+- 썸네일 사이드바에 들여쓰기 + ↳ 마커로 시각화
+
 ## 📜 변경 시 참조해야 할 핵심 파일
 
 | 파일 | 역할 |
@@ -145,8 +177,11 @@
 | `doc-export.jsx` | PPTX 출력 + Document 뷰 |
 | `slides.jsx` | 슬라이드 렌더러 + `Editable`/`MarkdownText` |
 | `diagram.jsx` | flow / diagram / sequence-diagram / class-diagram 렌더 + AI |
-| `app.jsx` | App root, `aiGenerateGdd`, `aiEditGdd`, `synthesizeImagePrompt`, 키보드 핸들러, 명령 팔레트 |
+| `app.jsx` | App root, `aiGenerateGdd`, `aiGenerateGddTwoStage`, `aiEditGdd`, `synthesizeImagePrompt`, 키보드 핸들러, 명령 팔레트, `QualityGateModal`, `downloadBlob`, `SLIDE_TEMPLATES_FOR_GENRE` |
 | `gemini-adapter.js` | Gemini 텍스트 + 이미지 호출 + MIME 검증 |
+| `quality-gate.js` | GDD 품질 점수 7차원 + 보강 제안 (`window.gddQualityGate`) |
+| `export-adapters.js` | TS / JSON Schema / Zod / XState / OpenAPI / Gherkin / CSV 변환 (`window.gddExportAdapters`) |
+| `genres.js` | 장르 템플릿 10종 (`window.gddGenres`) |
 | `chat.jsx` | RightPanel / ChatTab — 채팅이 신규/수정 모드 자동 분기 |
 | `concept.jsx` | 1-Page 컨셉 페이지 |
 | `command-palette.jsx` | Cmd+K UI |

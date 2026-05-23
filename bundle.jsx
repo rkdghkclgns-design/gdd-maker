@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-23T07:55:27.827Z
+   생성 시각: 2026-05-23T08:13:58.596Z
 */
 
 // ============================================================
@@ -778,7 +778,7 @@ function HistorySlide({ data, patch, page, totalPages }) {
     <div className="slide">
       <TopTag />
       <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
-      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
         <table className="history-table">
           <thead>
             <tr>
@@ -1089,7 +1089,7 @@ function TermsSlide({ data, patch, page, totalPages }) {
     <div className="slide">
       <TopTag section={data.section} sectionName={data.sectionName} />
       <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
-      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
         <table className="terms-table">
           <thead>
             <tr>
@@ -1176,7 +1176,7 @@ function RulesSlide({ data, patch, replace, page, totalPages }) {
           </button>
         </div>
       )}
-      <div className={useGrid ? 'rules-grid' : 'rules-wrap'} style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+      <div className={useGrid ? 'rules-grid' : 'rules-wrap'} style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
         {(data.blocks || []).map((b, i) => (
           <div className="rule-block" key={i}>
             <Editable tag="div" className="head" value={b.head} onChange={(v) => updateBlock(i, 'head', v)} markdown />
@@ -1204,7 +1204,7 @@ function DataTableSlide({ data, patch, page, totalPages }) {
     <div className="slide">
       <TopTag section={data.section} sectionName={data.sectionName} />
       <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
-      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
         <table className="data-table">
           <thead>
             <tr>
@@ -1556,7 +1556,7 @@ function BalanceTableSlide({ data, patch, page, totalPages }) {
           markdown multiline
           placeholder="핵심 공식 (예: `dmg = base × (1 + str/100) × elem_mod`)" />
       )}
-      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
         <table className="balance-table">
           <thead>
             <tr>
@@ -1623,7 +1623,7 @@ function StateMachineSlide({ data, patch, page, totalPages }) {
     <div className="slide">
       <TopTag section={data.section} sectionName={data.sectionName} />
       <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
-      <div className="state-machine-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'flex', gap: 16 }}>
+      <div className="state-machine-wrap" style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', gap: 16 }}>
         <div className="sm-states-col">
           <div className="sm-section-head">STATES <button className="sc-add inline" onClick={addState}>+</button></div>
           {states.map((s, i) => (
@@ -1720,7 +1720,7 @@ function ApiContractSlide({ data, patch, page, totalPages }) {
         </select>
         <Editable tag="div" className="api-sla" value={String(data.slaMs || '')} onChange={(v) => patch({ slaMs: parseInt(v, 10) || 200 })} placeholder="200ms" />
       </div>
-      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div className="api-pane">
           <div className="api-pane-label">REQUEST 스키마</div>
           <Editable tag="pre" className="api-schema" value={data.request} onChange={(v) => patch({ request: v })} multiline placeholder='{"matchId":"uuid","userId":"uuid","mode":"casual|ranked"}' />
@@ -1794,7 +1794,7 @@ function AcceptanceCriteriaSlide({ data, patch, page, totalPages }) {
         <span className="ac-label">SO THAT</span>
         <Editable tag="div" className="ac-story-field" value={story.soThat} onChange={(v) => updateStory('soThat', v)} markdown placeholder="D1 리텐션이 60%↑ 유지된다" />
       </div>
-      <div className="ac-list" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+      <div className="ac-list" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
         {criteria.map((c, i) => (
           <div className="ac-card" key={i}>
             <div className="ac-card-head">
@@ -1856,7 +1856,7 @@ function TelemetrySlide({ data, patch, page, totalPages }) {
     <div className="slide">
       <TopTag section={data.section} sectionName={data.sectionName} />
       <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
-      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
         {events.map((e, ei) => (
           <div className="telemetry-event" key={ei}>
             <div className="te-head">
@@ -1935,7 +1935,7 @@ function RiskRegisterSlide({ data, patch, page, totalPages }) {
     <div className="slide">
       <TopTag section={data.section} sectionName={data.sectionName} />
       <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
-      <div className="risk-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16 }}>
+      <div className="risk-wrap" style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16 }}>
         <div className="risk-heatmap">
           <div className="rh-label">HEAT MAP</div>
           <div className="rh-grid">
@@ -2037,7 +2037,7 @@ function RoadmapSlide({ data, patch, page, totalPages }) {
     <div className="slide">
       <TopTag section={data.section} sectionName={data.sectionName} />
       <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
-      <div className="roadmap-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+      <div className="roadmap-wrap" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
         {phases.length > 0 && (
           <div className="roadmap-gantt">
             {phases.map((p, i) => {
@@ -7121,7 +7121,7 @@ function Sidebar({ concepts, projects, selection, onSelect, onNewBlank, onOpenCo
 }
 
 /* === Slide stage === */
-function SlideStage({ project, patchSlide, replaceSlide, scale, setScale, currentIdx, setCurrentIdx, isGenerating }) {
+function SlideStage({ project, patchSlide, replaceSlide, scale, setScale, currentIdx, setCurrentIdx, isGenerating, onSplitSlide }) {
   const slides = project.slides || [];
   const slide = slides[currentIdx];
   const stageRef = useRef(null);
@@ -7141,6 +7141,9 @@ function SlideStage({ project, patchSlide, replaceSlide, scale, setScale, curren
     return () => ro.disconnect();
   }, [setScale]);
 
+  // 분할 권장 여부 — splitter 의 휴리스틱으로 즉시 판단
+  const shouldSplit = slide && window.gddSlideSplitter && window.gddSlideSplitter.shouldSplit(slide);
+
   if (!slide) {
     return <div className="stage" ref={stageRef} style={{ display: 'grid', placeItems: 'center', color: 'var(--text-3)' }}>슬라이드 없음</div>;
   }
@@ -7148,7 +7151,7 @@ function SlideStage({ project, patchSlide, replaceSlide, scale, setScale, curren
   return (
     <div className="stage">
       <div className="stage-scroll" ref={stageRef} style={{ position: 'relative' }}>
-        <div className="slide-frame" style={{ transform: `scale(${scale})` }}>
+        <div className="slide-frame" style={{ transform: `scale(${scale})`, position: 'relative' }}>
           <SlideRenderer
             slide={slide}
             patch={(u) => patchSlide(slide.id, { data: { ...slide.data, ...u } })}
@@ -7156,6 +7159,12 @@ function SlideStage({ project, patchSlide, replaceSlide, scale, setScale, curren
             page={currentIdx + 1}
             totalPages={slides.length}
           />
+          {shouldSplit && onSplitSlide && (
+            <div className="slide-overflow-banner">
+              <span>⚠ 콘텐츠가 슬라이드 영역을 초과 — 분할 권장</span>
+              <button onClick={() => onSplitSlide(slide.id)} title="이 슬라이드를 N장으로 분할">✂️ 분할</button>
+            </div>
+          )}
         </div>
         {isGenerating && (
           <div className="stage-veil">
@@ -8545,6 +8554,20 @@ function App({ onStateChange }) {
                       updatedAt: new Date().toISOString().slice(0, 10),
                     }));
                   }}
+                  onSplitSlide={(slideId) => {
+                    if (!window.gddSlideSplitter) return;
+                    commitNow('슬라이드 분할');
+                    setProject(p => {
+                      const slides = p.slides || [];
+                      const idx = slides.findIndex(s => s.id === slideId);
+                      if (idx < 0) return p;
+                      const parts = window.gddSlideSplitter.splitSlide(slides[idx]);
+                      if (parts.length <= 1) return p;
+                      const next = [...slides.slice(0, idx), ...parts, ...slides.slice(idx + 1)];
+                      return { ...p, slides: next, updatedAt: new Date().toISOString().slice(0, 10) };
+                    });
+                    toast('슬라이드 분할 완료', 'ok');
+                  }}
                   scale={scale}
                   setScale={setScale}
                   currentIdx={currentIdx}
@@ -8675,6 +8698,19 @@ function App({ onStateChange }) {
                 const n = await window.gddStorage.gcImages();
                 toast(`사용하지 않는 이미지 ${n}개 정리`, 'ok');
               } catch (e) { toast('정리 실패', 'err'); }
+            }},
+            { id: 'split-overflowing', title: '✂️ 오버플로 슬라이드 일괄 분할', sub: '슬라이드 영역을 초과하는 모든 슬라이드를 분할 규칙에 따라 N장으로 나눔', shortcut: 'CMD', keywords: ['split', '분할', 'overflow', '오버플로'], run: () => {
+              if (selection.type !== 'gdd' || !project) { toast('기획서를 선택하세요', 'err'); return; }
+              if (!window.gddSlideSplitter) { toast('splitter 미로드', 'err'); return; }
+              const overflowing = (project.slides || []).filter(s => window.gddSlideSplitter.shouldSplit(s));
+              if (overflowing.length === 0) { toast('분할이 필요한 슬라이드가 없습니다', 'ok'); return; }
+              if (!confirm(`${overflowing.length}개 슬라이드가 분할 권장 상태입니다. 일괄 분할할까요?`)) return;
+              commitNow('오버플로 슬라이드 일괄 분할');
+              setProject(p => {
+                const next = window.gddSlideSplitter.splitAllOverflowing(p.slides || []);
+                return { ...p, slides: next, updatedAt: new Date().toISOString().slice(0, 10) };
+              });
+              toast(`${overflowing.length}개 슬라이드를 분할했습니다`, 'ok');
             }},
             { id: 'drill-down', title: '✦ 현재 슬라이드 드릴다운 생성', sub: '현재 슬라이드의 핵심 부분을 더 상세한 슬라이드로 확장 (parent-child)', shortcut: 'CMD', keywords: ['drill', '드릴다운', '상세', 'detail', '확장'], run: async () => {
               if (selection.type !== 'gdd' || !project) { toast('기획서를 선택하세요', 'err'); return; }

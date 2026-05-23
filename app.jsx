@@ -1032,7 +1032,7 @@ function Sidebar({ concepts, projects, selection, onSelect, onNewBlank, onOpenCo
 }
 
 /* === Slide stage === */
-function SlideStage({ project, patchSlide, replaceSlide, scale, setScale, currentIdx, setCurrentIdx, isGenerating }) {
+function SlideStage({ project, patchSlide, replaceSlide, scale, setScale, currentIdx, setCurrentIdx, isGenerating, onSplitSlide }) {
   const slides = project.slides || [];
   const slide = slides[currentIdx];
   const stageRef = useRef(null);
@@ -1052,6 +1052,9 @@ function SlideStage({ project, patchSlide, replaceSlide, scale, setScale, curren
     return () => ro.disconnect();
   }, [setScale]);
 
+  // 분할 권장 여부 — splitter 의 휴리스틱으로 즉시 판단
+  const shouldSplit = slide && window.gddSlideSplitter && window.gddSlideSplitter.shouldSplit(slide);
+
   if (!slide) {
     return <div className="stage" ref={stageRef} style={{ display: 'grid', placeItems: 'center', color: 'var(--text-3)' }}>슬라이드 없음</div>;
   }
@@ -1059,7 +1062,7 @@ function SlideStage({ project, patchSlide, replaceSlide, scale, setScale, curren
   return (
     <div className="stage">
       <div className="stage-scroll" ref={stageRef} style={{ position: 'relative' }}>
-        <div className="slide-frame" style={{ transform: `scale(${scale})` }}>
+        <div className="slide-frame" style={{ transform: `scale(${scale})`, position: 'relative' }}>
           <SlideRenderer
             slide={slide}
             patch={(u) => patchSlide(slide.id, { data: { ...slide.data, ...u } })}
@@ -1067,6 +1070,12 @@ function SlideStage({ project, patchSlide, replaceSlide, scale, setScale, curren
             page={currentIdx + 1}
             totalPages={slides.length}
           />
+          {shouldSplit && onSplitSlide && (
+            <div className="slide-overflow-banner">
+              <span>⚠ 콘텐츠가 슬라이드 영역을 초과 — 분할 권장</span>
+              <button onClick={() => onSplitSlide(slide.id)} title="이 슬라이드를 N장으로 분할">✂️ 분할</button>
+            </div>
+          )}
         </div>
         {isGenerating && (
           <div className="stage-veil">
@@ -2456,6 +2465,20 @@ function App({ onStateChange }) {
                       updatedAt: new Date().toISOString().slice(0, 10),
                     }));
                   }}
+                  onSplitSlide={(slideId) => {
+                    if (!window.gddSlideSplitter) return;
+                    commitNow('슬라이드 분할');
+                    setProject(p => {
+                      const slides = p.slides || [];
+                      const idx = slides.findIndex(s => s.id === slideId);
+                      if (idx < 0) return p;
+                      const parts = window.gddSlideSplitter.splitSlide(slides[idx]);
+                      if (parts.length <= 1) return p;
+                      const next = [...slides.slice(0, idx), ...parts, ...slides.slice(idx + 1)];
+                      return { ...p, slides: next, updatedAt: new Date().toISOString().slice(0, 10) };
+                    });
+                    toast('슬라이드 분할 완료', 'ok');
+                  }}
                   scale={scale}
                   setScale={setScale}
                   currentIdx={currentIdx}
@@ -2586,6 +2609,19 @@ function App({ onStateChange }) {
                 const n = await window.gddStorage.gcImages();
                 toast(`사용하지 않는 이미지 ${n}개 정리`, 'ok');
               } catch (e) { toast('정리 실패', 'err'); }
+            }},
+            { id: 'split-overflowing', title: '✂️ 오버플로 슬라이드 일괄 분할', sub: '슬라이드 영역을 초과하는 모든 슬라이드를 분할 규칙에 따라 N장으로 나눔', shortcut: 'CMD', keywords: ['split', '분할', 'overflow', '오버플로'], run: () => {
+              if (selection.type !== 'gdd' || !project) { toast('기획서를 선택하세요', 'err'); return; }
+              if (!window.gddSlideSplitter) { toast('splitter 미로드', 'err'); return; }
+              const overflowing = (project.slides || []).filter(s => window.gddSlideSplitter.shouldSplit(s));
+              if (overflowing.length === 0) { toast('분할이 필요한 슬라이드가 없습니다', 'ok'); return; }
+              if (!confirm(`${overflowing.length}개 슬라이드가 분할 권장 상태입니다. 일괄 분할할까요?`)) return;
+              commitNow('오버플로 슬라이드 일괄 분할');
+              setProject(p => {
+                const next = window.gddSlideSplitter.splitAllOverflowing(p.slides || []);
+                return { ...p, slides: next, updatedAt: new Date().toISOString().slice(0, 10) };
+              });
+              toast(`${overflowing.length}개 슬라이드를 분할했습니다`, 'ok');
             }},
             { id: 'drill-down', title: '✦ 현재 슬라이드 드릴다운 생성', sub: '현재 슬라이드의 핵심 부분을 더 상세한 슬라이드로 확장 (parent-child)', shortcut: 'CMD', keywords: ['drill', '드릴다운', '상세', 'detail', '확장'], run: async () => {
               if (selection.type !== 'gdd' || !project) { toast('기획서를 선택하세요', 'err'); return; }

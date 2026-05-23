@@ -196,7 +196,7 @@ function HistorySlide({ data, patch, page, totalPages }) {
     <div className="slide">
       <TopTag />
       <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
-      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
         <table className="history-table">
           <thead>
             <tr>
@@ -507,7 +507,7 @@ function TermsSlide({ data, patch, page, totalPages }) {
     <div className="slide">
       <TopTag section={data.section} sectionName={data.sectionName} />
       <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
-      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
         <table className="terms-table">
           <thead>
             <tr>
@@ -594,7 +594,7 @@ function RulesSlide({ data, patch, replace, page, totalPages }) {
           </button>
         </div>
       )}
-      <div className={useGrid ? 'rules-grid' : 'rules-wrap'} style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+      <div className={useGrid ? 'rules-grid' : 'rules-wrap'} style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
         {(data.blocks || []).map((b, i) => (
           <div className="rule-block" key={i}>
             <Editable tag="div" className="head" value={b.head} onChange={(v) => updateBlock(i, 'head', v)} markdown />
@@ -622,7 +622,7 @@ function DataTableSlide({ data, patch, page, totalPages }) {
     <div className="slide">
       <TopTag section={data.section} sectionName={data.sectionName} />
       <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
-      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
         <table className="data-table">
           <thead>
             <tr>
@@ -974,7 +974,7 @@ function BalanceTableSlide({ data, patch, page, totalPages }) {
           markdown multiline
           placeholder="핵심 공식 (예: `dmg = base × (1 + str/100) × elem_mod`)" />
       )}
-      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
         <table className="balance-table">
           <thead>
             <tr>
@@ -1041,7 +1041,7 @@ function StateMachineSlide({ data, patch, page, totalPages }) {
     <div className="slide">
       <TopTag section={data.section} sectionName={data.sectionName} />
       <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
-      <div className="state-machine-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'flex', gap: 16 }}>
+      <div className="state-machine-wrap" style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', gap: 16 }}>
         <div className="sm-states-col">
           <div className="sm-section-head">STATES <button className="sc-add inline" onClick={addState}>+</button></div>
           {states.map((s, i) => (
@@ -1138,7 +1138,7 @@ function ApiContractSlide({ data, patch, page, totalPages }) {
         </select>
         <Editable tag="div" className="api-sla" value={String(data.slaMs || '')} onChange={(v) => patch({ slaMs: parseInt(v, 10) || 200 })} placeholder="200ms" />
       </div>
-      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div className="api-pane">
           <div className="api-pane-label">REQUEST 스키마</div>
           <Editable tag="pre" className="api-schema" value={data.request} onChange={(v) => patch({ request: v })} multiline placeholder='{"matchId":"uuid","userId":"uuid","mode":"casual|ranked"}' />
@@ -1212,7 +1212,7 @@ function AcceptanceCriteriaSlide({ data, patch, page, totalPages }) {
         <span className="ac-label">SO THAT</span>
         <Editable tag="div" className="ac-story-field" value={story.soThat} onChange={(v) => updateStory('soThat', v)} markdown placeholder="D1 리텐션이 60%↑ 유지된다" />
       </div>
-      <div className="ac-list" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+      <div className="ac-list" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
         {criteria.map((c, i) => (
           <div className="ac-card" key={i}>
             <div className="ac-card-head">
@@ -1274,7 +1274,7 @@ function TelemetrySlide({ data, patch, page, totalPages }) {
     <div className="slide">
       <TopTag section={data.section} sectionName={data.sectionName} />
       <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
-      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
         {events.map((e, ei) => (
           <div className="telemetry-event" key={ei}>
             <div className="te-head">
@@ -1353,7 +1353,7 @@ function RiskRegisterSlide({ data, patch, page, totalPages }) {
     <div className="slide">
       <TopTag section={data.section} sectionName={data.sectionName} />
       <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
-      <div className="risk-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16 }}>
+      <div className="risk-wrap" style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16 }}>
         <div className="risk-heatmap">
           <div className="rh-label">HEAT MAP</div>
           <div className="rh-grid">
@@ -1455,7 +1455,7 @@ function RoadmapSlide({ data, patch, page, totalPages }) {
     <div className="slide">
       <TopTag section={data.section} sectionName={data.sectionName} />
       <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
-      <div className="roadmap-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+      <div className="roadmap-wrap" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
         {phases.length > 0 && (
           <div className="roadmap-gantt">
             {phases.map((p, i) => {

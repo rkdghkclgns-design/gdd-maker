@@ -2113,7 +2113,8 @@ input, textarea, select { font-family: inherit; color: inherit; }
   word-break: keep-all;
   overflow-wrap: break-word;
 }
-/* 슬라이드 내부 가변 컨테이너의 안전한 기본값 */
+/* 슬라이드 내부 가변 컨테이너 — 스크롤 금지 (overflow: hidden 만). 넘치면 분할 권장.
+ * 분할 안 한 상태에서 시각적으로 잘려도 OK — 사용자에게 "분할" 배너 노출하여 행동 유도. */
 .slide > .data-wrap,
 .slide > .flow-wrap,
 .slide > .diagram-wrap,
@@ -2132,6 +2133,45 @@ input, textarea, select { font-family: inherit; color: inherit; }
   min-height: 0;
   overflow: hidden;
 }
+/* inline style 의 overflow: auto 도 덮어쓰기 — html 인라인 style 보다 강한 specificity */
+.slide-frame .slide > div[style*="overflow: auto"],
+.slide-frame .slide > div[style*="overflow:auto"] {
+  overflow: hidden !important;
+}
+
+/* 오버플로 경고 배너 — SlideStage 가 슬라이드 위에 오버레이로 띄움 */
+.slide-overflow-banner {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(248, 81, 73, 0.95);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  z-index: 100;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+  pointer-events: auto;
+}
+.slide-overflow-banner button {
+  background: #fff;
+  color: #f85149;
+  border: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.slide-overflow-banner button:hover { background: #ffefef; }
 
 /* ==== 순차 스트리밍 생성 — placeholder 슬라이드 시각화 ==== */
 /* slide.data._placeholder === true 인 동안 빛나는 오버레이 + 진행 표시 */

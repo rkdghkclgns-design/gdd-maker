@@ -400,25 +400,68 @@ async function exportPptx(project) {
       });
     } else if (s.type === 'flow') {
       const nodes = d.nodes || [];
-      const nodeH = 0.5;
-      const nodeW = 3.0;
-      const gap = 0.25;
-      const totalH = nodes.length * nodeH + (nodes.length - 1) * gap;
-      const startY = 1.6 + ((H - 2.4 - totalH) / 2);
-      const cx = W / 2;
-      nodes.forEach((n, idx) => {
-        const x = cx - nodeW / 2;
-        const y = startY + idx * (nodeH + gap);
+      const n = nodes.length;
+      const autoDir = n <= 5 ? 'vertical' : n <= 8 ? 'horizontal' : 'grid';
+      const dir = d.direction || autoDir;
+      const drawNode = (node, x, y, w, h) => {
         let fill = 'FFFFFF', col = TEXT, bd = '303A45';
-        if (n.kind === 'start') { fill = ACCENT; col = '061018'; bd = ACCENT; }
-        if (n.kind === 'end') { fill = '1C222B'; col = 'E6EDF3'; bd = '1C222B'; }
-        if (n.kind === 'decision') { fill = 'FFF8DC'; bd = 'D29922'; }
-        slide.addShape('roundRect', { x, y, w: nodeW, h: nodeH, fill: { color: fill }, line: { color: bd, width: 1.5 }, rectRadius: 0.05 });
-        slide.addText(n.label || '', { x, y, w: nodeW, h: nodeH, fontSize: 12, bold: true, fontFace: FONT, color: col, align: 'center', valign: 'middle' });
-        if (idx < nodes.length - 1) {
-          slide.addShape('line', { x: cx, y: y + nodeH, w: 0, h: gap, line: { color: '303A45', width: 1.5, endArrowType: 'triangle' } });
-        }
-      });
+        if (node.kind === 'start') { fill = ACCENT; col = '061018'; bd = ACCENT; }
+        else if (node.kind === 'end') { fill = '1C222B'; col = 'E6EDF3'; bd = '1C222B'; }
+        else if (node.kind === 'decision') { fill = 'FFF8DC'; bd = 'D29922'; }
+        slide.addShape('roundRect', { x, y, w, h, fill: { color: fill }, line: { color: bd, width: 1.5 }, rectRadius: 0.05 });
+        slide.addText(node.label || '', { x, y, w, h, fontSize: 11, bold: true, fontFace: FONT, color: col, align: 'center', valign: 'middle' });
+      };
+      if (dir === 'horizontal') {
+        const frameY = 1.7, frameH = H - 2.8;
+        const totalNodes = nodes.length;
+        const gap = 0.2;
+        const usableW = W - 2 * PAD_X;
+        const arrowW = 0.3;
+        const nodeW = (usableW - (totalNodes - 1) * (arrowW + gap)) / totalNodes;
+        const nodeH = Math.min(1.0, frameH - 0.2);
+        const cy = frameY + frameH / 2 - nodeH / 2;
+        nodes.forEach((node, idx) => {
+          const x = PAD_X + idx * (nodeW + arrowW + gap);
+          drawNode(node, x, cy, nodeW, nodeH);
+          if (idx < totalNodes - 1) {
+            const ax = x + nodeW;
+            const ay = cy + nodeH / 2;
+            slide.addShape('line', { x: ax, y: ay, w: arrowW + gap - 0.05, h: 0, line: { color: '303A45', width: 1.5, endArrowType: 'triangle' } });
+          }
+        });
+      } else if (dir === 'grid') {
+        const frameY = 1.7, frameH = H - 2.8;
+        const cols = Math.ceil(Math.sqrt(n));
+        const rows = Math.ceil(n / cols);
+        const usableW = W - 2 * PAD_X;
+        const cellW = (usableW - (cols - 1) * 0.25) / cols;
+        const cellH = Math.min(0.9, (frameH - (rows - 1) * 0.25) / rows);
+        nodes.forEach((node, idx) => {
+          const col = idx % cols, row = Math.floor(idx / cols);
+          const x = PAD_X + col * (cellW + 0.25);
+          const y = frameY + row * (cellH + 0.25);
+          drawNode(node, x, y, cellW, cellH);
+          // 그리드는 순서 번호로 흐름 표시
+          slide.addShape('ellipse', { x: x - 0.12, y: y - 0.12, w: 0.28, h: 0.28, fill: { color: '303A45' }, line: { color: '303A45' } });
+          slide.addText(String(idx + 1).padStart(2, '0'), { x: x - 0.12, y: y - 0.12, w: 0.28, h: 0.28, fontSize: 9, bold: true, fontFace: MONO, color: 'FFFFFF', align: 'center', valign: 'middle' });
+        });
+      } else {
+        // vertical (default)
+        const nodeH = 0.5;
+        const nodeW = 3.0;
+        const gap = 0.25;
+        const totalH = nodes.length * nodeH + (nodes.length - 1) * gap;
+        const startY = 1.6 + ((H - 2.4 - totalH) / 2);
+        const cx = W / 2;
+        nodes.forEach((node, idx) => {
+          const x = cx - nodeW / 2;
+          const y = startY + idx * (nodeH + gap);
+          drawNode(node, x, y, nodeW, nodeH);
+          if (idx < nodes.length - 1) {
+            slide.addShape('line', { x: cx, y: y + nodeH, w: 0, h: gap, line: { color: '303A45', width: 1.5, endArrowType: 'triangle' } });
+          }
+        });
+      }
     } else if (s.type === 'ui-design') {
       slide.addShape('roundRect', { x: PAD_X, y: 1.6, w: 6.5, h: 4.6, fill: { color: '0A0D12' }, line: { color: '0A0D12' }, rectRadius: 0.1 });
       slide.addText('UI MOCKUP', { x: PAD_X + 1, y: 3.5, w: 4.5, h: 0.4, fontSize: 14, fontFace: MONO, color: ACCENT, align: 'center', charSpacing: 1.6 });
@@ -435,16 +478,38 @@ async function exportPptx(project) {
       });
     } else if (s.type === 'resources') {
       const cats = d.categories || [];
-      const catW = (W - 2 * PAD_X - 0.4) / 3;
-      const catH = 4.5;
+      const colN = Math.min(4, Math.max(2, cats.length));
+      const catW = (W - 2 * PAD_X - 0.2 * (colN - 1)) / colN;
+      const catH = H - 2.5;
       cats.forEach((c, idx) => {
-        const x = PAD_X + idx * (catW + 0.2);
-        const y = 1.7;
+        const col = idx % colN;
+        const row = Math.floor(idx / colN);
+        const x = PAD_X + col * (catW + 0.2);
+        const y = 1.7 + row * (catH + 0.2);
         slide.addShape('roundRect', { x, y, w: catW, h: catH, fill: { color: 'F8F9FA' }, line: { color: 'F8F9FA' }, rectRadius: 0.1 });
-        slide.addText(c.name || '', { x: x + 0.3, y: y + 0.3, w: catW - 1.2, h: 0.4, fontSize: 14, bold: true, fontFace: FONT, color: TEXT });
-        slide.addText(c.count || '', { x: x + catW - 1.0, y: y + 0.3, w: 0.8, h: 0.4, fontSize: 11, fontFace: MONO, color: ACCENT, bold: true, align: 'right' });
-        const itemsText = (c.items || []).map(it => ({ text: it, options: { bullet: { code: '2022' } } }));
-        slide.addText(itemsText, { x: x + 0.4, y: y + 0.85, w: catW - 0.6, h: catH - 0.95, fontSize: 11, fontFace: FONT, color: '424A55', paraSpaceAfter: 5 });
+        slide.addText(c.name || '', { x: x + 0.3, y: y + 0.25, w: catW - 1.2, h: 0.4, fontSize: 14, bold: true, fontFace: FONT, color: TEXT });
+        slide.addText(c.count || '', { x: x + catW - 1.0, y: y + 0.25, w: 0.8, h: 0.4, fontSize: 11, fontFace: MONO, color: ACCENT, bold: true, align: 'right' });
+        // 가이드라인 박스
+        let yCursor = y + 0.75;
+        if (c.guideline) {
+          const gh = 0.95;
+          slide.addShape('rect', { x: x + 0.3, y: yCursor, w: catW - 0.6, h: gh, fill: { color: 'E8F4FF' }, line: { color: 'B8DCFF', width: 0.5 } });
+          slide.addText(c.guideline.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/`([^`]+)`/g, '$1'), { x: x + 0.4, y: yCursor + 0.05, w: catW - 0.8, h: gh - 0.1, fontSize: 9.5, fontFace: FONT, color: '1C4D70', italic: true });
+          yCursor += gh + 0.1;
+        }
+        // 아이템들 — 새 형식(object)과 구 형식(string) 모두 지원
+        const items = c.items || [];
+        const itemBlocks = items.map((it, i) => {
+          if (typeof it === 'string') return { text: '• ' + it, options: { fontSize: 10.5, color: '424A55' } };
+          const lines = [];
+          if (it.name) lines.push({ text: '• ' + it.name, options: { bold: true, fontSize: 10.5, color: '1C222B' } });
+          if (it.spec) lines.push({ text: '\n    ' + it.spec, options: { fontSize: 9, fontFace: MONO, color: '586A75' } });
+          if (it.example) lines.push({ text: '\n    예) ' + it.example, options: { fontSize: 9, italic: true, color: '7D8590' } });
+          return lines;
+        }).flat();
+        if (itemBlocks.length) {
+          slide.addText(itemBlocks, { x: x + 0.3, y: yCursor, w: catW - 0.6, h: y + catH - yCursor - 0.2, fontSize: 10.5, fontFace: FONT, color: '424A55', paraSpaceAfter: 4, valign: 'top' });
+        }
       });
     } else if (s.type === 'image-embed') {
       // 캡션 + 중앙 정렬된 참고 이미지

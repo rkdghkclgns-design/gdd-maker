@@ -281,8 +281,23 @@
     if (T === 'resources') {
       const parts = [header(3, `${sectionLabel ? '[' + sectionLabel + '] ' : ''}${d.title || '필요 리소스'}`), ''];
       for (const c of (d.categories || [])) {
-        parts.push(`**${c.name || ''}** ${c.count || ''}`);
-        for (const it of (c.items || [])) parts.push(`- ${it}`);
+        parts.push(`#### ${c.name || ''} ${c.count ? '`' + c.count + '`' : ''}`);
+        if (c.guideline) {
+          parts.push('');
+          parts.push(`> **가이드라인** — ${c.guideline.replace(/\n/g, '  \n> ')}`);
+        }
+        parts.push('');
+        for (const it of (c.items || [])) {
+          if (typeof it === 'string') {
+            parts.push(`- ${it}`);
+          } else {
+            const name = it.name || '';
+            const lines = [`- **${name}**`];
+            if (it.spec) lines.push(`  - 사양: \`${it.spec}\``);
+            if (it.example) lines.push(`  - 예시: *${it.example}*`);
+            parts.push(lines.join('\n'));
+          }
+        }
         parts.push('');
       }
       return parts.join('\n');

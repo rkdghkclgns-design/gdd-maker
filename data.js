@@ -813,22 +813,59 @@ ${contextBlock}
     { "type": "image-embed", "data": { "section":"03", "sectionName":"참고 이미지", "title":"이미지 제목", "caption":"이 이미지가 보여주는 핵심 요소·참조 의도 한 줄", "imagePrompt":"<영문, 핵심 시각 요소를 묘사하는 참고 이미지 프롬프트. 카드/캐릭터/장면/UI 무드보드 등>" } },
     { "type": "intent", "data": { "section":"01", "sectionName":"개요", "title":"기획 의도", "tagline":"기획 전체를 관통하는 한 줄. 측정 가능하거나 검증 가능한 형태로", "cards":[{"idx":"01","head":"카드 제목(8자 내)","desc":"의도 + 구체적 결과 지표 1개 (예: 신규 유저 D1 리텐션 +5%p)"}] } },
     { "type": "terms", "data": { "section":"01", "sectionName":"개요", "title":"용어 정의", "rows":[{"term":"용어","def":"역할/제약/단위까지 포함한 정의","note":"전이 조건/예외/관련 시스템"}] } },
-    { "type": "rules", "data": { "section":"02", "sectionName":"시스템 상세", "title":"규칙 제목", "blocks":[{"head":"블록 제목","items":["정적 규칙·상수·밸런싱 값. 절차적 로직은 여기 두지 말고 flow로 빼라"]}] } },
-    { "type": "data-table", "data": { "section":"04", "sectionName":"데이터 테이블", "title":"테이블명 (예: car_master)", "columns":[{"key":"field","label":"Field","width":"22%"},{"key":"type","label":"Type","width":"14%"},{"key":"req","label":"Req.","width":"10%"},{"key":"desc","label":"설명/제약/단위/예시"}], "rows":[{"field":"실제_필드명_1","type":"uuid","req":"Y","desc":"실제 설명 + 제약 + 예시값. rows는 반드시 6개 이상 채워라"},{"field":"실제_필드명_2","type":"int","req":"Y","desc":"..."}] } },
-    { "type": "flow", "data": { "section":"02", "sectionName":"플로우 차트", "title":"...", "nodes":[{"kind":"start|process|decision|end","label":"단계 라벨 + 조건/시간 등 핵심 메타"}] } },
+    { "type": "rules", "data": { "section":"02", "sectionName":"시스템 상세", "title":"규칙 제목", "blocks":[{"head":"블록 제목","items":["**핵심 키워드 굵게** + 정적 규칙·상수·밸런싱 값. 절차적 로직은 여기 두지 말고 flow로 빼라"]}] } },
+    { "type": "data-table", "data": { "section":"04", "sectionName":"데이터 테이블", "title":"테이블명 (예: car_master)", "columns":[{"key":"field","label":"Field","width":"22%"},{"key":"type","label":"Type","width":"14%"},{"key":"req","label":"Req.","width":"10%"},{"key":"desc","label":"설명/제약/단위/예시"}], "rows":[{"field":"실제_필드명_1","type":"uuid","req":"Y","desc":"실제 설명 + 제약 + 예시값. rows는 반드시 8개 이상 채워라"},{"field":"실제_필드명_2","type":"int","req":"Y","desc":"..."}] } },
+    { "type": "flow", "data": { "section":"02", "sectionName":"플로우 차트", "title":"...", "direction":"vertical|horizontal|grid", "nodes":[{"kind":"start|process|decision|end","label":"단계 라벨 + 조건/시간 등 핵심 메타"}] } },
     { "type": "diagram", "data": { "section":"02", "sectionName":"시스템 구조", "title":"...", "nodes":[{"id":"n1","label":"...","sub":"영문 약어/Tech 라벨","kind":"start|process|decision|end|service|data","col":0,"row":0}], "edges":[{"from":"n1","to":"n2","label":"호출/이벤트 이름"}] } },
     { "type": "sequence-diagram", "data": { "section":"02", "sectionName":"시퀀스 다이어그램", "title":"...", "participants":[{"id":"p1","name":"클라이언트","kind":"actor|system|service|data"}], "messages":[{"from":"p1","to":"p2","label":"호출/이벤트 시그니처","kind":"sync|async|return"}] } },
     { "type": "class-diagram", "data": { "section":"02", "sectionName":"클래스 다이어그램", "title":"...", "classes":[{"id":"c1","name":"Class","stereotype":"<<entity>>|<<interface>>|","attrs":["+field: Type"],"methods":["+method(): Type"],"col":0,"row":0}], "relations":[{"from":"c1","to":"c2","kind":"inherit|implement|compose|aggregate|assoc|depend","label":"1..*"}] } },
     { "type": "ui-design", "data": { "section":"03", "sectionName":"UI/UX", "title":"화면명 + 화면 ID", "imagePrompt":"<영문, UI 목업 이미지 프롬프트. 게임 화면 레이아웃을 구체적으로 묘사>", "callouts":[{"name":"영역명","desc":"역할 + 상호작용 + 상태 변화 트리거","x":50,"y":50}] } },
-    { "type": "resources", "data": { "section":"05", "sectionName":"필요 리소스", "title":"필요 리소스 목록", "categories":[{"name":"카테고리","count":"개수 (예: x12)","items":["에셋명 + 사양 (해상도/포맷/길이 등)"]}] } }
+    { "type": "resources", "data": { "section":"05", "sectionName":"필요 리소스", "title":"필요 리소스 목록", "categories":[{
+      "name":"카테고리(예: UI / 사운드 / 모델 / 텍스처 / 이펙트 / 데이터)",
+      "count":"개수 (예: x12)",
+      "guideline":"이 카테고리 전체에 적용되는 **가이드라인**. 해상도·포맷·네이밍 규칙·톤앤매너·컬러 코드 등을 한국어로 3~5줄로 구체 명시. 마크다운(**굵게**, `code`) 사용 가능.",
+      "items":[{
+        "name":"에셋명 (예: HUD HP 게이지)",
+        "spec":"사양 (예: 1080×24, PNG-24, 9-slice. 색상 #FF3030 → #88DFB0 그라데이션)",
+        "example":"파일명·참고 (예: ui/hud/hp_bar.png · 레퍼런스: Apex Legends HP 게이지)"
+      }]
+    }]} }
   ]
 }
 
-# 분량 및 구성 (시니어 표준)
-- **슬라이드 총 14~20장**. cover, history, toc, 개요 섹션 divider+intent+terms, 시스템 상세 섹션 divider+flow/sequence-diagram/diagram(+rules 보조), UI 섹션 divider+ui-design, 데이터 섹션 divider+data-table, 리소스 섹션 divider+resources 를 표준으로 두고 주제에 따라 가감.
-- 섹션마다 section-divider로 구분하여 문서 흐름이 끊기지 않게 한다. **section-divider 의 imagePrompt 는 가급적 모두 채워서 섹션마다 컨셉 아트가 들어가도록 한다 (해석을 도울 시각적 앵커).**
-- intent.cards = 4개, terms.rows = 5~8개, rules.blocks = 2~3개, data-table.rows = 6~12개, flow.nodes = 6~10개, diagram.nodes = 5~9개, sequence-diagram.messages = 6~12개, class-diagram.classes = 4~7개, resources.categories = 3~4개.
-- **image-embed 슬라이드 최소 2~3장 포함**: 카드/캐릭터/장면/아이콘/무드보드 등 GDD 해석에 도움이 되는 시각 자료. 텍스트 중심 슬라이드 사이에 끼워서 가독성과 이해도를 높인다.
+# 분량 및 구성 (시니어 표준 — 풍부하게 작성)
+- **슬라이드 총 18~26장**. cover / history / toc / [개요 섹션 divider + intent + terms] / [시스템 상세 섹션 divider + flow + sequence-diagram + diagram + rules 보조] / [UI 섹션 divider + ui-design × 2~3] / [데이터 섹션 divider + data-table × 2~3] / [리소스 섹션 divider + resources] / image-embed 3~5장 (섹션 사이에 분산 배치).
+- 섹션마다 section-divider로 구분하고, **section-divider 의 imagePrompt 는 모두 채워서 섹션마다 컨셉 아트를 둔다 (해석을 도울 시각적 앵커).**
+- **분량 기준 (각 슬라이드 최소량)**:
+  - `intent.cards` = **4~6개** (의도별 측정 지표 포함)
+  - `terms.rows` = **8~12개** (시스템 전반 용어 망라)
+  - `rules.blocks` = **2~3개** / 각 block items = **4~6개** (정적 규칙/상수만)
+  - `data-table.rows` = **8~16개** (스키마 전체 필드 포함, 절대 비우지 말 것)
+  - `flow.nodes` = **6~12개** (decision 분기 2개 이상)
+  - `diagram.nodes` = **5~9개**, `diagram.edges` = **6~12개**
+  - `sequence-diagram.messages` = **8~14개**
+  - `class-diagram.classes` = **5~8개**, `relations` = **5~10개**
+  - `ui-design.callouts` = **5~8개**
+  - `resources.categories` = **4~5개** / 각 category items = **5~8개** (각 item 에 spec+example 모두 채움)
+  - `image-embed` 슬라이드 = **3~5장** (카드 일러스트·캐릭터·장면·아이콘 세트·무드보드)
+
+# Markdown 사용 (rules.items / intent.desc·head / terms.def·note / data-table.desc / resources.* 모든 텍스트 필드)
+앱이 인라인 마크다운을 렌더링한다. **적극적으로 굵게/코드/리스트를 활용하여 가독성을 높여라.** 지원 토큰:
+- \`**굵게**\` — 핵심 키워드·임계치·시스템명 강조
+- \`*이탤릭*\` 또는 \`_이탤릭_\` — 부차적 강조·메타정보
+- \`\\\`코드\\\`\` (백틱) — 식별자·필드명·상수·이벤트명 (예: \\\`PlayerState.dead\\\`, \\\`session.create\\\`)
+- \`~~취소선~~\` — 폐기/대체 항목
+- \`[텍스트](URL)\` — 참조 링크
+- 줄머리 \`- \` 또는 \`* \` 또는 \`1. \` — 자동으로 불릿/번호 마커로 렌더링
+- 줄바꿈은 그대로 보존됨
+
+**규칙**:
+- rules.blocks.items 의 각 항목은 \`**키워드**: 설명 \\\`상수값\\\` \` 형태로 시작.
+- terms.rows.def 는 \`**역할**: ... \\\`type\\\`, 단위/제약\` 형태.
+- data-table.desc 는 \`타입+범위+예시. 외래키는 \\\`FK→table.field\\\`\` 형태.
+
+# ⚠ 순서·절차·상태 전이는 텍스트로 나열하지 말 것
+"1단계 → 2단계 → 3단계", "조건 X 일 때 동작 Y", "상태 전이" 같은 패턴이 rules.items 나 intent.desc 에 텍스트로 들어가는 순간 → **반드시 별도의 flow 또는 sequence-diagram 슬라이드로 분리**한다. rules 는 분기 없는 정적 상수만 담는 용도.
 
 # 슬라이드 선택 규칙 (가장 중요)
 **프로세스/로직/조건 분기는 텍스트가 아니라 다이어그램으로 그려야 한다. rules 슬라이드를 텍스트 로직 덤프로 사용하지 말 것.** 다음 매핑을 따른다:
@@ -851,13 +888,17 @@ ${contextBlock}
 - **rules.blocks**: items 는 정적 규칙/상수/임계치만 (예: "최대 레벨: 10", "강화 비용: 파편 ×(현재레벨×100)+카드 1장"). 절차적 로직은 flow 슬라이드로 보낼 것. blocks 는 2~3개로 제한하고, 동일 시스템의 절차는 별도의 flow/sequence-diagram 슬라이드로 표현한다.
 - **data-table**: 실제 동작 가능한 스키마. field 영문 snake_case, type 명확(uuid/int/float/enum/string/datetime/json), req에 Y/N, desc에 단위·범위·예시값·외래키 표시 (예: "0~9999, FK→user.user_id"). **⚠ 절대 rows를 비우지 말 것 — columns만 정의하고 rows를 빈 배열로 두는 실수 금지. 최소 6개 이상의 실제 예시 row를 채워서 출력하라.** 컬럼 키와 row 키는 정확히 일치해야 한다 (예: columns에 key:"field"가 있으면 rows의 각 객체에 "field" 키가 반드시 있어야 함).
 - **flow.nodes**: decision 노드는 분기 조건을 label에 직접 포함 ("HP ≤ 0 ?", "타이머 = 300s ?", "재화 카드 보유?"). 정상 흐름 외에 실패/취소/네트워크 단절 경로도 1개 이상.
+- **flow.direction**: 노드 수에 맞춰 명시. \`vertical\` (≤5 단계, 수직 흐름), \`horizontal\` (4~8 단계, 가로 한 줄로 한눈에 보임 — **선호**), \`grid\` (9개 이상, 자동 wrap 그리드). 단조로운 vertical 만 쓰지 말 것. 6단계 이상이면 horizontal 또는 grid 권장.
 - **diagram**: 서버/클라/DB/외부 서비스의 역할 분리를 명확히. edges 라벨은 실제 호출명이나 이벤트명에 가깝게 ("session.create", "match.end").
 - **sequence-diagram**: 참여자 3~6명. 호출은 sync/async/return 구분. 최소 1개의 return 메시지 포함.
 - **class-diagram**: 가시성 prefix(+/-/#) 명시, 시그니처에 타입 포함. 관계는 inherit/implement/compose/aggregate/assoc/depend 중 선택.
 - **ui-design.callouts**: 각 callout이 트리거 상호작용("탭 시", "롱프레스 시")과 그 결과 상태 변화를 함께 기술. 4~6개 권장. **x, y는 0~100 정수 (이미지 안에서의 퍼센트 위치)**. imagePrompt가 묘사하는 화면 레이아웃과 일치하는 위치를 골라야 한다 (예: 좌상단 미니맵=10,15 / 중앙 크로스헤어=50,50 / 우상단 자원=85,12 / 하단 액션바=50,88). callout 순서는 사용자가 시선을 옮길 자연스러운 순서로.
 - **section-divider.imagePrompt**: 각 섹션의 분위기를 한 컷으로 압축한 영문 컨셉 아트. 배경에 깔리므로 어두운 톤·구도가 단순하면 좋다. 비어 있어도 되지만 가급적 채워라.
 - **image-embed**: 텍스트로만 설명하면 모호한 시각 요소(카드 디자인 무드, 캐릭터 룩, 게임 장면, 아이콘 세트)에 한해 사용. imagePrompt 는 카메라 앵글·조명·재질·스타일 키워드 포함. caption 은 한국어로, "왜 이 이미지를 참조 자료로 두었는지"를 한 줄로 적는다.
-- **resources**: 단순 이름 나열 금지. 사양/해상도/포맷/사이즈 정보 포함 (예: "차량 본체 메시 — 5000~8000 tris, FBX, 2K Albedo+Normal").
+- **resources**: 다음 3계층 모두 채워라 — (a) 카테고리 `guideline` (해상도·포맷·네이밍·톤앤매너·컬러 가이드 등 카테고리 전체 규칙), (b) 각 item의 `name` (에셋명), (c) 각 item의 `spec` (정확한 사양: 해상도 / tris / 포맷 / 길이 / 컬러스페이스 등), (d) 각 item의 `example` (실제 파일명·참고 작품·레퍼런스 링크). 단순 이름 나열 금지. 예시:
+  ```
+  category: { name: "UI", count: "x14", guideline: "**해상도**: 1080×1920 baseline + @2x/@3x · **포맷**: PNG-24 (배경 투명) · **네이밍**: ui/<scope>/<name>.png 소문자 + 언더스코어 · **컬러**: 메인 #88DFB0 / 강조 #F5D94F. 9-slice 필요 시 metadata json 동봉.", items: [{ name: "HUD HP 게이지", spec: "1080×24, PNG-24, 9-slice (좌우 각 24px)", example: "ui/hud/hp_bar.png — 참고: Apex Legends HUD" }, ...] }
+  ```
 - **모든 imagePrompt**: 반드시 영문, 구체적 시각 묘사. 카메라 앵글·조명·재질·분위기 포함. 한국어 임시 텍스트 금지.
 
 # 운영 관점 반영

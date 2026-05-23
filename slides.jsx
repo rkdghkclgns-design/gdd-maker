@@ -4,29 +4,132 @@
 
 const E = (tag, props, ...children) => React.createElement(tag, props, ...children);
 
+/* ====== Inline Markdown 파서 ======
+ * 지원: **bold**, *italic*, _italic_, `code`, ~~strike~~, [text](url)
+ * 한 줄 단위로 토큰화 후 React node 트리로 변환. 중첩은 미지원(단순/안전).
+ * dangerouslySetInnerHTML 미사용 → contentEditable XSS 위험 없음.
+ */
+function parseInlineMd(line) {
+  if (!line) return [];
+  const out = [];
+  const RE = /(\*\*([^*\n]+?)\*\*)|(`([^`\n]+?)`)|(~~([^~\n]+?)~~)|(\[([^\]\n]+?)\]\(([^)\n]+?)\))|(\*([^*\s][^*\n]*?)\*)|(\b_([^_\s][^_\n]*?)_\b)/g;
+  let last = 0;
+  let m;
+  let key = 0;
+  while ((m = RE.exec(line)) !== null) {
+    if (m.index > last) out.push(line.slice(last, m.index));
+    if (m[1]) out.push(React.createElement('strong', { key: key++, className: 'md-strong' }, m[2]));
+    else if (m[3]) out.push(React.createElement('code', { key: key++, className: 'md-code' }, m[4]));
+    else if (m[5]) out.push(React.createElement('span', { key: key++, className: 'md-strike' }, m[6]));
+    else if (m[7]) out.push(React.createElement('a', { key: key++, className: 'md-link', href: m[9], target: '_blank', rel: 'noopener noreferrer', onClick: (e) => e.stopPropagation() }, m[8]));
+    else if (m[10]) out.push(React.createElement('em', { key: key++, className: 'md-em' }, m[11]));
+    else if (m[12]) out.push(React.createElement('em', { key: key++, className: 'md-em' }, m[13]));
+    last = RE.lastIndex;
+  }
+  if (last < line.length) out.push(line.slice(last));
+  return out;
+}
+
+function MarkdownText({ text }) {
+  if (!text) return null;
+  const lines = String(text).split('\n');
+  const nodes = [];
+  lines.forEach((line, i) => {
+    // 줄머리의 "- " / "* " / "1. " / "2. " 같은 리스트 마커는 시각화
+    const bulletMatch = /^(\s*)([-*•])\s+(.*)$/.exec(line);
+    const numMatch = /^(\s*)(\d+\.)\s+(.*)$/.exec(line);
+    if (bulletMatch) {
+      const indent = bulletMatch[1].length;
+      nodes.push(React.createElement('span', { key: `b-${i}`, className: 'md-bullet', style: { paddingLeft: 8 + indent * 12 } },
+        React.createElement('span', { className: 'md-bullet-marker' }, '•'),
+        ...parseInlineMd(bulletMatch[3])
+      ));
+    } else if (numMatch) {
+      const indent = numMatch[1].length;
+      nodes.push(React.createElement('span', { key: `n-${i}`, className: 'md-bullet', style: { paddingLeft: 8 + indent * 12 } },
+        React.createElement('span', { className: 'md-bullet-marker md-num' }, numMatch[2]),
+        ...parseInlineMd(numMatch[3])
+      ));
+    } else {
+      nodes.push(React.createElement(React.Fragment, { key: `l-${i}` }, ...parseInlineMd(line)));
+    }
+    if (i < lines.length - 1) nodes.push(React.createElement('br', { key: `br-${i}` }));
+  });
+  return React.createElement(React.Fragment, null, ...nodes);
+}
+
 /* ------ tiny helpers ------ */
-function Editable({ value, onChange, tag = 'span', placeholder = '...', className, style, multiline = false, readOnly = false }) {
+function Editable({ value, onChange, tag = 'span', placeholder = '...', className, style, multiline = false, readOnly = false, markdown = false }) {
   const ref = React.useRef(null);
+  const [editing, setEditing] = React.useState(false);
+
+  // 일반 모드: 기존과 동일하게 항상 contentEditable
   React.useEffect(() => {
+    if (markdown && !editing) return; // markdown 표시 모드에서는 React 노드가 직접 렌더링됨
     if (ref.current && ref.current.textContent !== (value || '')) {
       ref.current.textContent = value || '';
     }
-  }, [value]);
+  }, [value, editing, markdown]);
+
+  // markdown 편집 모드 진입 시 텍스트와 포커스 설정
+  React.useEffect(() => {
+    if (!markdown || !editing || !ref.current) return;
+    ref.current.textContent = value || '';
+    ref.current.focus();
+    // 캐럿을 끝으로
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(ref.current);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } catch {}
+  }, [editing, markdown]);
+
   const handleInput = (e) => onChange && onChange(e.currentTarget.textContent);
   const handleKey = (e) => {
     if (!multiline && e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
   };
+
+  // markdown 옵션이 꺼져 있거나 readOnly + markdown 인 경우 (편집 비활성) — 기존 동작 유지
+  if (!markdown) {
+    return React.createElement(tag, {
+      ref,
+      className,
+      style,
+      contentEditable: !readOnly,
+      suppressContentEditableWarning: true,
+      onInput: handleInput,
+      onKeyDown: handleKey,
+      'data-placeholder': placeholder,
+      spellCheck: false,
+    });
+  }
+
+  // markdown ON + 편집 중: 원본 텍스트 그대로 contentEditable
+  if (editing && !readOnly) {
+    return React.createElement(tag, {
+      ref,
+      className: (className || '') + ' md-editing',
+      style,
+      contentEditable: true,
+      suppressContentEditableWarning: true,
+      onInput: handleInput,
+      onBlur: () => setEditing(false),
+      onKeyDown: handleKey,
+      'data-placeholder': placeholder,
+      spellCheck: false,
+    });
+  }
+
+  // markdown ON + 표시 모드: 파싱된 React 노드 렌더링. 클릭하면 편집 모드 진입.
   return React.createElement(tag, {
-    ref,
-    className,
-    style,
-    contentEditable: !readOnly,
-    suppressContentEditableWarning: true,
-    onInput: handleInput,
-    onKeyDown: handleKey,
+    className: (className || '') + ' md-rendered' + (!value ? ' md-empty' : ''),
+    style: { cursor: readOnly ? 'default' : 'text', ...(style || {}) },
+    onClick: readOnly ? undefined : () => setEditing(true),
     'data-placeholder': placeholder,
-    spellCheck: false,
-  });
+  }, value ? React.createElement(MarkdownText, { text: value }) : null);
 }
 
 function SlideFooter({ section, sectionName, page, totalPages }) {
@@ -229,8 +332,8 @@ function IntentSlide({ data, patch, page, totalPages }) {
         {(data.cards || []).map((c, i) => (
           <div className="intent-card" key={i}>
             <Editable className="idx" value={c.idx} onChange={(v) => updateCard(i, 'idx', v)} />
-            <Editable tag="div" className="head" value={c.head} onChange={(v) => updateCard(i, 'head', v)} multiline />
-            <Editable tag="div" className="desc" value={c.desc} onChange={(v) => updateCard(i, 'desc', v)} multiline />
+            <Editable tag="div" className="head" value={c.head} onChange={(v) => updateCard(i, 'head', v)} multiline markdown />
+            <Editable tag="div" className="desc" value={c.desc} onChange={(v) => updateCard(i, 'desc', v)} multiline markdown />
           </div>
         ))}
       </div>
@@ -262,9 +365,9 @@ function TermsSlide({ data, patch, page, totalPages }) {
           <tbody>
             {(data.rows || []).map((r, i) => (
               <tr key={i}>
-                <td className="term"><Editable value={r.term} onChange={(v) => updateRow(i, 'term', v)} /></td>
-                <td className="def"><Editable value={r.def} onChange={(v) => updateRow(i, 'def', v)} multiline /></td>
-                <td className="note"><Editable value={r.note} onChange={(v) => updateRow(i, 'note', v)} multiline /></td>
+                <td className="term"><Editable tag="div" value={r.term} onChange={(v) => updateRow(i, 'term', v)} markdown /></td>
+                <td className="def"><Editable tag="div" value={r.def} onChange={(v) => updateRow(i, 'def', v)} multiline markdown /></td>
+                <td className="note"><Editable tag="div" value={r.note} onChange={(v) => updateRow(i, 'note', v)} multiline markdown /></td>
               </tr>
             ))}
           </tbody>
@@ -337,13 +440,13 @@ function RulesSlide({ data, patch, replace, page, totalPages }) {
           </button>
         </div>
       )}
-      <div className={useGrid ? 'rules-grid' : 'rules-wrap'} style={{ flex: 1, minHeight: 0 }}>
+      <div className={useGrid ? 'rules-grid' : 'rules-wrap'} style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
         {(data.blocks || []).map((b, i) => (
           <div className="rule-block" key={i}>
-            <Editable tag="div" className="head" value={b.head} onChange={(v) => updateBlock(i, 'head', v)} />
+            <Editable tag="div" className="head" value={b.head} onChange={(v) => updateBlock(i, 'head', v)} markdown />
             <ul>
               {(b.items || []).map((it, ii) => (
-                <li key={ii}><Editable value={it} onChange={(v) => updateItem(i, ii, v)} multiline /></li>
+                <li key={ii}><Editable tag="div" value={it} onChange={(v) => updateItem(i, ii, v)} multiline markdown /></li>
               ))}
             </ul>
           </div>
@@ -379,7 +482,7 @@ function DataTableSlide({ data, patch, page, totalPages }) {
               <tr key={i}>
                 {(data.columns || []).map((c, ci) => (
                   <td key={ci} className={c.key === 'field' || c.key === 'table' ? 'tag' : ''}>
-                    <Editable value={r[c.key] || ''} onChange={(v) => updateCell(i, c.key, v)} multiline />
+                    <Editable tag="div" value={r[c.key] || ''} onChange={(v) => updateCell(i, c.key, v)} multiline markdown />
                   </td>
                 ))}
               </tr>
@@ -494,17 +597,30 @@ function UiDesignSlide({ data, patch, page, totalPages }) {
   );
 }
 
-/* ------ 11. Resources ------ */
+/* ------ 11. Resources ------
+ * category 구조:
+ *   { name, count, guideline?, items: [{ name, spec?, example? } | "string"] }
+ * 하위호환: items 가 문자열 배열이어도 그대로 표시.
+ */
 function ResourcesSlide({ data, patch, page, totalPages }) {
   const updateCat = (i, key, val) => {
     const cats = [...(data.categories || [])];
     cats[i] = { ...cats[i], [key]: val };
     patch({ categories: cats });
   };
-  const updateItem = (ci, ii, val) => {
+  const updateItem = (ci, ii, key, val) => {
     const cats = [...(data.categories || [])];
     const items = [...(cats[ci].items || [])];
-    items[ii] = val;
+    const cur = items[ii];
+    if (typeof cur === 'string') {
+      // 문자열 → 객체로 마이그레이션
+      items[ii] = { name: cur, spec: '', example: '' };
+    } else {
+      items[ii] = { ...(cur || {}), [key]: val };
+    }
+    if (key === 'name' || key === 'spec' || key === 'example') {
+      items[ii] = { ...items[ii], [key]: val };
+    }
     cats[ci] = { ...cats[ci], items };
     patch({ categories: cats });
   };
@@ -519,10 +635,43 @@ function ResourcesSlide({ data, patch, page, totalPages }) {
               <Editable className="cat-name" value={c.name} onChange={(v) => updateCat(i, 'name', v)} />
               <Editable className="cat-count" value={c.count} onChange={(v) => updateCat(i, 'count', v)} />
             </div>
-            <ul>
-              {(c.items || []).map((it, ii) => (
-                <li key={ii}><Editable value={it} onChange={(v) => updateItem(i, ii, v)} multiline /></li>
-              ))}
+            {/* 카테고리별 가이드라인 — 해상도·포맷·네이밍 규칙·톤앤매너 */}
+            <Editable
+              tag="div"
+              className="cat-guideline"
+              value={c.guideline}
+              onChange={(v) => updateCat(i, 'guideline', v)}
+              multiline
+              markdown
+              placeholder="가이드라인 (해상도·포맷·네이밍·톤앤매너 등) — 마크다운 지원"
+            />
+            <ul className="resource-items">
+              {(c.items || []).map((it, ii) => {
+                const obj = typeof it === 'string' ? { name: it, spec: '', example: '' } : (it || {});
+                return (
+                  <li key={ii} className="resource-item">
+                    <Editable tag="div" className="ri-name"
+                      value={obj.name}
+                      onChange={(v) => updateItem(i, ii, 'name', v)}
+                      multiline markdown
+                      placeholder="에셋 이름" />
+                    {(obj.spec || obj.spec === '') && (
+                      <Editable tag="div" className="ri-spec"
+                        value={obj.spec}
+                        onChange={(v) => updateItem(i, ii, 'spec', v)}
+                        multiline markdown
+                        placeholder="사양 (해상도·tris·포맷·길이 등)" />
+                    )}
+                    {(obj.example || obj.example === '') && (
+                      <Editable tag="div" className="ri-example"
+                        value={obj.example}
+                        onChange={(v) => updateItem(i, ii, 'example', v)}
+                        multiline markdown
+                        placeholder="예시 / 참고 (파일명·레퍼런스 링크 등)" />
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         ))}

@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-23T05:06:30.981Z
+   생성 시각: 2026-05-23T05:39:22.921Z
 */
 
 // ============================================================
@@ -586,29 +586,132 @@ Object.assign(window, {
 
 const E = (tag, props, ...children) => React.createElement(tag, props, ...children);
 
+/* ====== Inline Markdown 파서 ======
+ * 지원: **bold**, *italic*, _italic_, `code`, ~~strike~~, [text](url)
+ * 한 줄 단위로 토큰화 후 React node 트리로 변환. 중첩은 미지원(단순/안전).
+ * dangerouslySetInnerHTML 미사용 → contentEditable XSS 위험 없음.
+ */
+function parseInlineMd(line) {
+  if (!line) return [];
+  const out = [];
+  const RE = /(\*\*([^*\n]+?)\*\*)|(`([^`\n]+?)`)|(~~([^~\n]+?)~~)|(\[([^\]\n]+?)\]\(([^)\n]+?)\))|(\*([^*\s][^*\n]*?)\*)|(\b_([^_\s][^_\n]*?)_\b)/g;
+  let last = 0;
+  let m;
+  let key = 0;
+  while ((m = RE.exec(line)) !== null) {
+    if (m.index > last) out.push(line.slice(last, m.index));
+    if (m[1]) out.push(React.createElement('strong', { key: key++, className: 'md-strong' }, m[2]));
+    else if (m[3]) out.push(React.createElement('code', { key: key++, className: 'md-code' }, m[4]));
+    else if (m[5]) out.push(React.createElement('span', { key: key++, className: 'md-strike' }, m[6]));
+    else if (m[7]) out.push(React.createElement('a', { key: key++, className: 'md-link', href: m[9], target: '_blank', rel: 'noopener noreferrer', onClick: (e) => e.stopPropagation() }, m[8]));
+    else if (m[10]) out.push(React.createElement('em', { key: key++, className: 'md-em' }, m[11]));
+    else if (m[12]) out.push(React.createElement('em', { key: key++, className: 'md-em' }, m[13]));
+    last = RE.lastIndex;
+  }
+  if (last < line.length) out.push(line.slice(last));
+  return out;
+}
+
+function MarkdownText({ text }) {
+  if (!text) return null;
+  const lines = String(text).split('\n');
+  const nodes = [];
+  lines.forEach((line, i) => {
+    // 줄머리의 "- " / "* " / "1. " / "2. " 같은 리스트 마커는 시각화
+    const bulletMatch = /^(\s*)([-*•])\s+(.*)$/.exec(line);
+    const numMatch = /^(\s*)(\d+\.)\s+(.*)$/.exec(line);
+    if (bulletMatch) {
+      const indent = bulletMatch[1].length;
+      nodes.push(React.createElement('span', { key: `b-${i}`, className: 'md-bullet', style: { paddingLeft: 8 + indent * 12 } },
+        React.createElement('span', { className: 'md-bullet-marker' }, '•'),
+        ...parseInlineMd(bulletMatch[3])
+      ));
+    } else if (numMatch) {
+      const indent = numMatch[1].length;
+      nodes.push(React.createElement('span', { key: `n-${i}`, className: 'md-bullet', style: { paddingLeft: 8 + indent * 12 } },
+        React.createElement('span', { className: 'md-bullet-marker md-num' }, numMatch[2]),
+        ...parseInlineMd(numMatch[3])
+      ));
+    } else {
+      nodes.push(React.createElement(React.Fragment, { key: `l-${i}` }, ...parseInlineMd(line)));
+    }
+    if (i < lines.length - 1) nodes.push(React.createElement('br', { key: `br-${i}` }));
+  });
+  return React.createElement(React.Fragment, null, ...nodes);
+}
+
 /* ------ tiny helpers ------ */
-function Editable({ value, onChange, tag = 'span', placeholder = '...', className, style, multiline = false, readOnly = false }) {
+function Editable({ value, onChange, tag = 'span', placeholder = '...', className, style, multiline = false, readOnly = false, markdown = false }) {
   const ref = React.useRef(null);
+  const [editing, setEditing] = React.useState(false);
+
+  // 일반 모드: 기존과 동일하게 항상 contentEditable
   React.useEffect(() => {
+    if (markdown && !editing) return; // markdown 표시 모드에서는 React 노드가 직접 렌더링됨
     if (ref.current && ref.current.textContent !== (value || '')) {
       ref.current.textContent = value || '';
     }
-  }, [value]);
+  }, [value, editing, markdown]);
+
+  // markdown 편집 모드 진입 시 텍스트와 포커스 설정
+  React.useEffect(() => {
+    if (!markdown || !editing || !ref.current) return;
+    ref.current.textContent = value || '';
+    ref.current.focus();
+    // 캐럿을 끝으로
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(ref.current);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } catch {}
+  }, [editing, markdown]);
+
   const handleInput = (e) => onChange && onChange(e.currentTarget.textContent);
   const handleKey = (e) => {
     if (!multiline && e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
   };
+
+  // markdown 옵션이 꺼져 있거나 readOnly + markdown 인 경우 (편집 비활성) — 기존 동작 유지
+  if (!markdown) {
+    return React.createElement(tag, {
+      ref,
+      className,
+      style,
+      contentEditable: !readOnly,
+      suppressContentEditableWarning: true,
+      onInput: handleInput,
+      onKeyDown: handleKey,
+      'data-placeholder': placeholder,
+      spellCheck: false,
+    });
+  }
+
+  // markdown ON + 편집 중: 원본 텍스트 그대로 contentEditable
+  if (editing && !readOnly) {
+    return React.createElement(tag, {
+      ref,
+      className: (className || '') + ' md-editing',
+      style,
+      contentEditable: true,
+      suppressContentEditableWarning: true,
+      onInput: handleInput,
+      onBlur: () => setEditing(false),
+      onKeyDown: handleKey,
+      'data-placeholder': placeholder,
+      spellCheck: false,
+    });
+  }
+
+  // markdown ON + 표시 모드: 파싱된 React 노드 렌더링. 클릭하면 편집 모드 진입.
   return React.createElement(tag, {
-    ref,
-    className,
-    style,
-    contentEditable: !readOnly,
-    suppressContentEditableWarning: true,
-    onInput: handleInput,
-    onKeyDown: handleKey,
+    className: (className || '') + ' md-rendered' + (!value ? ' md-empty' : ''),
+    style: { cursor: readOnly ? 'default' : 'text', ...(style || {}) },
+    onClick: readOnly ? undefined : () => setEditing(true),
     'data-placeholder': placeholder,
-    spellCheck: false,
-  });
+  }, value ? React.createElement(MarkdownText, { text: value }) : null);
 }
 
 function SlideFooter({ section, sectionName, page, totalPages }) {
@@ -811,8 +914,8 @@ function IntentSlide({ data, patch, page, totalPages }) {
         {(data.cards || []).map((c, i) => (
           <div className="intent-card" key={i}>
             <Editable className="idx" value={c.idx} onChange={(v) => updateCard(i, 'idx', v)} />
-            <Editable tag="div" className="head" value={c.head} onChange={(v) => updateCard(i, 'head', v)} multiline />
-            <Editable tag="div" className="desc" value={c.desc} onChange={(v) => updateCard(i, 'desc', v)} multiline />
+            <Editable tag="div" className="head" value={c.head} onChange={(v) => updateCard(i, 'head', v)} multiline markdown />
+            <Editable tag="div" className="desc" value={c.desc} onChange={(v) => updateCard(i, 'desc', v)} multiline markdown />
           </div>
         ))}
       </div>
@@ -844,9 +947,9 @@ function TermsSlide({ data, patch, page, totalPages }) {
           <tbody>
             {(data.rows || []).map((r, i) => (
               <tr key={i}>
-                <td className="term"><Editable value={r.term} onChange={(v) => updateRow(i, 'term', v)} /></td>
-                <td className="def"><Editable value={r.def} onChange={(v) => updateRow(i, 'def', v)} multiline /></td>
-                <td className="note"><Editable value={r.note} onChange={(v) => updateRow(i, 'note', v)} multiline /></td>
+                <td className="term"><Editable tag="div" value={r.term} onChange={(v) => updateRow(i, 'term', v)} markdown /></td>
+                <td className="def"><Editable tag="div" value={r.def} onChange={(v) => updateRow(i, 'def', v)} multiline markdown /></td>
+                <td className="note"><Editable tag="div" value={r.note} onChange={(v) => updateRow(i, 'note', v)} multiline markdown /></td>
               </tr>
             ))}
           </tbody>
@@ -919,13 +1022,13 @@ function RulesSlide({ data, patch, replace, page, totalPages }) {
           </button>
         </div>
       )}
-      <div className={useGrid ? 'rules-grid' : 'rules-wrap'} style={{ flex: 1, minHeight: 0 }}>
+      <div className={useGrid ? 'rules-grid' : 'rules-wrap'} style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
         {(data.blocks || []).map((b, i) => (
           <div className="rule-block" key={i}>
-            <Editable tag="div" className="head" value={b.head} onChange={(v) => updateBlock(i, 'head', v)} />
+            <Editable tag="div" className="head" value={b.head} onChange={(v) => updateBlock(i, 'head', v)} markdown />
             <ul>
               {(b.items || []).map((it, ii) => (
-                <li key={ii}><Editable value={it} onChange={(v) => updateItem(i, ii, v)} multiline /></li>
+                <li key={ii}><Editable tag="div" value={it} onChange={(v) => updateItem(i, ii, v)} multiline markdown /></li>
               ))}
             </ul>
           </div>
@@ -961,7 +1064,7 @@ function DataTableSlide({ data, patch, page, totalPages }) {
               <tr key={i}>
                 {(data.columns || []).map((c, ci) => (
                   <td key={ci} className={c.key === 'field' || c.key === 'table' ? 'tag' : ''}>
-                    <Editable value={r[c.key] || ''} onChange={(v) => updateCell(i, c.key, v)} multiline />
+                    <Editable tag="div" value={r[c.key] || ''} onChange={(v) => updateCell(i, c.key, v)} multiline markdown />
                   </td>
                 ))}
               </tr>
@@ -1076,17 +1179,30 @@ function UiDesignSlide({ data, patch, page, totalPages }) {
   );
 }
 
-/* ------ 11. Resources ------ */
+/* ------ 11. Resources ------
+ * category 구조:
+ *   { name, count, guideline?, items: [{ name, spec?, example? } | "string"] }
+ * 하위호환: items 가 문자열 배열이어도 그대로 표시.
+ */
 function ResourcesSlide({ data, patch, page, totalPages }) {
   const updateCat = (i, key, val) => {
     const cats = [...(data.categories || [])];
     cats[i] = { ...cats[i], [key]: val };
     patch({ categories: cats });
   };
-  const updateItem = (ci, ii, val) => {
+  const updateItem = (ci, ii, key, val) => {
     const cats = [...(data.categories || [])];
     const items = [...(cats[ci].items || [])];
-    items[ii] = val;
+    const cur = items[ii];
+    if (typeof cur === 'string') {
+      // 문자열 → 객체로 마이그레이션
+      items[ii] = { name: cur, spec: '', example: '' };
+    } else {
+      items[ii] = { ...(cur || {}), [key]: val };
+    }
+    if (key === 'name' || key === 'spec' || key === 'example') {
+      items[ii] = { ...items[ii], [key]: val };
+    }
     cats[ci] = { ...cats[ci], items };
     patch({ categories: cats });
   };
@@ -1101,10 +1217,43 @@ function ResourcesSlide({ data, patch, page, totalPages }) {
               <Editable className="cat-name" value={c.name} onChange={(v) => updateCat(i, 'name', v)} />
               <Editable className="cat-count" value={c.count} onChange={(v) => updateCat(i, 'count', v)} />
             </div>
-            <ul>
-              {(c.items || []).map((it, ii) => (
-                <li key={ii}><Editable value={it} onChange={(v) => updateItem(i, ii, v)} multiline /></li>
-              ))}
+            {/* 카테고리별 가이드라인 — 해상도·포맷·네이밍 규칙·톤앤매너 */}
+            <Editable
+              tag="div"
+              className="cat-guideline"
+              value={c.guideline}
+              onChange={(v) => updateCat(i, 'guideline', v)}
+              multiline
+              markdown
+              placeholder="가이드라인 (해상도·포맷·네이밍·톤앤매너 등) — 마크다운 지원"
+            />
+            <ul className="resource-items">
+              {(c.items || []).map((it, ii) => {
+                const obj = typeof it === 'string' ? { name: it, spec: '', example: '' } : (it || {});
+                return (
+                  <li key={ii} className="resource-item">
+                    <Editable tag="div" className="ri-name"
+                      value={obj.name}
+                      onChange={(v) => updateItem(i, ii, 'name', v)}
+                      multiline markdown
+                      placeholder="에셋 이름" />
+                    {(obj.spec || obj.spec === '') && (
+                      <Editable tag="div" className="ri-spec"
+                        value={obj.spec}
+                        onChange={(v) => updateItem(i, ii, 'spec', v)}
+                        multiline markdown
+                        placeholder="사양 (해상도·tris·포맷·길이 등)" />
+                    )}
+                    {(obj.example || obj.example === '') && (
+                      <Editable tag="div" className="ri-example"
+                        value={obj.example}
+                        onChange={(v) => updateItem(i, ii, 'example', v)}
+                        multiline markdown
+                        placeholder="예시 / 참고 (파일명·레퍼런스 링크 등)" />
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         ))}
@@ -1362,19 +1511,45 @@ function AiDrawModal({ onClose, onRun, placeholder, running }) {
   );
 }
 
-/* ====== Enhanced Flow slide (with edit controls and AI) ====== */
+/* ====== Enhanced Flow slide (with edit controls and AI) ======
+ *
+ * direction: 'vertical' | 'horizontal' | 'grid'
+ *   - vertical  → 위에서 아래 (전통적)
+ *   - horizontal → 좌에서 우 (가로 흐름, 가독성 ↑)
+ *   - grid      → 자동 wrap (노드 7개 이상에서 가장 가독성 좋음)
+ * direction 이 비어있으면 노드 수에 따라 자동 선택.
+ */
 function EnhancedFlowSlide({ data, patch, page, totalPages }) {
   const [aiOpen, setAiOpen] = React.useState(false);
   const wrapRef = React.useRef(null);
   const chartRef = React.useRef(null);
 
-  /* 폴백 스케일 — 측정 실패 시에도 노드 수 기반으로 보수적 스케일을 적용해 footer 침범 방지 */
+  const nodeCount = (data.nodes || []).length;
+  // direction 미지정 시 노드 수 기반 자동 선택
+  const autoDir = nodeCount <= 5 ? 'vertical' : nodeCount <= 8 ? 'horizontal' : 'grid';
+  const direction = data.direction || autoDir;
+
+  /* 폴백 스케일 — 측정 실패 시에도 노드 수·방향 기반으로 보수적 스케일을 적용해 footer 침범 방지 */
   const fallbackScale = React.useMemo(() => {
     const nodes = data.nodes || [];
     const n = nodes.length;
-    // 라벨 길이 평균 — 긴 라벨이 multiline 되어 노드 높이 ↑
     const avgLen = n ? nodes.reduce((s, x) => s + ((x.label || '').length), 0) / n : 0;
     const hasLongLabels = avgLen > 14;
+    // 가로/그리드는 폭이 넉넉해서 vertical 보다 큰 스케일 허용
+    if (direction === 'horizontal') {
+      if (n <= 4) return 1;
+      if (n <= 6) return 0.9;
+      if (n <= 8) return 0.78;
+      if (n <= 10) return 0.68;
+      return hasLongLabels ? 0.55 : 0.6;
+    }
+    if (direction === 'grid') {
+      if (n <= 6) return 1;
+      if (n <= 9) return 0.9;
+      if (n <= 12) return 0.78;
+      return hasLongLabels ? 0.62 : 0.7;
+    }
+    // vertical
     if (n <= 5) return hasLongLabels ? 0.9 : 1;
     if (n <= 6) return hasLongLabels ? 0.75 : 0.85;
     if (n <= 7) return hasLongLabels ? 0.66 : 0.76;
@@ -1383,9 +1558,8 @@ function EnhancedFlowSlide({ data, patch, page, totalPages }) {
     if (n <= 10) return hasLongLabels ? 0.44 : 0.5;
     if (n <= 12) return hasLongLabels ? 0.38 : 0.44;
     return hasLongLabels ? 0.32 : 0.38;
-  }, [data.nodes]);
+  }, [data.nodes, direction]);
   const [chartScale, setChartScale] = React.useState(fallbackScale);
-  // 노드가 바뀌면 즉시 폴백 스케일로 리셋 (측정이 갱신할 때까지의 다리 역할)
   React.useEffect(() => { setChartScale(fallbackScale); }, [fallbackScale]);
 
   const updateNode = (i, key, val) => {
@@ -1477,23 +1651,38 @@ function EnhancedFlowSlide({ data, patch, page, totalPages }) {
       <div className="flow-edit-bar">
         <button className="mini-btn" onClick={() => insertNodeAt((data.nodes || []).length)}>+ 단계</button>
         <button className="mini-btn ai" onClick={() => setAiOpen(true)}>✦ AI로 그리기</button>
+        {/* 레이아웃 방향 토글 */}
+        <div className="flow-dir-toggle" title="배치 방향">
+          {[
+            { v: 'vertical',   label: '↓ 세로', t: '세로 한 줄' },
+            { v: 'horizontal', label: '→ 가로', t: '가로 한 줄' },
+            { v: 'grid',       label: '▦ 그리드', t: '자동 wrap 그리드' },
+          ].map(opt => (
+            <button
+              key={opt.v}
+              className={'mini-btn dir ' + (direction === opt.v ? 'on' : '')}
+              onClick={() => patch({ direction: opt.v })}
+              title={opt.t}
+            >{opt.label}</button>
+          ))}
+        </div>
       </div>
 
       <div className="flow-wrap" ref={wrapRef} style={{ overflow: 'hidden' }}>
         <div
-          className="flow-chart flow-chart-edit"
+          className={'flow-chart flow-chart-edit flow-dir-' + direction}
           ref={chartRef}
           style={{ transform: `scale(${chartScale})`, transformOrigin: 'center center' }}
         >
           {(data.nodes || []).map((n, i, arr) => (
             <React.Fragment key={i}>
-              <div className="flow-node-wrap">
+              <div className="flow-node-wrap" data-idx={String(i + 1).padStart(2, '0')}>
                 <div className={'flow-node ' + (n.kind || 'process')}>
                   <Editable value={n.label} onChange={(v) => updateNode(i, 'label', v)} multiline />
                 </div>
                 <div className="flow-node-controls">
-                  <button title="위로" disabled={i === 0} onClick={() => moveNode(i, -1)}>↑</button>
-                  <button title="아래로" disabled={i === arr.length - 1} onClick={() => moveNode(i, +1)}>↓</button>
+                  <button title="이전" disabled={i === 0} onClick={() => moveNode(i, -1)}>{direction === 'horizontal' ? '←' : '↑'}</button>
+                  <button title="다음" disabled={i === arr.length - 1} onClick={() => moveNode(i, +1)}>{direction === 'horizontal' ? '→' : '↓'}</button>
                   <select value={n.kind || 'process'} onChange={e => updateNode(i, 'kind', e.target.value)}>
                     <option value="start">start</option>
                     <option value="process">process</option>
@@ -1503,10 +1692,10 @@ function EnhancedFlowSlide({ data, patch, page, totalPages }) {
                   <button className="del" onClick={() => removeNode(i)} title="삭제">✕</button>
                 </div>
               </div>
-              {i < arr.length - 1 && (
-                <div style={{ position: 'relative', width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column' }}>
+              {i < arr.length - 1 && direction !== 'grid' && (
+                <div className={'flow-arrow-wrap flow-arrow-' + direction}>
                   <div className="flow-arrow"></div>
-                  <div className="flow-arrow-add" style={{ height: 0 }}>
+                  <div className="flow-arrow-add">
                     <button onClick={() => insertNodeAt(i + 1)} title="중간에 단계 추가">+</button>
                   </div>
                 </div>
@@ -4170,25 +4359,68 @@ async function exportPptx(project) {
       });
     } else if (s.type === 'flow') {
       const nodes = d.nodes || [];
-      const nodeH = 0.5;
-      const nodeW = 3.0;
-      const gap = 0.25;
-      const totalH = nodes.length * nodeH + (nodes.length - 1) * gap;
-      const startY = 1.6 + ((H - 2.4 - totalH) / 2);
-      const cx = W / 2;
-      nodes.forEach((n, idx) => {
-        const x = cx - nodeW / 2;
-        const y = startY + idx * (nodeH + gap);
+      const n = nodes.length;
+      const autoDir = n <= 5 ? 'vertical' : n <= 8 ? 'horizontal' : 'grid';
+      const dir = d.direction || autoDir;
+      const drawNode = (node, x, y, w, h) => {
         let fill = 'FFFFFF', col = TEXT, bd = '303A45';
-        if (n.kind === 'start') { fill = ACCENT; col = '061018'; bd = ACCENT; }
-        if (n.kind === 'end') { fill = '1C222B'; col = 'E6EDF3'; bd = '1C222B'; }
-        if (n.kind === 'decision') { fill = 'FFF8DC'; bd = 'D29922'; }
-        slide.addShape('roundRect', { x, y, w: nodeW, h: nodeH, fill: { color: fill }, line: { color: bd, width: 1.5 }, rectRadius: 0.05 });
-        slide.addText(n.label || '', { x, y, w: nodeW, h: nodeH, fontSize: 12, bold: true, fontFace: FONT, color: col, align: 'center', valign: 'middle' });
-        if (idx < nodes.length - 1) {
-          slide.addShape('line', { x: cx, y: y + nodeH, w: 0, h: gap, line: { color: '303A45', width: 1.5, endArrowType: 'triangle' } });
-        }
-      });
+        if (node.kind === 'start') { fill = ACCENT; col = '061018'; bd = ACCENT; }
+        else if (node.kind === 'end') { fill = '1C222B'; col = 'E6EDF3'; bd = '1C222B'; }
+        else if (node.kind === 'decision') { fill = 'FFF8DC'; bd = 'D29922'; }
+        slide.addShape('roundRect', { x, y, w, h, fill: { color: fill }, line: { color: bd, width: 1.5 }, rectRadius: 0.05 });
+        slide.addText(node.label || '', { x, y, w, h, fontSize: 11, bold: true, fontFace: FONT, color: col, align: 'center', valign: 'middle' });
+      };
+      if (dir === 'horizontal') {
+        const frameY = 1.7, frameH = H - 2.8;
+        const totalNodes = nodes.length;
+        const gap = 0.2;
+        const usableW = W - 2 * PAD_X;
+        const arrowW = 0.3;
+        const nodeW = (usableW - (totalNodes - 1) * (arrowW + gap)) / totalNodes;
+        const nodeH = Math.min(1.0, frameH - 0.2);
+        const cy = frameY + frameH / 2 - nodeH / 2;
+        nodes.forEach((node, idx) => {
+          const x = PAD_X + idx * (nodeW + arrowW + gap);
+          drawNode(node, x, cy, nodeW, nodeH);
+          if (idx < totalNodes - 1) {
+            const ax = x + nodeW;
+            const ay = cy + nodeH / 2;
+            slide.addShape('line', { x: ax, y: ay, w: arrowW + gap - 0.05, h: 0, line: { color: '303A45', width: 1.5, endArrowType: 'triangle' } });
+          }
+        });
+      } else if (dir === 'grid') {
+        const frameY = 1.7, frameH = H - 2.8;
+        const cols = Math.ceil(Math.sqrt(n));
+        const rows = Math.ceil(n / cols);
+        const usableW = W - 2 * PAD_X;
+        const cellW = (usableW - (cols - 1) * 0.25) / cols;
+        const cellH = Math.min(0.9, (frameH - (rows - 1) * 0.25) / rows);
+        nodes.forEach((node, idx) => {
+          const col = idx % cols, row = Math.floor(idx / cols);
+          const x = PAD_X + col * (cellW + 0.25);
+          const y = frameY + row * (cellH + 0.25);
+          drawNode(node, x, y, cellW, cellH);
+          // 그리드는 순서 번호로 흐름 표시
+          slide.addShape('ellipse', { x: x - 0.12, y: y - 0.12, w: 0.28, h: 0.28, fill: { color: '303A45' }, line: { color: '303A45' } });
+          slide.addText(String(idx + 1).padStart(2, '0'), { x: x - 0.12, y: y - 0.12, w: 0.28, h: 0.28, fontSize: 9, bold: true, fontFace: MONO, color: 'FFFFFF', align: 'center', valign: 'middle' });
+        });
+      } else {
+        // vertical (default)
+        const nodeH = 0.5;
+        const nodeW = 3.0;
+        const gap = 0.25;
+        const totalH = nodes.length * nodeH + (nodes.length - 1) * gap;
+        const startY = 1.6 + ((H - 2.4 - totalH) / 2);
+        const cx = W / 2;
+        nodes.forEach((node, idx) => {
+          const x = cx - nodeW / 2;
+          const y = startY + idx * (nodeH + gap);
+          drawNode(node, x, y, nodeW, nodeH);
+          if (idx < nodes.length - 1) {
+            slide.addShape('line', { x: cx, y: y + nodeH, w: 0, h: gap, line: { color: '303A45', width: 1.5, endArrowType: 'triangle' } });
+          }
+        });
+      }
     } else if (s.type === 'ui-design') {
       slide.addShape('roundRect', { x: PAD_X, y: 1.6, w: 6.5, h: 4.6, fill: { color: '0A0D12' }, line: { color: '0A0D12' }, rectRadius: 0.1 });
       slide.addText('UI MOCKUP', { x: PAD_X + 1, y: 3.5, w: 4.5, h: 0.4, fontSize: 14, fontFace: MONO, color: ACCENT, align: 'center', charSpacing: 1.6 });
@@ -4205,16 +4437,38 @@ async function exportPptx(project) {
       });
     } else if (s.type === 'resources') {
       const cats = d.categories || [];
-      const catW = (W - 2 * PAD_X - 0.4) / 3;
-      const catH = 4.5;
+      const colN = Math.min(4, Math.max(2, cats.length));
+      const catW = (W - 2 * PAD_X - 0.2 * (colN - 1)) / colN;
+      const catH = H - 2.5;
       cats.forEach((c, idx) => {
-        const x = PAD_X + idx * (catW + 0.2);
-        const y = 1.7;
+        const col = idx % colN;
+        const row = Math.floor(idx / colN);
+        const x = PAD_X + col * (catW + 0.2);
+        const y = 1.7 + row * (catH + 0.2);
         slide.addShape('roundRect', { x, y, w: catW, h: catH, fill: { color: 'F8F9FA' }, line: { color: 'F8F9FA' }, rectRadius: 0.1 });
-        slide.addText(c.name || '', { x: x + 0.3, y: y + 0.3, w: catW - 1.2, h: 0.4, fontSize: 14, bold: true, fontFace: FONT, color: TEXT });
-        slide.addText(c.count || '', { x: x + catW - 1.0, y: y + 0.3, w: 0.8, h: 0.4, fontSize: 11, fontFace: MONO, color: ACCENT, bold: true, align: 'right' });
-        const itemsText = (c.items || []).map(it => ({ text: it, options: { bullet: { code: '2022' } } }));
-        slide.addText(itemsText, { x: x + 0.4, y: y + 0.85, w: catW - 0.6, h: catH - 0.95, fontSize: 11, fontFace: FONT, color: '424A55', paraSpaceAfter: 5 });
+        slide.addText(c.name || '', { x: x + 0.3, y: y + 0.25, w: catW - 1.2, h: 0.4, fontSize: 14, bold: true, fontFace: FONT, color: TEXT });
+        slide.addText(c.count || '', { x: x + catW - 1.0, y: y + 0.25, w: 0.8, h: 0.4, fontSize: 11, fontFace: MONO, color: ACCENT, bold: true, align: 'right' });
+        // 가이드라인 박스
+        let yCursor = y + 0.75;
+        if (c.guideline) {
+          const gh = 0.95;
+          slide.addShape('rect', { x: x + 0.3, y: yCursor, w: catW - 0.6, h: gh, fill: { color: 'E8F4FF' }, line: { color: 'B8DCFF', width: 0.5 } });
+          slide.addText(c.guideline.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/`([^`]+)`/g, '$1'), { x: x + 0.4, y: yCursor + 0.05, w: catW - 0.8, h: gh - 0.1, fontSize: 9.5, fontFace: FONT, color: '1C4D70', italic: true });
+          yCursor += gh + 0.1;
+        }
+        // 아이템들 — 새 형식(object)과 구 형식(string) 모두 지원
+        const items = c.items || [];
+        const itemBlocks = items.map((it, i) => {
+          if (typeof it === 'string') return { text: '• ' + it, options: { fontSize: 10.5, color: '424A55' } };
+          const lines = [];
+          if (it.name) lines.push({ text: '• ' + it.name, options: { bold: true, fontSize: 10.5, color: '1C222B' } });
+          if (it.spec) lines.push({ text: '\n    ' + it.spec, options: { fontSize: 9, fontFace: MONO, color: '586A75' } });
+          if (it.example) lines.push({ text: '\n    예) ' + it.example, options: { fontSize: 9, italic: true, color: '7D8590' } });
+          return lines;
+        }).flat();
+        if (itemBlocks.length) {
+          slide.addText(itemBlocks, { x: x + 0.3, y: yCursor, w: catW - 0.6, h: y + catH - yCursor - 0.2, fontSize: 10.5, fontFace: FONT, color: '424A55', paraSpaceAfter: 4, valign: 'top' });
+        }
       });
     } else if (s.type === 'image-embed') {
       // 캡션 + 중앙 정렬된 참고 이미지

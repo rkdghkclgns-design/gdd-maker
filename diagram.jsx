@@ -197,19 +197,45 @@ function AiDrawModal({ onClose, onRun, placeholder, running }) {
   );
 }
 
-/* ====== Enhanced Flow slide (with edit controls and AI) ====== */
+/* ====== Enhanced Flow slide (with edit controls and AI) ======
+ *
+ * direction: 'vertical' | 'horizontal' | 'grid'
+ *   - vertical  → 위에서 아래 (전통적)
+ *   - horizontal → 좌에서 우 (가로 흐름, 가독성 ↑)
+ *   - grid      → 자동 wrap (노드 7개 이상에서 가장 가독성 좋음)
+ * direction 이 비어있으면 노드 수에 따라 자동 선택.
+ */
 function EnhancedFlowSlide({ data, patch, page, totalPages }) {
   const [aiOpen, setAiOpen] = React.useState(false);
   const wrapRef = React.useRef(null);
   const chartRef = React.useRef(null);
 
-  /* 폴백 스케일 — 측정 실패 시에도 노드 수 기반으로 보수적 스케일을 적용해 footer 침범 방지 */
+  const nodeCount = (data.nodes || []).length;
+  // direction 미지정 시 노드 수 기반 자동 선택
+  const autoDir = nodeCount <= 5 ? 'vertical' : nodeCount <= 8 ? 'horizontal' : 'grid';
+  const direction = data.direction || autoDir;
+
+  /* 폴백 스케일 — 측정 실패 시에도 노드 수·방향 기반으로 보수적 스케일을 적용해 footer 침범 방지 */
   const fallbackScale = React.useMemo(() => {
     const nodes = data.nodes || [];
     const n = nodes.length;
-    // 라벨 길이 평균 — 긴 라벨이 multiline 되어 노드 높이 ↑
     const avgLen = n ? nodes.reduce((s, x) => s + ((x.label || '').length), 0) / n : 0;
     const hasLongLabels = avgLen > 14;
+    // 가로/그리드는 폭이 넉넉해서 vertical 보다 큰 스케일 허용
+    if (direction === 'horizontal') {
+      if (n <= 4) return 1;
+      if (n <= 6) return 0.9;
+      if (n <= 8) return 0.78;
+      if (n <= 10) return 0.68;
+      return hasLongLabels ? 0.55 : 0.6;
+    }
+    if (direction === 'grid') {
+      if (n <= 6) return 1;
+      if (n <= 9) return 0.9;
+      if (n <= 12) return 0.78;
+      return hasLongLabels ? 0.62 : 0.7;
+    }
+    // vertical
     if (n <= 5) return hasLongLabels ? 0.9 : 1;
     if (n <= 6) return hasLongLabels ? 0.75 : 0.85;
     if (n <= 7) return hasLongLabels ? 0.66 : 0.76;
@@ -218,9 +244,8 @@ function EnhancedFlowSlide({ data, patch, page, totalPages }) {
     if (n <= 10) return hasLongLabels ? 0.44 : 0.5;
     if (n <= 12) return hasLongLabels ? 0.38 : 0.44;
     return hasLongLabels ? 0.32 : 0.38;
-  }, [data.nodes]);
+  }, [data.nodes, direction]);
   const [chartScale, setChartScale] = React.useState(fallbackScale);
-  // 노드가 바뀌면 즉시 폴백 스케일로 리셋 (측정이 갱신할 때까지의 다리 역할)
   React.useEffect(() => { setChartScale(fallbackScale); }, [fallbackScale]);
 
   const updateNode = (i, key, val) => {
@@ -312,23 +337,38 @@ function EnhancedFlowSlide({ data, patch, page, totalPages }) {
       <div className="flow-edit-bar">
         <button className="mini-btn" onClick={() => insertNodeAt((data.nodes || []).length)}>+ 단계</button>
         <button className="mini-btn ai" onClick={() => setAiOpen(true)}>✦ AI로 그리기</button>
+        {/* 레이아웃 방향 토글 */}
+        <div className="flow-dir-toggle" title="배치 방향">
+          {[
+            { v: 'vertical',   label: '↓ 세로', t: '세로 한 줄' },
+            { v: 'horizontal', label: '→ 가로', t: '가로 한 줄' },
+            { v: 'grid',       label: '▦ 그리드', t: '자동 wrap 그리드' },
+          ].map(opt => (
+            <button
+              key={opt.v}
+              className={'mini-btn dir ' + (direction === opt.v ? 'on' : '')}
+              onClick={() => patch({ direction: opt.v })}
+              title={opt.t}
+            >{opt.label}</button>
+          ))}
+        </div>
       </div>
 
       <div className="flow-wrap" ref={wrapRef} style={{ overflow: 'hidden' }}>
         <div
-          className="flow-chart flow-chart-edit"
+          className={'flow-chart flow-chart-edit flow-dir-' + direction}
           ref={chartRef}
           style={{ transform: `scale(${chartScale})`, transformOrigin: 'center center' }}
         >
           {(data.nodes || []).map((n, i, arr) => (
             <React.Fragment key={i}>
-              <div className="flow-node-wrap">
+              <div className="flow-node-wrap" data-idx={String(i + 1).padStart(2, '0')}>
                 <div className={'flow-node ' + (n.kind || 'process')}>
                   <Editable value={n.label} onChange={(v) => updateNode(i, 'label', v)} multiline />
                 </div>
                 <div className="flow-node-controls">
-                  <button title="위로" disabled={i === 0} onClick={() => moveNode(i, -1)}>↑</button>
-                  <button title="아래로" disabled={i === arr.length - 1} onClick={() => moveNode(i, +1)}>↓</button>
+                  <button title="이전" disabled={i === 0} onClick={() => moveNode(i, -1)}>{direction === 'horizontal' ? '←' : '↑'}</button>
+                  <button title="다음" disabled={i === arr.length - 1} onClick={() => moveNode(i, +1)}>{direction === 'horizontal' ? '→' : '↓'}</button>
                   <select value={n.kind || 'process'} onChange={e => updateNode(i, 'kind', e.target.value)}>
                     <option value="start">start</option>
                     <option value="process">process</option>
@@ -338,10 +378,10 @@ function EnhancedFlowSlide({ data, patch, page, totalPages }) {
                   <button className="del" onClick={() => removeNode(i)} title="삭제">✕</button>
                 </div>
               </div>
-              {i < arr.length - 1 && (
-                <div style={{ position: 'relative', width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column' }}>
+              {i < arr.length - 1 && direction !== 'grid' && (
+                <div className={'flow-arrow-wrap flow-arrow-' + direction}>
                   <div className="flow-arrow"></div>
-                  <div className="flow-arrow-add" style={{ height: 0 }}>
+                  <div className="flow-arrow-add">
                     <button onClick={() => insertNodeAt(i + 1)} title="중간에 단계 추가">+</button>
                   </div>
                 </div>

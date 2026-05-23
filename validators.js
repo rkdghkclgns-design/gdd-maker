@@ -94,7 +94,12 @@
     resources: {
       required: ['categories'],
       defaults: { section: '05', sectionName: '필요 리소스', title: '리소스 목록', categories: [] },
-      arrays: { categories: { item: { name: '카테고리', count: 'x?', items: [] } } },
+      arrays: { categories: { item: { name: '카테고리', count: 'x?', guideline: '', items: [] } } },
+    },
+    flow: {
+      required: ['nodes'],
+      defaults: { section: '02', sectionName: '플로우 차트', title: '플로우', direction: '', nodes: [] },
+      arrays: { nodes: { item: { kind: 'process', label: '단계' } } },
     },
   };
 

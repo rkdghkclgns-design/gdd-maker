@@ -823,7 +823,7 @@ ${contextBlock}
     { "type": "resources", "data": { "section":"05", "sectionName":"필요 리소스", "title":"필요 리소스 목록", "categories":[{
       "name":"카테고리(예: UI / 사운드 / 모델 / 텍스처 / 이펙트 / 데이터)",
       "count":"개수 (예: x12)",
-      "guideline":"이 카테고리 전체에 적용되는 **가이드라인**. 해상도·포맷·네이밍 규칙·톤앤매너·컬러 코드 등을 한국어로 3~5줄로 구체 명시. 마크다운(**굵게**, `code`) 사용 가능.",
+      "guideline":"이 카테고리 전체에 적용되는 **가이드라인**. 해상도·포맷·네이밍 규칙·톤앤매너·컬러 코드 등을 한국어로 3~5줄로 구체 명시. 마크다운(**굵게**, \`code\`) 사용 가능.",
       "items":[{
         "name":"에셋명 (예: HUD HP 게이지)",
         "spec":"사양 (예: 1080×24, PNG-24, 9-slice. 색상 #FF3030 → #88DFB0 그라데이션)",
@@ -837,17 +837,17 @@ ${contextBlock}
 - **슬라이드 총 18~26장**. cover / history / toc / [개요 섹션 divider + intent + terms] / [시스템 상세 섹션 divider + flow + sequence-diagram + diagram + rules 보조] / [UI 섹션 divider + ui-design × 2~3] / [데이터 섹션 divider + data-table × 2~3] / [리소스 섹션 divider + resources] / image-embed 3~5장 (섹션 사이에 분산 배치).
 - 섹션마다 section-divider로 구분하고, **section-divider 의 imagePrompt 는 모두 채워서 섹션마다 컨셉 아트를 둔다 (해석을 도울 시각적 앵커).**
 - **분량 기준 (각 슬라이드 최소량)**:
-  - `intent.cards` = **4~6개** (의도별 측정 지표 포함)
-  - `terms.rows` = **8~12개** (시스템 전반 용어 망라)
-  - `rules.blocks` = **2~3개** / 각 block items = **4~6개** (정적 규칙/상수만)
-  - `data-table.rows` = **8~16개** (스키마 전체 필드 포함, 절대 비우지 말 것)
-  - `flow.nodes` = **6~12개** (decision 분기 2개 이상)
-  - `diagram.nodes` = **5~9개**, `diagram.edges` = **6~12개**
-  - `sequence-diagram.messages` = **8~14개**
-  - `class-diagram.classes` = **5~8개**, `relations` = **5~10개**
-  - `ui-design.callouts` = **5~8개**
-  - `resources.categories` = **4~5개** / 각 category items = **5~8개** (각 item 에 spec+example 모두 채움)
-  - `image-embed` 슬라이드 = **3~5장** (카드 일러스트·캐릭터·장면·아이콘 세트·무드보드)
+  - \`intent.cards\` = **4~6개** (의도별 측정 지표 포함)
+  - \`terms.rows\` = **8~12개** (시스템 전반 용어 망라)
+  - \`rules.blocks\` = **2~3개** / 각 block items = **4~6개** (정적 규칙/상수만)
+  - \`data-table.rows\` = **8~16개** (스키마 전체 필드 포함, 절대 비우지 말 것)
+  - \`flow.nodes\` = **6~12개** (decision 분기 2개 이상)
+  - \`diagram.nodes\` = **5~9개**, \`diagram.edges\` = **6~12개**
+  - \`sequence-diagram.messages\` = **8~14개**
+  - \`class-diagram.classes\` = **5~8개**, \`relations\` = **5~10개**
+  - \`ui-design.callouts\` = **5~8개**
+  - \`resources.categories\` = **4~5개** / 각 category items = **5~8개** (각 item 에 spec+example 모두 채움)
+  - \`image-embed\` 슬라이드 = **3~5장** (카드 일러스트·캐릭터·장면·아이콘 세트·무드보드)
 
 # Markdown 사용 (rules.items / intent.desc·head / terms.def·note / data-table.desc / resources.* 모든 텍스트 필드)
 앱이 인라인 마크다운을 렌더링한다. **적극적으로 굵게/코드/리스트를 활용하여 가독성을 높여라.** 지원 토큰:
@@ -895,10 +895,14 @@ ${contextBlock}
 - **ui-design.callouts**: 각 callout이 트리거 상호작용("탭 시", "롱프레스 시")과 그 결과 상태 변화를 함께 기술. 4~6개 권장. **x, y는 0~100 정수 (이미지 안에서의 퍼센트 위치)**. imagePrompt가 묘사하는 화면 레이아웃과 일치하는 위치를 골라야 한다 (예: 좌상단 미니맵=10,15 / 중앙 크로스헤어=50,50 / 우상단 자원=85,12 / 하단 액션바=50,88). callout 순서는 사용자가 시선을 옮길 자연스러운 순서로.
 - **section-divider.imagePrompt**: 각 섹션의 분위기를 한 컷으로 압축한 영문 컨셉 아트. 배경에 깔리므로 어두운 톤·구도가 단순하면 좋다. 비어 있어도 되지만 가급적 채워라.
 - **image-embed**: 텍스트로만 설명하면 모호한 시각 요소(카드 디자인 무드, 캐릭터 룩, 게임 장면, 아이콘 세트)에 한해 사용. imagePrompt 는 카메라 앵글·조명·재질·스타일 키워드 포함. caption 은 한국어로, "왜 이 이미지를 참조 자료로 두었는지"를 한 줄로 적는다.
-- **resources**: 다음 3계층 모두 채워라 — (a) 카테고리 `guideline` (해상도·포맷·네이밍·톤앤매너·컬러 가이드 등 카테고리 전체 규칙), (b) 각 item의 `name` (에셋명), (c) 각 item의 `spec` (정확한 사양: 해상도 / tris / 포맷 / 길이 / 컬러스페이스 등), (d) 각 item의 `example` (실제 파일명·참고 작품·레퍼런스 링크). 단순 이름 나열 금지. 예시:
-  ```
-  category: { name: "UI", count: "x14", guideline: "**해상도**: 1080×1920 baseline + @2x/@3x · **포맷**: PNG-24 (배경 투명) · **네이밍**: ui/<scope>/<name>.png 소문자 + 언더스코어 · **컬러**: 메인 #88DFB0 / 강조 #F5D94F. 9-slice 필요 시 metadata json 동봉.", items: [{ name: "HUD HP 게이지", spec: "1080×24, PNG-24, 9-slice (좌우 각 24px)", example: "ui/hud/hp_bar.png — 참고: Apex Legends HUD" }, ...] }
-  ```
+- **resources**: 다음 3계층 모두 채워라 — (a) 카테고리 \`guideline\` (해상도·포맷·네이밍·톤앤매너·컬러 가이드 등 카테고리 전체 규칙), (b) 각 item의 \`name\` (에셋명), (c) 각 item의 \`spec\` (정확한 사양: 해상도 / tris / 포맷 / 길이 / 컬러스페이스 등), (d) 각 item의 \`example\` (실제 파일명·참고 작품·레퍼런스 링크). 단순 이름 나열 금지. 예시 (JSON):
+  {
+    "name": "UI", "count": "x14",
+    "guideline": "**해상도**: 1080×1920 baseline + @2x/@3x · **포맷**: PNG-24 (배경 투명) · **네이밍**: ui/<scope>/<name>.png 소문자 + 언더스코어 · **컬러**: 메인 #88DFB0 / 강조 #F5D94F. 9-slice 필요 시 metadata json 동봉.",
+    "items": [
+      { "name": "HUD HP 게이지", "spec": "1080×24, PNG-24, 9-slice (좌우 각 24px)", "example": "ui/hud/hp_bar.png — 참고: Apex Legends HUD" }
+    ]
+  }
 - **모든 imagePrompt**: 반드시 영문, 구체적 시각 묘사. 카메라 앵글·조명·재질·분위기 포함. 한국어 임시 텍스트 금지.
 
 # 운영 관점 반영

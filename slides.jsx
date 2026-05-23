@@ -1553,7 +1553,14 @@ const SLIDE_LABELS = {
 
 function SlideRenderer({ slide, patch, replace, page, totalPages }) {
   const R = SLIDE_RENDERERS[slide.type] || (() => <div className="slide"><div>Unknown type: {slide.type}</div></div>);
-  return <R data={slide.data || {}} patch={patch} replace={replace} page={page} totalPages={totalPages} />;
+  const isPlaceholder = !!(slide.data && slide.data._placeholder);
+  const rendered = <R data={slide.data || {}} patch={patch} replace={replace} page={page} totalPages={totalPages} />;
+  if (!isPlaceholder) return rendered;
+  // placeholder 상태 — 자식 렌더는 유지하되 부모 div에 is-placeholder 클래스를 주입해
+  // ::after 오버레이가 표시되도록 한다. React.cloneElement 로 className 합치기.
+  return React.cloneElement(rendered, {
+    className: ((rendered.props && rendered.props.className) || '') + ' is-placeholder',
+  });
 }
 
 Object.assign(window, {

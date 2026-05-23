@@ -1108,13 +1108,14 @@ function Thumbs({ slides, currentIdx, setCurrentIdx, onAddSlide, onDeleteSlide, 
       {slides.map((s, i) => {
         const isActive = i === currentIdx;
         const isChild = !!(s.data?._parent && s.data._parent.slideId);
+        const isPlaceholder = !!s.data?._placeholder;
         return (
           <div
-            className={'thumb ' + (isActive ? 'active' : '') + (isChild ? ' child' : '')}
+            className={'thumb ' + (isActive ? 'active' : '') + (isChild ? ' child' : '') + (isPlaceholder ? ' is-placeholder' : '')}
             key={s.id}
             ref={isActive ? activeRef : null}
             onClick={() => setCurrentIdx(i)}
-            title={isChild ? `↳ "${s.data._parent.slideTitle || ''}" 의 드릴다운` : `슬라이드 ${i + 1}`}
+            title={isPlaceholder ? `생성 대기 중…` : isChild ? `↳ "${s.data._parent.slideTitle || ''}" 의 드릴다운` : `슬라이드 ${i + 1}`}
           >
             <span className="num">{isChild ? '↳' : ''}{String(i + 1).padStart(2, '0')}</span>
             <div className="thumb-actions">
@@ -1604,7 +1605,7 @@ function App({ onStateChange }) {
       return;
     }
 
-    // 그 외: 새 GDD 생성
+    // 그 외: 새 GDD 생성 — 순차 스트리밍
     commitNow('AI 기획서 생성');
     setIsGenerating(true);
     try {
@@ -1613,49 +1614,83 @@ function App({ onStateChange }) {
       if (generationMode === 'demo') {
         await new Promise(r => setTimeout(r, 700));
         result = window.generateDemoGdd(fullCommand);
-      } else if (generationMode === 'deep') {
-        // 2단계 + Self-critique — 비용 ~3배, 품질 ↑↑
-        const ctx = concept ? buildGddContext(concept) : null;
-        result = await aiGenerateGddTwoStage(fullCommand, state.projects.map(p => p.title), attachments, ctx, {
-          selfCritique: true,
-          onProgress: ({ stage, message }) => { try { toast(`[${stage}] ${message}`, ''); } catch {} },
-        });
       } else {
-        // 표준 'ai' 모드도 2단계 파이프라인 사용 (단일 호출은 분량 요구를 못 담음)
         const ctx = concept ? buildGddContext(concept) : null;
+        const linkConceptId = concept?.id;
+        let createdProjectId = null;
+        const onChunk = (chunk) => {
+          if (chunk.kind === 'init') {
+            createdProjectId = chunk.project.id;
+            // 컨셉이 있으면 team 배지 상속 + recommendedPlan 자동 연결
+            const projectWithTeam = concept?.badge ? { ...chunk.project, team: concept.badge } : chunk.project;
+            setState(s => {
+              let newConcepts = s.concepts;
+              if (linkConceptId) {
+                const newPlan = { id: 'rp' + window.uid().slice(0, 4), title: projectWithTeam.title, description: projectWithTeam.subtitle || '채팅에서 생성', linkedGddId: projectWithTeam.id };
+                newConcepts = s.concepts.map(c => c.id === linkConceptId ? { ...c, recommendedPlans: [...(c.recommendedPlans || []), newPlan] } : c);
+              }
+              return { ...s, concepts: newConcepts, projects: [...s.projects, projectWithTeam], selection: { type: 'gdd', id: projectWithTeam.id } };
+            });
+            setCurrentIdx(0);
+          } else if (chunk.kind === 'batch' && chunk.updates) {
+            setState(s => ({
+              ...s,
+              projects: s.projects.map(p => {
+                if (p.id !== createdProjectId) return p;
+                const byId = new Map(chunk.updates.map(u => [u.id, u]));
+                return { ...p, slides: (p.slides || []).map(slide => byId.get(slide.id) || slide), updatedAt: new Date().toISOString().slice(0, 10) };
+              }),
+            }));
+          } else if (chunk.kind === 'image' && chunk.slideId) {
+            setState(s => ({
+              ...s,
+              projects: s.projects.map(p => {
+                if (p.id !== createdProjectId) return p;
+                return { ...p, slides: (p.slides || []).map(slide => slide.id === chunk.slideId
+                  ? { ...slide, data: { ...slide.data, imageSrc: chunk.imageSrc, ...(chunk.imagePrompt ? { imagePrompt: chunk.imagePrompt } : {}) } }
+                  : slide) };
+              }),
+            }));
+          }
+        };
         result = await aiGenerateGddTwoStage(fullCommand, state.projects.map(p => p.title), attachments, ctx, {
-          selfCritique: false,
+          selfCritique: generationMode === 'deep',
           onProgress: ({ stage, message }) => { try { toast(`[${stage}] ${message}`, ''); } catch {} },
+          onChunk,
         });
       }
-      // If viewing a concept, inherit its team badge
-      if (concept && concept.badge) result.team = concept.badge;
-
-      result.history = [{
+      // 메타 마무리
+      const historyEntry = {
         ts: new Date().toISOString().slice(0, 16).replace('T', ' '),
         cmd: fullCommand + (attachments?.length ? ` [+${attachments.length}개 첨부]` : ''),
         summary: `${result.slides.length}개 슬라이드 생성`,
-      }];
-      if (attachments?.length) result.attachments = attachments;
+      };
 
-      const linkConceptId = concept?.id;
-      setState(s => {
-        let newConcepts = s.concepts;
-        if (linkConceptId) {
-          // Auto-link as a new recommendedPlan
-          const newPlan = { id: 'rp' + window.uid().slice(0, 4), title: result.title, description: result.subtitle || '채팅에서 생성', linkedGddId: result.id };
-          newConcepts = s.concepts.map(c => c.id === linkConceptId
-            ? { ...c, recommendedPlans: [...(c.recommendedPlans || []), newPlan] }
-            : c);
-        }
-        return {
+      if (generationMode === 'demo') {
+        if (concept && concept.badge) result.team = concept.badge;
+        result.history = [historyEntry];
+        if (attachments?.length) result.attachments = attachments;
+        const linkConceptId = concept?.id;
+        setState(s => {
+          let newConcepts = s.concepts;
+          if (linkConceptId) {
+            const newPlan = { id: 'rp' + window.uid().slice(0, 4), title: result.title, description: result.subtitle || '채팅에서 생성', linkedGddId: result.id };
+            newConcepts = s.concepts.map(c => c.id === linkConceptId ? { ...c, recommendedPlans: [...(c.recommendedPlans || []), newPlan] } : c);
+          }
+          return { ...s, concepts: newConcepts, projects: [...s.projects, result], selection: { type: 'gdd', id: result.id } };
+        });
+        setCurrentIdx(0);
+      } else {
+        // 스트리밍에서 이미 등록 — history/attachments 만 추가
+        setState(s => ({
           ...s,
-          concepts: newConcepts,
-          projects: [...s.projects, result],
-          selection: { type: 'gdd', id: result.id },
-        };
-      });
-      setCurrentIdx(0);
+          projects: s.projects.map(p => p.id === result.id ? {
+            ...p,
+            history: [historyEntry],
+            attachments: attachments?.length ? attachments : (p.attachments || []),
+          } : p),
+        }));
+      }
       toast(`"${result.title}" 생성 완료 (${result.slides.length} slides)`, 'ok');
     } catch (e) {
       console.error(e);
@@ -1714,49 +1749,96 @@ function App({ onStateChange }) {
           // brief에 conceptId가 지정되어 있으면 그 컨셉 + 형제 기획서 요약을 컨텍스트로 전달
           const baseCtx = conceptIdForLink ? buildGddContext(conceptIdForLink) : (concept ? buildGddContext(concept) : null);
           const ctx = baseCtx ? { ...baseCtx, plan: linkedPlan || { title } } : null;
-          // 2단계 파이프라인을 표준 'ai' 모드의 기본값으로 사용 — 단일 호출은 22~32장 요구를
-          // 한 응답에 담지 못해 잘림. 'deep' 모드는 self-critique 까지 활성.
-          if (mode === 'deep') {
-            result = await aiGenerateGddTwoStage(text, state.projects.map(p => p.title), attachments, ctx, {
-              selfCritique: true,
-              onProgress: ({ stage, message }) => { try { toast(`[${stage}] ${message}`, ''); } catch {} },
-            });
-          } else {
-            result = await aiGenerateGddTwoStage(text, state.projects.map(p => p.title), attachments, ctx, {
-              selfCritique: false,
-              onProgress: ({ stage, message }) => { try { toast(`[${stage}] ${message}`, ''); } catch {} },
-            });
-          }
+          // 순차 스트리밍 — 각 단계 결과를 즉시 setState 에 반영해 슬라이드가 하나씩 채워지는 모습 노출.
+          // 'deep' 모드면 self-critique 까지.
+          let createdProjectId = null;
+          const onChunk = (chunk) => {
+            if (chunk.kind === 'init') {
+              // placeholder GDD 즉시 등록 → 사용자가 곧바로 본다
+              createdProjectId = chunk.project.id;
+              const linkedPlanLocal = linkedPlan;
+              setState(s => {
+                const newProjects = [...s.projects, chunk.project];
+                let newConcepts = s.concepts;
+                if (linkedPlanLocal && conceptIdForLink) {
+                  newConcepts = s.concepts.map(c => c.id === conceptIdForLink ? {
+                    ...c,
+                    recommendedPlans: (c.recommendedPlans || []).map(rp => rp.id === linkedPlanLocal.id ? { ...rp, linkedGddId: chunk.project.id } : rp),
+                  } : c);
+                }
+                return { ...s, projects: newProjects, concepts: newConcepts, selection: { type: 'gdd', id: chunk.project.id } };
+              });
+              setCurrentIdx(0);
+            } else if (chunk.kind === 'batch' && chunk.updates) {
+              // 슬라이드 단위 업데이트 — 같은 id 의 placeholder 를 실제 내용으로 교체
+              setState(s => ({
+                ...s,
+                projects: s.projects.map(p => {
+                  if (p.id !== createdProjectId) return p;
+                  const byId = new Map(chunk.updates.map(u => [u.id, u]));
+                  return {
+                    ...p,
+                    slides: (p.slides || []).map(slide => byId.get(slide.id) || slide),
+                    updatedAt: new Date().toISOString().slice(0, 10),
+                  };
+                }),
+              }));
+            } else if (chunk.kind === 'image' && chunk.slideId) {
+              setState(s => ({
+                ...s,
+                projects: s.projects.map(p => {
+                  if (p.id !== createdProjectId) return p;
+                  return {
+                    ...p,
+                    slides: (p.slides || []).map(slide => slide.id === chunk.slideId
+                      ? { ...slide, data: { ...slide.data, imageSrc: chunk.imageSrc, ...(chunk.imagePrompt ? { imagePrompt: chunk.imagePrompt } : {}) } }
+                      : slide),
+                  };
+                }),
+              }));
+            }
+          };
+          const onProgressCb = ({ stage, message }) => { try { toast(`[${stage}] ${message}`, ''); } catch {} };
+          result = await aiGenerateGddTwoStage(text, state.projects.map(p => p.title), attachments, ctx, {
+            selfCritique: mode === 'deep',
+            onProgress: onProgressCb,
+            onChunk,
+          });
+          // 스트리밍에서 이미 setState 로 모두 반영했으니 메타만 마무리
         }
-        result.history = [{
+        const historyEntry = {
           ts: new Date().toISOString().slice(0, 16).replace('T', ' '),
           cmd: text,
           summary: `${result.slides.length}개 슬라이드 생성`,
-        }];
-        if (attachments?.length) result.attachments = attachments;
+        };
 
-        setState(s => {
-          const newProjects = [...s.projects, result];
-          let newConcepts = s.concepts;
-          if (linkedPlan && conceptIdForLink) {
-            newConcepts = s.concepts.map(c => {
-              if (c.id !== conceptIdForLink) return c;
-              return {
+        if (mode === 'demo') {
+          // demo 모드는 streaming 안 했으니 여기서 일괄 등록
+          result.history = [historyEntry];
+          if (attachments?.length) result.attachments = attachments;
+          setState(s => {
+            const newProjects = [...s.projects, result];
+            let newConcepts = s.concepts;
+            if (linkedPlan && conceptIdForLink) {
+              newConcepts = s.concepts.map(c => c.id === conceptIdForLink ? {
                 ...c,
-                recommendedPlans: (c.recommendedPlans || []).map(rp =>
-                  rp.id === linkedPlan.id ? { ...rp, linkedGddId: result.id } : rp
-                ),
-              };
-            });
-          }
-          return {
+                recommendedPlans: (c.recommendedPlans || []).map(rp => rp.id === linkedPlan.id ? { ...rp, linkedGddId: result.id } : rp),
+              } : c);
+            }
+            return { ...s, projects: newProjects, concepts: newConcepts, selection: { type: 'gdd', id: result.id } };
+          });
+          setCurrentIdx(0);
+        } else {
+          // streaming 모드 — 이미 등록된 project 의 history/attachments 만 추가
+          setState(s => ({
             ...s,
-            projects: newProjects,
-            concepts: newConcepts,
-            selection: { type: 'gdd', id: result.id },
-          };
-        });
-        setCurrentIdx(0);
+            projects: s.projects.map(p => p.id === result.id ? {
+              ...p,
+              history: [historyEntry],
+              attachments: attachments?.length ? attachments : (p.attachments || []),
+            } : p),
+          }));
+        }
         toast(`"${result.title}" 생성 완료 (${result.slides.length} slides)`, 'ok');
       } catch (e) {
         console.error(e);
@@ -2713,16 +2795,26 @@ function App({ onStateChange }) {
   );
 }
 
-/* === 2단계 AI 파이프라인 ===
- * Outline → Flesh-out 분할 호출. 각 호출에 충분한 토큰을 할당해
- * 슬라이드당 깊이를 단일 호출 대비 3~5배 향상.
- * 1) Outline: 슬라이드 구조만 (type+title+intent). Flash 모델 권장.
- * 2) Flesh-out: 6~8개씩 배치 병렬 호출, 각 슬라이드 data 상세 채움.
- * 3) (선택) Self-critique: 약한 슬라이드 식별 → 재생성.
+/* === 순차 스트리밍 AI 파이프라인 ===
+ * "토큰 한계가 넘어가면 더 작게 쪼개서 끝까지 작성한다" — fallback 이 아니라 자기조절.
+ *
+ * 흐름:
+ *  1) Outline (단일 호출, 가볍게) — 슬라이드 N개 구조만 받음
+ *  2) 즉시 placeholder 슬라이드를 가진 빈 GDD 를 만들어 onChunk({kind:'init'}) 으로 emit
+ *     → 호출자는 그 시점에 project 를 state 에 넣어 화면에 노출
+ *  3) 3개씩 배치 직렬로 Flesh-out — 배치 완료마다 onChunk({kind:'batch', updates}) emit
+ *     → 호출자는 placeholder 슬라이드를 즉시 실제 내용으로 교체
+ *  4) 배치 호출이 (a) 토큰 잘림이나 (b) 파싱 실패 시 → 자동으로 그 배치만 1장씩 재시도
+ *  5) 1장 단위 호출도 실패하면 placeholder 유지하고 다음 슬라이드로 진행 (전체 중단 ✕)
+ *  6) 이미지 생성은 슬라이드 모두 끝난 후 병렬 시작, 각 이미지 완료 시 onChunk({kind:'image'}) emit
+ *  7) 마지막 onChunk({kind:'done'})
+ *
+ * onChunk 가 없으면 (legacy 호출자) 모든 단계가 끝나고 완성된 project 만 return.
  */
 async function aiGenerateGddTwoStage(command, existingTitles, attachments, context, opts) {
   opts = opts || {};
   const onProgress = opts.onProgress || (() => {});
+  const onChunk = typeof opts.onChunk === 'function' ? opts.onChunk : null;
 
   /* ---- Stage 1: Outline ---- */
   onProgress({ stage: 'outline', message: '슬라이드 구조 설계 중…' });
@@ -2745,101 +2837,21 @@ async function aiGenerateGddTwoStage(command, existingTitles, attachments, conte
   const outline = window.parseAiJson(outlineRaw);
   if (!outline || !Array.isArray(outline.outline)) throw new Error('Outline JSON 파싱 실패');
 
-  /* ---- Stage 2: Flesh-out (배치 병렬) ---- */
-  const batchSize = 7;
-  const batches = [];
-  for (let i = 0; i < outline.outline.length; i += batchSize) {
-    batches.push(outline.outline.slice(i, i + batchSize));
-  }
-  onProgress({ stage: 'flesh', message: `상세 내용 생성 중… (${batches.length}개 배치)` });
-
-  const fleshOutBatch = async (batch, batchIdx) => {
-    const prompt = window.buildFleshOutPrompt(outline, batch, outline.outline, command, context);
-    try {
-      const raw = await window.gemini.complete(prompt);
-      const parsed = window.parseAiJson(raw);
-      if (parsed && Array.isArray(parsed.slides)) {
-        onProgress({ stage: 'flesh', message: `배치 ${batchIdx + 1}/${batches.length} 완료` });
-        return parsed.slides;
-      }
-    } catch (e) {
-      onProgress({ stage: 'flesh', message: `배치 ${batchIdx + 1} 실패 — 빈 슬라이드로 진행` });
-    }
-    // 폴백: outline 만 가진 빈 슬라이드
-    return batch.map(o => ({ type: o.type, data: { title: o.title, sectionName: o.intent } }));
-  };
-
-  // 배치 직렬 호출 — Gemini 동시성 제한 회피
-  const allSlides = [];
-  for (let bi = 0; bi < batches.length; bi++) {
-    const batchSlides = await fleshOutBatch(batches[bi], bi);
-    allSlides.push(...batchSlides);
-  }
-
-  /* ---- 슬라이드 schema 검증 + 자동 보정 ---- */
-  const rawSlides = allSlides.map(s => ({ id: window.uid(), type: s.type, data: s.data || {} }));
-  const allFixes = [];
-  const slides = rawSlides.map(s => {
-    if (window.validateSlide) {
-      const r = window.validateSlide(s);
-      allFixes.push(...r.fixes);
-      return r.slide;
-    }
-    return s;
-  });
-  if (allFixes.length && window.gddToast) {
-    try { window.gddToast(`AI 응답 ${allFixes.length}개 항목 자동 보정`, 'ok'); } catch {}
-  }
-
-  /* ---- 이미지 생성 (cover/section-divider/ui-design/image-embed) ---- */
-  onProgress({ stage: 'images', message: '참고 이미지 생성 중…' });
-  const imageJobs = [];
-  slides.forEach((s, idx) => {
-    if (!['cover', 'ui-design', 'section-divider', 'image-embed'].includes(s.type)) return;
-    let p = s.data?.imagePrompt;
-    if (!p || !p.trim()) p = synthesizeImagePrompt(s, outline);
-    if (!p) return;
-    slides[idx].data = { ...slides[idx].data, imagePrompt: p };
-    imageJobs.push((async () => {
-      try {
-        const src = await window.gemini.generateImage(p);
-        slides[idx].data = { ...slides[idx].data, imageSrc: src };
-      } catch {}
-    })());
-  });
-  if (imageJobs.length) await Promise.allSettled(imageJobs);
-
-  /* ---- (선택) Self-critique → 약한 슬라이드 재생성 ---- */
-  if (opts.selfCritique) {
-    onProgress({ stage: 'critique', message: 'GDD 자체 비평 중…' });
-    try {
-      const project = { title: outline.title, subtitle: outline.subtitle, slides };
-      const critiqueRaw = await window.gemini.complete(window.buildCritiquePrompt(project));
-      const critique = window.parseAiJson(critiqueRaw);
-      const weakIds = new Set((critique?.weakSlides || []).map(w => w.slideId));
-      if (weakIds.size > 0) {
-        onProgress({ stage: 'critique', message: `${weakIds.size}개 약한 슬라이드 재생성 중…` });
-        const weakOutlines = slides
-          .map((s, i) => ({ s, i }))
-          .filter(({ s }) => weakIds.has(s.id))
-          .map(({ s, i }) => ({ ...outline.outline[i], _idx: i, _id: s.id, _suggestion: critique.weakSlides.find(w => w.slideId === s.id)?.suggestion }));
-        const reFleshPrompt = window.buildFleshOutPrompt(outline, weakOutlines, outline.outline, command + '\n\n# 추가 지시\n약한 슬라이드를 다음 제안에 맞춰 재작성:\n' + weakOutlines.map(o => `- ${o._id}: ${o._suggestion}`).join('\n'), context);
-        const reRaw = await window.gemini.complete(reFleshPrompt);
-        const reparsed = window.parseAiJson(reRaw);
-        if (reparsed && Array.isArray(reparsed.slides)) {
-          reparsed.slides.forEach((ns, j) => {
-            const w = weakOutlines[j];
-            if (!w) return;
-            const validated = window.validateSlide ? window.validateSlide({ id: w._id, type: ns.type || slides[w._idx].type, data: ns.data || {} }) : { slide: { id: w._id, type: ns.type, data: ns.data } };
-            slides[w._idx] = validated.slide;
-          });
-        }
-      }
-    } catch (e) { /* swallow */ }
-  }
-
-  return {
-    id: 'gdd-' + window.uid(),
+  /* ---- Stage 2: placeholder GDD 즉시 생성 ---- */
+  const projectId = 'gdd-' + window.uid();
+  // 각 outline 항목에 미리 slide id 부여 — 배치 결과를 id 로 매칭
+  const placeholderSlides = outline.outline.map(o => ({
+    id: window.uid(),
+    type: o.type,
+    data: {
+      title: o.title || `(${o.type})`,
+      sectionName: o.intent || '',
+      _placeholder: true,
+      _intent: o.intent || '',
+    },
+  }));
+  const projectMeta = {
+    id: projectId,
     title: outline.title || '제목 없음',
     subtitle: outline.subtitle || '',
     team: outline.team || 'TEAM',
@@ -2848,10 +2860,151 @@ async function aiGenerateGddTwoStage(command, existingTitles, attachments, conte
     updatedAt: new Date().toISOString().slice(0, 10),
     command,
     badge: outline.badge || 'AI',
-    slides,
+    slides: placeholderSlides,
     history: [],
     comments: [],
   };
+  if (onChunk) onChunk({ kind: 'init', project: projectMeta });
+
+  /* ---- Stage 3: 순차 Flesh-out (3장 배치) + 자동 분할 ---- */
+  const BATCH_SIZE = 3;
+  const fleshSingle = async (outlineItem) => {
+    // 1장만 요청 — 토큰 부족이 거의 없음
+    const prompt = window.buildFleshOutPrompt(outline, [outlineItem], outline.outline, command, context);
+    const raw = await window.gemini.complete(prompt);
+    const parsed = window.parseAiJson(raw);
+    if (parsed && Array.isArray(parsed.slides) && parsed.slides[0]) return parsed.slides[0];
+    throw new Error('1장 응답 파싱 실패');
+  };
+  const fleshBatch = async (batchItems) => {
+    const prompt = window.buildFleshOutPrompt(outline, batchItems, outline.outline, command, context);
+    const raw = await window.gemini.complete(prompt);
+    const parsed = window.parseAiJson(raw);
+    if (parsed && Array.isArray(parsed.slides)) return parsed.slides;
+    throw new Error('배치 응답 파싱 실패');
+  };
+
+  const totalSlides = placeholderSlides.length;
+  let doneCount = 0;
+  const slidesById = new Map(placeholderSlides.map(s => [s.id, s]));
+
+  for (let i = 0; i < placeholderSlides.length; i += BATCH_SIZE) {
+    const batchSlides = placeholderSlides.slice(i, i + BATCH_SIZE);
+    const batchOutlines = outline.outline.slice(i, i + BATCH_SIZE);
+    onProgress({ stage: 'flesh', message: `슬라이드 ${i + 1}~${Math.min(i + BATCH_SIZE, totalSlides)}/${totalSlides} 생성 중…` });
+
+    // 배치 호출 시도
+    let detailedBatch = null;
+    try {
+      detailedBatch = await fleshBatch(batchOutlines);
+    } catch (e) {
+      // 배치 실패 (토큰 잘림 등) → 1장씩 재시도
+      onProgress({ stage: 'flesh', message: `토큰 한계 — 슬라이드 단위로 분할 재시도 (${i + 1}~${Math.min(i + BATCH_SIZE, totalSlides)})` });
+      detailedBatch = [];
+      for (let j = 0; j < batchOutlines.length; j++) {
+        try {
+          const single = await fleshSingle(batchOutlines[j]);
+          detailedBatch.push(single);
+        } catch (eSingle) {
+          // 1장도 실패 → placeholder 유지 (null 표시)
+          detailedBatch.push(null);
+        }
+      }
+    }
+
+    // 배치 결과를 placeholder 슬라이드에 매칭하여 업데이트
+    const updates = [];
+    for (let j = 0; j < batchSlides.length; j++) {
+      const placeholder = batchSlides[j];
+      const detailed = detailedBatch[j];
+      if (!detailed) continue; // 실패한 슬라이드는 placeholder 유지
+      const merged = {
+        id: placeholder.id,
+        type: detailed.type || placeholder.type,
+        data: { ...(detailed.data || {}), _placeholder: false },
+      };
+      const validated = window.validateSlide ? window.validateSlide(merged) : { slide: merged };
+      const final = validated.slide;
+      slidesById.set(final.id, final);
+      // placeholderSlides 배열도 동기화 (이미지 단계에서 사용)
+      const idx = placeholderSlides.findIndex(s => s.id === final.id);
+      if (idx >= 0) placeholderSlides[idx] = final;
+      updates.push(final);
+      doneCount++;
+    }
+
+    if (onChunk && updates.length > 0) {
+      onChunk({ kind: 'batch', updates, progress: { done: doneCount, total: totalSlides } });
+    }
+  }
+
+  /* ---- Stage 4: 이미지 생성 (병렬 + 완료 즉시 emit) ---- */
+  const imageTargets = [];
+  placeholderSlides.forEach(s => {
+    if (!['cover', 'ui-design', 'section-divider', 'image-embed'].includes(s.type)) return;
+    let p = s.data?.imagePrompt;
+    if (!p || !p.trim()) p = synthesizeImagePrompt(s, outline);
+    if (!p) return;
+    imageTargets.push({ id: s.id, prompt: p, syntheticPrompt: !s.data?.imagePrompt });
+  });
+
+  if (imageTargets.length > 0) {
+    onProgress({ stage: 'images', message: `이미지 ${imageTargets.length}장 생성 중…` });
+    let imgDone = 0;
+    await Promise.all(imageTargets.map(async (t) => {
+      try {
+        const src = await window.gemini.generateImage(t.prompt);
+        // placeholderSlides 동기화
+        const idx = placeholderSlides.findIndex(s => s.id === t.id);
+        if (idx >= 0) {
+          const cur = placeholderSlides[idx];
+          const next = { ...cur, data: { ...cur.data, imageSrc: src, ...(t.syntheticPrompt ? { imagePrompt: t.prompt } : {}) } };
+          placeholderSlides[idx] = next;
+          slidesById.set(t.id, next);
+          if (onChunk) onChunk({ kind: 'image', slideId: t.id, imageSrc: src, imagePrompt: t.syntheticPrompt ? t.prompt : undefined });
+        }
+        imgDone++;
+        onProgress({ stage: 'images', message: `이미지 ${imgDone}/${imageTargets.length} 완료` });
+      } catch (e) { /* swallow per-image */ }
+    }));
+  }
+
+  /* ---- Stage 5: (선택) Self-critique → 약한 슬라이드 재생성 ---- */
+  if (opts.selfCritique) {
+    onProgress({ stage: 'critique', message: 'GDD 자체 비평 중…' });
+    try {
+      const previewProject = { title: outline.title, subtitle: outline.subtitle, slides: placeholderSlides };
+      const critiqueRaw = await window.gemini.complete(window.buildCritiquePrompt(previewProject));
+      const critique = window.parseAiJson(critiqueRaw);
+      const weakIds = new Set((critique?.weakSlides || []).map(w => w.slideId));
+      if (weakIds.size > 0) {
+        onProgress({ stage: 'critique', message: `${weakIds.size}개 약한 슬라이드 재생성 중…` });
+        for (let i = 0; i < placeholderSlides.length; i++) {
+          const s = placeholderSlides[i];
+          if (!weakIds.has(s.id)) continue;
+          try {
+            const outItem = outline.outline[i];
+            const suggestion = critique.weakSlides.find(w => w.slideId === s.id)?.suggestion;
+            const augOutline = { ...outItem, _suggestion: suggestion };
+            const reFleshPrompt = window.buildFleshOutPrompt(outline, [augOutline], outline.outline, command + (suggestion ? `\n\n# 약점 보강 지시\n${suggestion}` : ''), context);
+            const reRaw = await window.gemini.complete(reFleshPrompt);
+            const reparsed = window.parseAiJson(reRaw);
+            if (reparsed?.slides?.[0]) {
+              const merged = { id: s.id, type: reparsed.slides[0].type || s.type, data: { ...(reparsed.slides[0].data || {}), _placeholder: false } };
+              const validated = window.validateSlide ? window.validateSlide(merged) : { slide: merged };
+              placeholderSlides[i] = validated.slide;
+              slidesById.set(s.id, validated.slide);
+              if (onChunk) onChunk({ kind: 'batch', updates: [validated.slide], progress: { done: doneCount, total: totalSlides, critique: true } });
+            }
+          } catch (eW) { /* swallow per-slide */ }
+        }
+      }
+    } catch (e) { /* swallow */ }
+  }
+
+  if (onChunk) onChunk({ kind: 'done', project: { ...projectMeta, slides: placeholderSlides } });
+
+  return { ...projectMeta, slides: placeholderSlides };
 }
 
 /* === 이미지 프롬프트 폴백 합성 ===

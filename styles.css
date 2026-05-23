@@ -2012,6 +2012,53 @@ input, textarea, select { font-family: inherit; color: inherit; }
   stroke: white; stroke-width: 4; stroke-linejoin: round;
 }
 
+/* ==== 순차 스트리밍 생성 — placeholder 슬라이드 시각화 ==== */
+/* slide.data._placeholder === true 인 동안 빛나는 오버레이 + 진행 표시 */
+.slide-frame .slide > *:not(.footer):not(.top-tag) {
+  /* 기본 — placeholder 시 자식 숨김 아님 (편집 가능 유지) */
+}
+.stage-veil + .slide-frame .slide,
+.slide-frame .slide.is-placeholder {
+  position: relative;
+}
+.slide-frame .slide.is-placeholder::after {
+  content: '✦ 생성 대기 중…';
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(135deg, rgba(76, 194, 255, 0.05) 0 24px, rgba(76, 194, 255, 0.08) 24px 48px),
+    rgba(255, 255, 255, 0.6);
+  display: grid;
+  place-items: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 18px;
+  color: var(--accent, #4cc2ff);
+  letter-spacing: 0.08em;
+  pointer-events: none;
+  z-index: 5;
+  animation: placeholder-shimmer 1.8s ease-in-out infinite;
+}
+@keyframes placeholder-shimmer {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 0.55; }
+}
+/* 썸네일에서도 placeholder 표시 */
+.thumb.is-placeholder .thumb-canvas {
+  background: repeating-linear-gradient(45deg, #eef3f7 0 8px, #f8fafc 8px 16px);
+  position: relative;
+}
+.thumb.is-placeholder .thumb-canvas::after {
+  content: '⋯';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--accent, #4cc2ff);
+  font-size: 24px;
+  font-weight: 800;
+  animation: placeholder-shimmer 1.8s ease-in-out infinite;
+}
+
 /* ==== Inline Markdown 렌더링 ==== */
 .md-rendered {
   white-space: pre-wrap;

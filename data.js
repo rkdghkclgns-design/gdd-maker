@@ -809,33 +809,56 @@ ${contextBlock}
     { "type": "cover", "data": { "product": "...", "title": "...", "subtitle": "...", "team": "...", "author": "작성자", "date": "YY.MM.DD" } },
     { "type": "history", "data": { "title": "문서 이력", "rows": [{"ver":"Ver00","date":"...","page":"-","content":"최초 작성","author":"작성자"}] } },
     { "type": "toc", "data": { "title": "CONTENTS", "entries": [{"num":"01","name":"개요","sub":"섹션 요약"}] } },
-    { "type": "section-divider", "data": { "num": "01", "title": "섹션 제목", "subtitle": "섹션의 핵심 메시지 1-2문장" } },
+    { "type": "section-divider", "data": { "num": "01", "title": "섹션 제목", "subtitle": "섹션의 핵심 메시지 1-2문장", "imagePrompt": "<영문, 섹션을 시각화하는 컨셉 아트 한 컷. 분위기·소재·구도 포함. 빈 문자열도 가능하나 가급적 채울 것>" } },
+    { "type": "image-embed", "data": { "section":"03", "sectionName":"참고 이미지", "title":"이미지 제목", "caption":"이 이미지가 보여주는 핵심 요소·참조 의도 한 줄", "imagePrompt":"<영문, 핵심 시각 요소를 묘사하는 참고 이미지 프롬프트. 카드/캐릭터/장면/UI 무드보드 등>" } },
     { "type": "intent", "data": { "section":"01", "sectionName":"개요", "title":"기획 의도", "tagline":"기획 전체를 관통하는 한 줄. 측정 가능하거나 검증 가능한 형태로", "cards":[{"idx":"01","head":"카드 제목(8자 내)","desc":"의도 + 구체적 결과 지표 1개 (예: 신규 유저 D1 리텐션 +5%p)"}] } },
     { "type": "terms", "data": { "section":"01", "sectionName":"개요", "title":"용어 정의", "rows":[{"term":"용어","def":"역할/제약/단위까지 포함한 정의","note":"전이 조건/예외/관련 시스템"}] } },
-    { "type": "rules", "data": { "section":"02", "sectionName":"시스템 상세", "title":"규칙 제목", "blocks":[{"head":"블록 제목","items":["조건 + 동작 + 우선순위 + 엣지케이스"]}] } },
+    { "type": "rules", "data": { "section":"02", "sectionName":"시스템 상세", "title":"규칙 제목", "blocks":[{"head":"블록 제목","items":["정적 규칙·상수·밸런싱 값. 절차적 로직은 여기 두지 말고 flow로 빼라"]}] } },
     { "type": "data-table", "data": { "section":"04", "sectionName":"데이터 테이블", "title":"테이블명 (예: car_master)", "columns":[{"key":"field","label":"Field","width":"22%"},{"key":"type","label":"Type","width":"14%"},{"key":"req","label":"Req.","width":"10%"},{"key":"desc","label":"설명/제약/단위/예시"}], "rows":[{"field":"실제_필드명_1","type":"uuid","req":"Y","desc":"실제 설명 + 제약 + 예시값. rows는 반드시 6개 이상 채워라"},{"field":"실제_필드명_2","type":"int","req":"Y","desc":"..."}] } },
     { "type": "flow", "data": { "section":"02", "sectionName":"플로우 차트", "title":"...", "nodes":[{"kind":"start|process|decision|end","label":"단계 라벨 + 조건/시간 등 핵심 메타"}] } },
     { "type": "diagram", "data": { "section":"02", "sectionName":"시스템 구조", "title":"...", "nodes":[{"id":"n1","label":"...","sub":"영문 약어/Tech 라벨","kind":"start|process|decision|end|service|data","col":0,"row":0}], "edges":[{"from":"n1","to":"n2","label":"호출/이벤트 이름"}] } },
+    { "type": "sequence-diagram", "data": { "section":"02", "sectionName":"시퀀스 다이어그램", "title":"...", "participants":[{"id":"p1","name":"클라이언트","kind":"actor|system|service|data"}], "messages":[{"from":"p1","to":"p2","label":"호출/이벤트 시그니처","kind":"sync|async|return"}] } },
+    { "type": "class-diagram", "data": { "section":"02", "sectionName":"클래스 다이어그램", "title":"...", "classes":[{"id":"c1","name":"Class","stereotype":"<<entity>>|<<interface>>|","attrs":["+field: Type"],"methods":["+method(): Type"],"col":0,"row":0}], "relations":[{"from":"c1","to":"c2","kind":"inherit|implement|compose|aggregate|assoc|depend","label":"1..*"}] } },
     { "type": "ui-design", "data": { "section":"03", "sectionName":"UI/UX", "title":"화면명 + 화면 ID", "imagePrompt":"<영문, UI 목업 이미지 프롬프트. 게임 화면 레이아웃을 구체적으로 묘사>", "callouts":[{"name":"영역명","desc":"역할 + 상호작용 + 상태 변화 트리거","x":50,"y":50}] } },
     { "type": "resources", "data": { "section":"05", "sectionName":"필요 리소스", "title":"필요 리소스 목록", "categories":[{"name":"카테고리","count":"개수 (예: x12)","items":["에셋명 + 사양 (해상도/포맷/길이 등)"]}] } }
   ]
 }
 
 # 분량 및 구성 (시니어 표준)
-- **슬라이드 총 12~18장**. cover, history, toc, 개요 섹션 divider+intent+terms, 시스템 상세 섹션 divider+rules+flow/diagram, UI 섹션 divider+ui-design, 데이터 섹션 divider+data-table, 리소스 섹션 divider+resources 를 표준으로 두고 주제에 따라 가감.
-- 섹션마다 section-divider로 구분하여 문서 흐름이 끊기지 않게 한다.
-- intent.cards = 4개, terms.rows = 5~8개, rules.blocks = 3~5개, data-table.rows = 6~12개, flow.nodes = 6~10개, diagram.nodes = 5~9개, resources.categories = 3~4개.
+- **슬라이드 총 14~20장**. cover, history, toc, 개요 섹션 divider+intent+terms, 시스템 상세 섹션 divider+flow/sequence-diagram/diagram(+rules 보조), UI 섹션 divider+ui-design, 데이터 섹션 divider+data-table, 리소스 섹션 divider+resources 를 표준으로 두고 주제에 따라 가감.
+- 섹션마다 section-divider로 구분하여 문서 흐름이 끊기지 않게 한다. **section-divider 의 imagePrompt 는 가급적 모두 채워서 섹션마다 컨셉 아트가 들어가도록 한다 (해석을 도울 시각적 앵커).**
+- intent.cards = 4개, terms.rows = 5~8개, rules.blocks = 2~3개, data-table.rows = 6~12개, flow.nodes = 6~10개, diagram.nodes = 5~9개, sequence-diagram.messages = 6~12개, class-diagram.classes = 4~7개, resources.categories = 3~4개.
+- **image-embed 슬라이드 최소 2~3장 포함**: 카드/캐릭터/장면/아이콘/무드보드 등 GDD 해석에 도움이 되는 시각 자료. 텍스트 중심 슬라이드 사이에 끼워서 가독성과 이해도를 높인다.
+
+# 슬라이드 선택 규칙 (가장 중요)
+**프로세스/로직/조건 분기는 텍스트가 아니라 다이어그램으로 그려야 한다. rules 슬라이드를 텍스트 로직 덤프로 사용하지 말 것.** 다음 매핑을 따른다:
+
+| 표현 대상 | 사용할 슬라이드 타입 |
+|---|---|
+| 절차적 단계·조건 분기·상태 전이 (예: 카드 강화 흐름, 매칭 → 로딩 → 게임 → 결과) | **flow** (분기는 decision 노드) |
+| 시스템 간 시간 순서가 있는 호출·응답 (예: 클라/서버/DB 사이의 요청-응답 흐름) | **sequence-diagram** |
+| 컴포넌트·서비스·데이터 저장소 사이의 정적 의존 관계 | **diagram** |
+| 객체·엔티티 구조와 그 관계 (상속/컴포지션) | **class-diagram** |
+| 정적 규칙·상수·밸런싱 값·정책 (예: "강화 성공률 100%", "최소 100 파편") | **rules** (정적 항목만, 분기 로직 금지) |
+| 키 비주얼·카드 일러스트·캐릭터·장면·무드보드 | **image-embed** (imagePrompt 채우기) |
+| 화면 레이아웃 + 영역 콜아웃 | **ui-design** (imagePrompt 채우기) |
+
+⚠ **금지 패턴**: rules.blocks.items 안에 "[조건] → [동작] → [엣지케이스]" 같은 절차적 분기를 텍스트로 길게 나열하지 말 것. 이런 절차는 **반드시 flow 또는 sequence-diagram 슬라이드로 분리**한다. rules는 그 절차에 사용되는 *정적 상수/임계치*만 담는다 (예: "강화 성공률 100%", "재화 카드 1장 = 강화 1회").
 
 # 슬라이드별 시니어 품질 기준
 - **intent.cards**: 각 카드의 desc 끝에 측정 가능한 성공 지표 1개 첨부 (예: "신규 유저 첫 매치 완주율 70% 이상", "평균 세션 길이 8분"). 추상어("재미있게", "직관적으로") 금지.
 - **terms.rows**: term은 영문 약어 가능, def는 역할/단위/제약을 30~60자, note는 상태 전이 조건이나 다른 용어와의 관계를 명시.
-- **rules.blocks**: 각 item은 "[조건] → [동작] (예외: [엣지케이스], 우선순위: N)" 형태로 구체화. 단순 설명형 금지.
+- **rules.blocks**: items 는 정적 규칙/상수/임계치만 (예: "최대 레벨: 10", "강화 비용: 파편 ×(현재레벨×100)+카드 1장"). 절차적 로직은 flow 슬라이드로 보낼 것. blocks 는 2~3개로 제한하고, 동일 시스템의 절차는 별도의 flow/sequence-diagram 슬라이드로 표현한다.
 - **data-table**: 실제 동작 가능한 스키마. field 영문 snake_case, type 명확(uuid/int/float/enum/string/datetime/json), req에 Y/N, desc에 단위·범위·예시값·외래키 표시 (예: "0~9999, FK→user.user_id"). **⚠ 절대 rows를 비우지 말 것 — columns만 정의하고 rows를 빈 배열로 두는 실수 금지. 최소 6개 이상의 실제 예시 row를 채워서 출력하라.** 컬럼 키와 row 키는 정확히 일치해야 한다 (예: columns에 key:"field"가 있으면 rows의 각 객체에 "field" 키가 반드시 있어야 함).
-- **flow.nodes**: decision 노드는 분기 조건을 label에 직접 포함 ("HP ≤ 0 ?", "타이머 = 300s ?"). 정상 흐름 외에 실패/취소 경로도 1개 이상.
+- **flow.nodes**: decision 노드는 분기 조건을 label에 직접 포함 ("HP ≤ 0 ?", "타이머 = 300s ?", "재화 카드 보유?"). 정상 흐름 외에 실패/취소/네트워크 단절 경로도 1개 이상.
 - **diagram**: 서버/클라/DB/외부 서비스의 역할 분리를 명확히. edges 라벨은 실제 호출명이나 이벤트명에 가깝게 ("session.create", "match.end").
+- **sequence-diagram**: 참여자 3~6명. 호출은 sync/async/return 구분. 최소 1개의 return 메시지 포함.
+- **class-diagram**: 가시성 prefix(+/-/#) 명시, 시그니처에 타입 포함. 관계는 inherit/implement/compose/aggregate/assoc/depend 중 선택.
 - **ui-design.callouts**: 각 callout이 트리거 상호작용("탭 시", "롱프레스 시")과 그 결과 상태 변화를 함께 기술. 4~6개 권장. **x, y는 0~100 정수 (이미지 안에서의 퍼센트 위치)**. imagePrompt가 묘사하는 화면 레이아웃과 일치하는 위치를 골라야 한다 (예: 좌상단 미니맵=10,15 / 중앙 크로스헤어=50,50 / 우상단 자원=85,12 / 하단 액션바=50,88). callout 순서는 사용자가 시선을 옮길 자연스러운 순서로.
+- **section-divider.imagePrompt**: 각 섹션의 분위기를 한 컷으로 압축한 영문 컨셉 아트. 배경에 깔리므로 어두운 톤·구도가 단순하면 좋다. 비어 있어도 되지만 가급적 채워라.
+- **image-embed**: 텍스트로만 설명하면 모호한 시각 요소(카드 디자인 무드, 캐릭터 룩, 게임 장면, 아이콘 세트)에 한해 사용. imagePrompt 는 카메라 앵글·조명·재질·스타일 키워드 포함. caption 은 한국어로, "왜 이 이미지를 참조 자료로 두었는지"를 한 줄로 적는다.
 - **resources**: 단순 이름 나열 금지. 사양/해상도/포맷/사이즈 정보 포함 (예: "차량 본체 메시 — 5000~8000 tris, FBX, 2K Albedo+Normal").
-- **coverImagePrompt / ui-design.imagePrompt**: 반드시 영문, 구체적 시각 묘사. 카메라 앵글·조명·재질·분위기 포함.
+- **모든 imagePrompt**: 반드시 영문, 구체적 시각 묘사. 카메라 앵글·조명·재질·분위기 포함. 한국어 임시 텍스트 금지.
 
 # 운영 관점 반영
 - 네트워크 단절·재접속·서버 장애 시 동작이 관련된 시스템이면 rules에 1블록 이상 할당.
@@ -955,6 +978,91 @@ function trimToLastClosing(s) {
 }
 
 /* Expose */
+/* ---- AI edit prompt builder ----
+ * 현재 GDD를 수정하기 위한 명령을 받아 operations 배열을 반환하도록 유도. */
+function buildAiEditPrompt(currentGdd, command, attachments) {
+  const slides = currentGdd?.slides || [];
+  const overview = slides.map((s, i) => {
+    const d = s.data || {};
+    const title = d.title || d.head || d.product || '';
+    return `[${i + 1}] id=${s.id} type=${s.type} "${title}"`;
+  }).join('\n');
+
+  // 각 슬라이드 data를 800자 이내로 요약 (긴 표는 잘려도 작업 가능)
+  const details = slides.map((s, i) => {
+    let json;
+    try { json = JSON.stringify(s.data || {}, null, 2); } catch { json = '{}'; }
+    if (json.length > 800) json = json.slice(0, 800) + '\n  ... (이하 생략)';
+    return `── Slide ${i + 1} ── id=${s.id} type=${s.type}\n${json}`;
+  }).join('\n\n');
+
+  const imageNote = (attachments || []).filter(a => a.kind === 'image').length > 0
+    ? `\n참고: ${(attachments || []).filter(a => a.kind === 'image').length}개의 참고 이미지가 함께 제공됩니다. 이미지 분석 결과를 새/수정 슬라이드에 반영하세요.\n`
+    : '';
+  const textBlocks = (attachments || []).filter(a => a.kind === 'text').map((a, i) => `\n[첨부 텍스트 ${i + 1}: ${a.name}]\n${a.value.slice(0, 1500)}`).join('\n');
+
+  return `${SENIOR_PERSONA}
+
+# 임무
+이미 작성된 게임 기획서가 있다. 사용자의 명령을 적용하여 **이 기획서를 수정/확장하는 operations 만 반환**한다.
+**새 기획서를 생성하지 말 것. 새 GDD JSON을 반환하지 말 것.** operations 배열만 출력한다.
+
+# 현재 기획서 메타
+title: "${currentGdd?.title || ''}"
+subtitle: "${currentGdd?.subtitle || ''}"
+team: "${currentGdd?.team || ''}"
+badge: "${currentGdd?.badge || ''}"
+총 슬라이드: ${slides.length}장
+
+# 슬라이드 목록
+${overview || '(없음)'}
+
+# 슬라이드 상세 (각 슬라이드 data, 800자 컷)
+${details || '(없음)'}
+
+# 사용자 명령
+"${command}"
+${textBlocks}
+${imageNote}
+
+# 출력 형식 (JSON만, 코드블록 펜스 금지)
+{
+  "summary": "한국어 한 줄로 변경 요약 (history에 기록됨)",
+  "operations": [
+    { "op": "add",     "after": "end|start|<slideId>|<1-based-index>", "slide": { "type": "<타입>", "data": { ... 전체 schema 채움 ... } } },
+    { "op": "replace", "id": "<slideId>", "slide": { "type": "<타입>", "data": { ... } } },
+    { "op": "patch",   "id": "<slideId>", "fields": { ... slide.data 의 일부 필드만 merge ... } },
+    { "op": "delete",  "id": "<slideId>" },
+    { "op": "move",    "id": "<slideId>", "to": "<1-based-index>" },
+    { "op": "meta",    "fields": { "title": "...", "subtitle": "...", "team": "...", "badge": "..." } }
+  ]
+}
+
+# 동작 매핑 가이드
+- "<X> 슬라이드 추가" / "<Y> 같은 화면 설계 추가" → op: "add"
+- "<X> 슬라이드를 <Y>로 바꿔" / 큰 폭의 재작성 → op: "replace"
+- "<X> 슬라이드의 <필드> 만 <Y>로" / 표에 row 추가 / cards 늘리기 → op: "patch" (data 머지)
+- "<X> 슬라이드 삭제 / 제거" → op: "delete"
+- "<X>를 N번째로 옮겨" → op: "move"
+- "제목/부제/팀명 바꿔" → op: "meta"
+- 슬라이드 식별자는 위 목록의 id 우선 사용. 명령에 명시가 없으면 가장 의도에 부합하는 슬라이드를 골라 id를 지정.
+
+# 사용 가능한 슬라이드 타입
+cover, history, toc, section-divider, intent, terms, rules, data-table, flow, diagram, sequence-diagram, class-diagram, ui-design, image-embed, resources
+
+# 품질 기준 (수정에도 동일하게 적용)
+- 절차/조건 분기 로직은 rules 가 아닌 **flow / sequence-diagram** 으로 작성.
+- rules.blocks.items 는 정적 상수·임계치만 (예: "최대 레벨: 10").
+- data-table 추가/수정 시 columns 와 rows 키를 정확히 매칭. rows 최소 4개.
+- 새로 추가되는 cover / section-divider / ui-design / image-embed 슬라이드는 가급적 imagePrompt 영문으로 채워서 nano-banana 가 참고 이미지를 생성할 수 있게 한다.
+- 추상어 금지, 측정 가능 지표·예시 수치 포함, 빈 배열 금지.
+
+# 출력 규칙
+- JSON 외 텍스트 절대 금지.
+- operations 가 빈 배열이면 안 됨 — 명령이 모호하면 가장 합리적인 추측으로 최소 1개 operation 을 반환.
+- 모든 string 값은 한국어 (영문 식별자/imagePrompt/snake_case 필드명 제외).`;
+}
+
 Object.assign(window, {
   uid, now,
   SENIOR_PERSONA,
@@ -965,6 +1073,7 @@ Object.assign(window, {
   CHIP_SUGGESTIONS,
   generateDemoGdd,
   buildAiPrompt,
+  buildAiEditPrompt,
   parseAiJson,
   summarizeGddForContext,
   renderContextBlock,

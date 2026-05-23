@@ -392,7 +392,7 @@ async function aiGenerateFlow(prompt) {
     const parsed = window.parseAiJson(raw);
     if (parsed.nodes && Array.isArray(parsed.nodes)) return parsed;
   } catch (e) {
-    console.error('aiGenerateFlow', e);
+    if (window.gddToast) try { window.gddToast('AI 플로우 생성 실패: ' + (e?.message || e), 'err'); } catch {}
   }
   return null;
 }
@@ -430,7 +430,7 @@ async function aiGenerateDiagram(prompt) {
     const parsed = window.parseAiJson(raw);
     if (parsed.nodes && parsed.edges) return parsed;
   } catch (e) {
-    console.error('aiGenerateDiagram', e);
+    if (window.gddToast) try { window.gddToast('AI 다이어그램 생성 실패: ' + (e?.message || e), 'err'); } catch {}
   }
   return null;
 }
@@ -443,7 +443,554 @@ function stripJson(raw) {
   return raw;
 }
 
+/* ====== 12. Sequence diagram (시퀀스 다이어그램) ====== */
+function SequenceDiagramSlide({ data, patch, page, totalPages }) {
+  const wrapRef = React.useRef(null);
+  const [size, setSize] = React.useState({ w: 760, h: 480 });
+  const [aiOpen, setAiOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!wrapRef.current) return;
+    const ro = new ResizeObserver(() => {
+      if (wrapRef.current) setSize({ w: wrapRef.current.clientWidth, h: wrapRef.current.clientHeight });
+    });
+    ro.observe(wrapRef.current);
+    return () => ro.disconnect();
+  }, []);
+
+  const participants = data.participants || [];
+  const messages = data.messages || [];
+
+  const TOP_PAD = 14;
+  const PART_H = 44;
+  const MSG_GAP = 36;
+  const PART_W = 124;
+  const sideMargin = 28;
+  const lifelineCount = Math.max(1, participants.length);
+  const innerW = Math.max(220, size.w - sideMargin * 2);
+  const colWidth = lifelineCount > 1 ? innerW / (lifelineCount - 1) : 0;
+  const partXs = participants.map((_, i) => {
+    if (lifelineCount === 1) return size.w / 2;
+    return sideMargin + i * colWidth;
+  });
+  const partById = {};
+  participants.forEach((p, i) => { partById[p.id] = { x: partXs[i], idx: i, ...p }; });
+  const contentH = Math.max(size.h, TOP_PAD + PART_H + 16 + MSG_GAP * (messages.length + 1));
+
+  const updatePart = (i, k, v) => {
+    const ps = [...participants];
+    ps[i] = { ...ps[i], [k]: v };
+    patch({ participants: ps });
+  };
+  const updateMsg = (i, k, v) => {
+    const ms = [...messages];
+    ms[i] = { ...ms[i], [k]: v };
+    patch({ messages: ms });
+  };
+  const removePart = (id) => {
+    if (participants.length <= 1) return;
+    patch({
+      participants: participants.filter(p => p.id !== id),
+      messages: messages.filter(m => m.from !== id && m.to !== id),
+    });
+  };
+  const removeMsg = (i) => {
+    patch({ messages: messages.filter((_, idx) => idx !== i) });
+  };
+  const addPart = () => {
+    const id = 'p' + uid().slice(0, 4);
+    patch({ participants: [...participants, { id, name: '참여자', kind: 'system' }] });
+  };
+  const addMsg = () => {
+    if (!participants.length) return;
+    const from = participants[0].id;
+    const to = (participants[1] || participants[0]).id;
+    patch({ messages: [...messages, { from, to, label: '메시지', kind: 'sync' }] });
+  };
+  const cycleMsgKind = (i) => {
+    const order = ['sync', 'async', 'return'];
+    const cur = messages[i]?.kind || 'sync';
+    updateMsg(i, 'kind', order[(order.indexOf(cur) + 1) % order.length]);
+  };
+  const cyclePartKind = (i) => {
+    const order = ['actor', 'system', 'service', 'data'];
+    const cur = participants[i]?.kind || 'system';
+    updatePart(i, 'kind', order[(order.indexOf(cur) + 1) % order.length]);
+  };
+  const movePart = (i, delta) => {
+    const j = i + delta;
+    if (j < 0 || j >= participants.length) return;
+    const ps = [...participants];
+    [ps[i], ps[j]] = [ps[j], ps[i]];
+    patch({ participants: ps });
+  };
+  const moveMsg = (i, delta) => {
+    const j = i + delta;
+    if (j < 0 || j >= messages.length) return;
+    const ms = [...messages];
+    [ms[i], ms[j]] = [ms[j], ms[i]];
+    patch({ messages: ms });
+  };
+
+  const runAi = async (prompt) => {
+    const result = await aiGenerateSequence(prompt);
+    if (result) patch(result);
+    setAiOpen(false);
+  };
+
+  return (
+    <div className="slide">
+      <TopTag section={data.section} sectionName={data.sectionName} />
+      <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
+
+      <div className="flow-edit-bar">
+        <button className="mini-btn" onClick={addPart}>+ 참여자</button>
+        <button className="mini-btn" onClick={addMsg} disabled={!participants.length}>+ 메시지</button>
+        <button className="mini-btn ai" onClick={() => setAiOpen(true)}>✦ AI로 그리기</button>
+      </div>
+
+      <div className="seq-layout">
+        <div className="seq-canvas" ref={wrapRef}>
+          <svg className="seq-svg" viewBox={`0 0 ${size.w} ${contentH}`}
+               width={size.w} height={contentH} preserveAspectRatio="xMidYMin meet">
+            <defs>
+              <marker id="seq-arrow-fill" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#303a45" />
+              </marker>
+              <marker id="seq-arrow-open" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                <path d="M 0 1 L 10 5 L 0 9" fill="none" stroke="#303a45" strokeWidth="1.5" strokeLinejoin="round" />
+              </marker>
+            </defs>
+            {participants.map((p, i) => (
+              <line key={'ll' + p.id}
+                    x1={partXs[i]} y1={TOP_PAD + PART_H}
+                    x2={partXs[i]} y2={contentH - 12}
+                    stroke="#a3afbb" strokeDasharray="4 5" strokeWidth="1.2" />
+            ))}
+            {messages.map((m, i) => {
+              const a = partById[m.from], b = partById[m.to];
+              if (!a || !b) return null;
+              const y = TOP_PAD + PART_H + 16 + MSG_GAP * i + MSG_GAP / 2;
+              const dashed = m.kind === 'async' || m.kind === 'return';
+              const markerEnd = m.kind === 'return' ? 'url(#seq-arrow-open)' : 'url(#seq-arrow-fill)';
+              if (a.x === b.x) {
+                const off = 32;
+                const d = `M ${a.x + 6} ${y - 6} L ${a.x + off} ${y - 6} L ${a.x + off} ${y + 14} L ${a.x + 8} ${y + 14}`;
+                return (
+                  <g key={'m' + i}>
+                    <path d={d} stroke="#303a45" strokeWidth="1.6" fill="none"
+                          markerEnd={markerEnd} strokeDasharray={dashed ? '5 4' : undefined} />
+                    <text x={a.x + off + 8} y={y + 4} fontSize="11"
+                          fontFamily="JetBrains Mono, monospace" fill="#303a45" fontWeight="600">
+                      {m.label || ''}
+                    </text>
+                  </g>
+                );
+              }
+              const labelX = (a.x + b.x) / 2;
+              return (
+                <g key={'m' + i}>
+                  <line x1={a.x} y1={y} x2={b.x} y2={y} stroke="#303a45" strokeWidth="1.6"
+                        markerEnd={markerEnd} strokeDasharray={dashed ? '5 4' : undefined} />
+                  <text x={labelX} y={y - 6} fontSize="11"
+                        fontFamily="JetBrains Mono, monospace" fill="#303a45"
+                        textAnchor="middle" fontWeight="600">
+                    {m.label || ''}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+          {participants.map((p, i) => (
+            <div key={'pt' + p.id}
+                 className={'seq-participant ' + (p.kind || 'system')}
+                 style={{ left: partXs[i] - PART_W / 2, top: TOP_PAD, width: PART_W, height: PART_H }}>
+              <Editable value={p.name} onChange={(v) => updatePart(i, 'name', v)} />
+              <div className="seq-participant-controls">
+                <button onClick={() => cyclePartKind(i)} title="유형">⇄</button>
+                <button onClick={() => movePart(i, -1)} disabled={i === 0} title="왼쪽">◀</button>
+                <button onClick={() => movePart(i, 1)} disabled={i === participants.length - 1} title="오른쪽">▶</button>
+                <button onClick={() => removePart(p.id)} className="del" title="삭제">✕</button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="seq-editor">
+          <div className="seq-editor-head">메시지 편집</div>
+          <div className="seq-editor-list">
+            {messages.map((m, i) => (
+              <div key={'me' + i} className="seq-msg-row">
+                <span className="seq-msg-idx">{i + 1}</span>
+                <select value={m.from || ''} onChange={(e) => updateMsg(i, 'from', e.target.value)}>
+                  {participants.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                <span style={{ color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>→</span>
+                <select value={m.to || ''} onChange={(e) => updateMsg(i, 'to', e.target.value)}>
+                  {participants.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                <input type="text" value={m.label || ''} placeholder="메시지"
+                       onChange={(e) => updateMsg(i, 'label', e.target.value)}
+                       className="seq-msg-label" />
+                <button onClick={() => cycleMsgKind(i)} title={m.kind || 'sync'}>
+                  {m.kind === 'async' ? '⇢' : m.kind === 'return' ? '↩' : '→'}
+                </button>
+                <button onClick={() => moveMsg(i, -1)} disabled={i === 0} title="위로">↑</button>
+                <button onClick={() => moveMsg(i, 1)} disabled={i === messages.length - 1} title="아래로">↓</button>
+                <button onClick={() => removeMsg(i)} className="del" title="삭제">✕</button>
+              </div>
+            ))}
+            {!messages.length && <div className="seq-empty">아직 메시지가 없습니다. "+ 메시지"로 추가하세요.</div>}
+          </div>
+        </div>
+      </div>
+
+      {aiOpen && <AiDrawModal onClose={() => setAiOpen(false)} onRun={runAi}
+        placeholder="예: 로그인 시퀀스. 클라이언트 → 게이트웨이 → 인증서버 → DB. JWT 발급 후 응답 흐름." />}
+
+      <SlideFooter section={data.section} sectionName={data.sectionName} page={page} totalPages={totalPages} />
+    </div>
+  );
+}
+
+/* ====== 13. Class diagram (클래스 다이어그램) ====== */
+function computeClassLayout(classes, viewW, viewH, padX = 18, padY = 10) {
+  if (!classes || !classes.length) return [];
+  const cols = Math.max(2, Math.min(4, Math.max(...classes.map(n => (n.col ?? 0))) + 1));
+  const rows = Math.max(1, Math.max(...classes.map(n => (n.row ?? 0))) + 1);
+  const w = (viewW - padX * 2 - (cols - 1) * 28) / cols;
+  const h = Math.max(120, Math.min(180, (viewH - padY * 2 - (rows - 1) * 24) / rows));
+  const ySpace = rows > 1 ? (viewH - padY * 2 - h) / (rows - 1) : 0;
+  return classes.map(c => {
+    const col = Math.min(cols - 1, Math.max(0, c.col ?? 0));
+    const row = Math.min(rows - 1, Math.max(0, c.row ?? 0));
+    return {
+      ...c,
+      _x: padX + col * (w + 28),
+      _y: padY + row * ySpace,
+      _w: w,
+      _h: h,
+    };
+  });
+}
+
+function ClassDiagramSlide({ data, patch, page, totalPages }) {
+  const wrapRef = React.useRef(null);
+  const [size, setSize] = React.useState({ w: 760, h: 480 });
+  const [aiOpen, setAiOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!wrapRef.current) return;
+    const ro = new ResizeObserver(() => {
+      if (wrapRef.current) setSize({ w: wrapRef.current.clientWidth, h: wrapRef.current.clientHeight });
+    });
+    ro.observe(wrapRef.current);
+    return () => ro.disconnect();
+  }, []);
+
+  const classes = data.classes || [];
+  const relations = data.relations || [];
+  const layout = React.useMemo(() => computeClassLayout(classes, size.w, size.h), [classes, size]);
+  const byId = {};
+  layout.forEach(c => { byId[c.id] = c; });
+
+  const updateClass = (i, k, v) => {
+    const cs = [...classes];
+    cs[i] = { ...cs[i], [k]: v };
+    patch({ classes: cs });
+  };
+  const updateAttr = (ci, ai, v) => {
+    const cs = [...classes];
+    const attrs = [...(cs[ci].attrs || [])];
+    attrs[ai] = v;
+    cs[ci] = { ...cs[ci], attrs };
+    patch({ classes: cs });
+  };
+  const updateMethod = (ci, mi, v) => {
+    const cs = [...classes];
+    const methods = [...(cs[ci].methods || [])];
+    methods[mi] = v;
+    cs[ci] = { ...cs[ci], methods };
+    patch({ classes: cs });
+  };
+  const addAttr = (ci) => {
+    const cs = [...classes];
+    cs[ci] = { ...cs[ci], attrs: [...(cs[ci].attrs || []), '+attr: Type'] };
+    patch({ classes: cs });
+  };
+  const addMethod = (ci) => {
+    const cs = [...classes];
+    cs[ci] = { ...cs[ci], methods: [...(cs[ci].methods || []), '+method(): void'] };
+    patch({ classes: cs });
+  };
+  const removeAttr = (ci, ai) => {
+    const cs = [...classes];
+    cs[ci] = { ...cs[ci], attrs: (cs[ci].attrs || []).filter((_, idx) => idx !== ai) };
+    patch({ classes: cs });
+  };
+  const removeMethod = (ci, mi) => {
+    const cs = [...classes];
+    cs[ci] = { ...cs[ci], methods: (cs[ci].methods || []).filter((_, idx) => idx !== mi) };
+    patch({ classes: cs });
+  };
+  const addClass = () => {
+    const id = 'c' + uid().slice(0, 4);
+    const maxRow = Math.max(-1, ...classes.map(c => c.row ?? 0)) + 1;
+    patch({ classes: [...classes, { id, name: '새 클래스', stereotype: '', attrs: ['+attr: Type'], methods: ['+method(): void'], col: 0, row: maxRow }] });
+  };
+  const removeClass = (id) => {
+    patch({
+      classes: classes.filter(c => c.id !== id),
+      relations: relations.filter(r => r.from !== id && r.to !== id),
+    });
+  };
+  const addRelation = () => {
+    if (classes.length < 2) return;
+    patch({ relations: [...relations, { from: classes[0].id, to: classes[1].id, kind: 'assoc', label: '' }] });
+  };
+  const updateRelation = (i, k, v) => {
+    const rs = [...relations];
+    rs[i] = { ...rs[i], [k]: v };
+    patch({ relations: rs });
+  };
+  const removeRelation = (i) => {
+    patch({ relations: relations.filter((_, idx) => idx !== i) });
+  };
+
+  const runAi = async (prompt) => {
+    const result = await aiGenerateClass(prompt);
+    if (result) patch(result);
+    setAiOpen(false);
+  };
+
+  const renderRelation = (r, i) => {
+    const a = byId[r.from], b = byId[r.to];
+    if (!a || !b) return null;
+    const ax = a._x + a._w / 2, ay = a._y + a._h / 2;
+    const bx = b._x + b._w / 2, by = b._y + b._h / 2;
+    const dx = bx - ax, dy = by - ay;
+    const ang = Math.atan2(dy, dx);
+    const inset = 60;
+    const x1 = ax + Math.cos(ang) * inset;
+    const y1 = ay + Math.sin(ang) * inset;
+    const x2 = bx - Math.cos(ang) * inset;
+    const y2 = by - Math.sin(ang) * inset;
+    const labelX = (x1 + x2) / 2, labelY = (y1 + y2) / 2;
+    const markerStart = r.kind === 'compose' ? 'url(#cls-diamond-fill)'
+                     : r.kind === 'aggregate' ? 'url(#cls-diamond-open)' : undefined;
+    const markerEnd = r.kind === 'inherit' ? 'url(#cls-triangle)'
+                    : r.kind === 'implement' ? 'url(#cls-triangle)'
+                    : 'url(#cls-arrow)';
+    const dashed = r.kind === 'depend' || r.kind === 'implement';
+    return (
+      <g key={'r' + i}>
+        <line x1={x1} y1={y1} x2={x2} y2={y2}
+              stroke="#303a45" strokeWidth="1.6" fill="none"
+              markerStart={markerStart} markerEnd={markerEnd}
+              strokeDasharray={dashed ? '6 5' : undefined} />
+        {r.label && (
+          <text x={labelX} y={labelY - 6} fontSize="11" fontFamily="JetBrains Mono, monospace"
+                fill="#303a45" textAnchor="middle" fontWeight="600"
+                paintOrder="stroke" stroke="white" strokeWidth="4" strokeLinejoin="round">{r.label}</text>
+        )}
+      </g>
+    );
+  };
+
+  return (
+    <div className="slide">
+      <TopTag section={data.section} sectionName={data.sectionName} />
+      <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
+
+      <div className="flow-edit-bar">
+        <button className="mini-btn" onClick={addClass}>+ 클래스</button>
+        <button className="mini-btn" onClick={addRelation} disabled={classes.length < 2}>+ 관계</button>
+        <button className="mini-btn ai" onClick={() => setAiOpen(true)}>✦ AI로 그리기</button>
+      </div>
+
+      <div className="cls-layout">
+        <div className="cls-canvas" ref={wrapRef}>
+          <svg className="cls-svg" viewBox={`0 0 ${size.w} ${size.h}`} preserveAspectRatio="none">
+            <defs>
+              <marker id="cls-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                <path d="M 0 1 L 10 5 L 0 9" fill="none" stroke="#303a45" strokeWidth="1.5" />
+              </marker>
+              <marker id="cls-triangle" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="12" markerHeight="12" orient="auto-start-reverse">
+                <path d="M 0 0 L 12 6 L 0 12 z" fill="white" stroke="#303a45" strokeWidth="1.4" />
+              </marker>
+              <marker id="cls-diamond-fill" viewBox="0 0 14 12" refX="0" refY="6" markerWidth="14" markerHeight="12" orient="auto">
+                <path d="M 0 6 L 7 0 L 14 6 L 7 12 z" fill="#303a45" />
+              </marker>
+              <marker id="cls-diamond-open" viewBox="0 0 14 12" refX="0" refY="6" markerWidth="14" markerHeight="12" orient="auto">
+                <path d="M 0 6 L 7 0 L 14 6 L 7 12 z" fill="white" stroke="#303a45" strokeWidth="1.4" />
+              </marker>
+            </defs>
+            {relations.map(renderRelation)}
+          </svg>
+          {layout.map((c, ci) => (
+            <div key={c.id} className="cls-box"
+                 style={{ left: c._x, top: c._y, width: c._w, minHeight: c._h }}>
+              <div className="cls-header">
+                <Editable className="cls-stereotype" value={c.stereotype || ''}
+                          placeholder="<<stereotype>>"
+                          onChange={(v) => updateClass(ci, 'stereotype', v)} />
+                <Editable className="cls-name" value={c.name}
+                          onChange={(v) => updateClass(ci, 'name', v)} />
+              </div>
+              <div className="cls-section attrs">
+                {(c.attrs || []).map((a, ai) => (
+                  <div key={ai} className="cls-line">
+                    <Editable value={a} onChange={(v) => updateAttr(ci, ai, v)} />
+                    <button className="cls-line-del" onClick={() => removeAttr(ci, ai)} title="삭제">✕</button>
+                  </div>
+                ))}
+                <button className="cls-add-btn" onClick={() => addAttr(ci)}>+ attr</button>
+              </div>
+              <div className="cls-section methods">
+                {(c.methods || []).map((m, mi) => (
+                  <div key={mi} className="cls-line">
+                    <Editable value={m} onChange={(v) => updateMethod(ci, mi, v)} />
+                    <button className="cls-line-del" onClick={() => removeMethod(ci, mi)} title="삭제">✕</button>
+                  </div>
+                ))}
+                <button className="cls-add-btn" onClick={() => addMethod(ci)}>+ method</button>
+              </div>
+              <div className="cls-box-controls">
+                <button title="왼쪽" disabled={(c.col ?? 0) <= 0} onClick={() => updateClass(ci, 'col', Math.max(0, (c.col ?? 0) - 1))}>◀</button>
+                <button title="오른쪽" disabled={(c.col ?? 0) >= 3} onClick={() => updateClass(ci, 'col', Math.min(3, (c.col ?? 0) + 1))}>▶</button>
+                <button title="위" disabled={(c.row ?? 0) <= 0} onClick={() => updateClass(ci, 'row', Math.max(0, (c.row ?? 0) - 1))}>▲</button>
+                <button title="아래" onClick={() => updateClass(ci, 'row', (c.row ?? 0) + 1)}>▼</button>
+                <button title="삭제" className="del" onClick={() => removeClass(c.id)}>✕</button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="cls-editor">
+          <div className="cls-editor-head">관계 편집</div>
+          <div className="cls-editor-list">
+            {relations.map((r, i) => (
+              <div key={'r' + i} className="cls-rel-row">
+                <select value={r.from} onChange={(e) => updateRelation(i, 'from', e.target.value)}>
+                  {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <select value={r.kind || 'assoc'} onChange={(e) => updateRelation(i, 'kind', e.target.value)}>
+                  <option value="assoc">→ 연관</option>
+                  <option value="inherit">▷ 상속</option>
+                  <option value="implement">▷ 구현(점선)</option>
+                  <option value="compose">◆ 컴포지션</option>
+                  <option value="aggregate">◇ 집합</option>
+                  <option value="depend">⇢ 의존(점선)</option>
+                </select>
+                <select value={r.to} onChange={(e) => updateRelation(i, 'to', e.target.value)}>
+                  {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <input type="text" value={r.label || ''} placeholder="라벨 (1..*)"
+                       onChange={(e) => updateRelation(i, 'label', e.target.value)}
+                       className="cls-rel-label" />
+                <button onClick={() => removeRelation(i)} className="del" title="삭제">✕</button>
+              </div>
+            ))}
+            {!relations.length && <div className="cls-empty">아직 관계가 없습니다. "+ 관계"로 추가하세요.</div>}
+          </div>
+        </div>
+      </div>
+
+      {aiOpen && <AiDrawModal onClose={() => setAiOpen(false)} onRun={runAi}
+        placeholder="예: 인벤토리 시스템의 클래스 구조. Item, Inventory, Stack, Player, Equipment, Slot 의 상속/컴포지션 관계." />}
+
+      <SlideFooter section={data.section} sectionName={data.sectionName} page={page} totalPages={totalPages} />
+    </div>
+  );
+}
+
+async function aiGenerateSequence(prompt) {
+  const persona = window.SENIOR_PERSONA || '';
+  const ai = `${persona}
+
+# 임무
+30년차 시니어 게임 메이커로서, 아래 설명에 맞는 시퀀스 다이어그램을 작성하라.
+
+설명: "${prompt}"
+
+# 출력 형식 (JSON만, 코드블록 금지)
+{
+  "participants": [
+    { "id": "p1", "name": "클라이언트", "kind": "actor|system|service|data" }
+  ],
+  "messages": [
+    { "from": "p1", "to": "p2", "label": "auth.login(id, pw)", "kind": "sync|async|return" }
+  ]
+}
+
+# 시니어 표준 작성 기준
+- 참여자 3~6개. id는 p1, p2... 형식. 왼쪽일수록 외부/사용자에 가깝게 배치.
+- kind 의미: actor(사용자/외부), system(컴포넌트), service(서비스/마이크로서비스), data(DB/캐시/큐).
+- 메시지 6~12개. 실제 호출명·이벤트명으로 라벨 (예: "auth.login(id, pw)", "match.create", "session.persist").
+- kind 의미: sync(동기 호출), async(비동기/이벤트), return(응답·콜백).
+- 최소 1개의 return 메시지 포함. 비동기성 통신은 async 사용.
+- 라벨은 영문 식별자(snake_case 또는 camelCase) 권장.`;
+
+  try {
+    const raw = await window.gemini.complete(ai);
+    const parsed = window.parseAiJson(raw);
+    if (parsed.participants && parsed.messages) return parsed;
+  } catch (e) {
+    if (window.gddToast) try { window.gddToast('AI 시퀀스 다이어그램 생성 실패: ' + (e?.message || e), 'err'); } catch {}
+  }
+  return null;
+}
+
+async function aiGenerateClass(prompt) {
+  const persona = window.SENIOR_PERSONA || '';
+  const ai = `${persona}
+
+# 임무
+30년차 시니어 게임 메이커로서, 아래 설명에 맞는 UML 클래스 다이어그램을 작성하라.
+
+설명: "${prompt}"
+
+# 출력 형식 (JSON만, 코드블록 금지)
+{
+  "classes": [
+    {
+      "id": "c1",
+      "name": "Player",
+      "stereotype": "<<entity>>|<<interface>>|<<service>>|<<value>>|",
+      "attrs": ["+id: UUID", "-hp: int", "-mp: int"],
+      "methods": ["+takeDamage(amount: int): void", "+heal(amount: int): void"],
+      "col": 0, "row": 0
+    }
+  ],
+  "relations": [
+    { "from": "c1", "to": "c2", "kind": "inherit|implement|compose|aggregate|assoc|depend", "label": "1..*" }
+  ]
+}
+
+# 시니어 표준 작성 기준
+- 클래스 4~7개. id는 c1, c2... col은 0~3, row는 0부터 시작.
+- 가시성 prefix: + public, - private, # protected, ~ package.
+- attrs: 필드 3~5개. methods: 핵심 메서드 2~4개. 시그니처는 (param: Type, ...): ReturnType.
+- 관계 종류:
+  - inherit (상속): 일반화/extends 관계. 자식 → 부모.
+  - implement (구현): 인터페이스 구현. 클래스 → 인터페이스(<<interface>>). 점선.
+  - compose (컴포지션): 강한 소유. 부분의 생명주기가 전체에 종속.
+  - aggregate (집합): 약한 소유. 부분이 전체 없이도 존재 가능.
+  - assoc (연관): 일반 양방향/단방향 참조.
+  - depend (의존): 일시적 사용. 점선.
+- 라벨: 다중도(1..*, 0..1, *) 또는 역할명.`;
+
+  try {
+    const raw = await window.gemini.complete(ai);
+    const parsed = window.parseAiJson(raw);
+    if (parsed.classes) return parsed;
+  } catch (e) {
+    if (window.gddToast) try { window.gddToast('AI 클래스 다이어그램 생성 실패: ' + (e?.message || e), 'err'); } catch {}
+  }
+  return null;
+}
+
 Object.assign(window, {
   DiagramSlide, EnhancedFlowSlide, AiDrawModal,
-  aiGenerateFlow, aiGenerateDiagram, stripJson,
+  SequenceDiagramSlide, ClassDiagramSlide,
+  aiGenerateFlow, aiGenerateDiagram, aiGenerateSequence, aiGenerateClass,
+  stripJson,
 });

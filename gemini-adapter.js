@@ -232,11 +232,17 @@
       throw new Error('Gemini 이미지 응답 파싱 실패');
     }
 
+    // 응답 MIME 화이트리스트 — 비정상 응답이 javascript:/text/html 같은 위험 스킴을
+    // 끼어넣지 못하도록 허용된 이미지 타입만 통과시킨다.
+    const ALLOWED_IMAGE_MIME = new Set([
+      'image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif', 'image/svg+xml',
+    ]);
     const parts = data?.candidates?.[0]?.content?.parts || [];
     for (const p of parts) {
       const inline = p?.inline_data || p?.inlineData;
       if (inline?.data) {
-        const mime = inline.mime_type || inline.mimeType || 'image/png';
+        const rawMime = (inline.mime_type || inline.mimeType || 'image/png').toLowerCase();
+        const mime = ALLOWED_IMAGE_MIME.has(rawMime) ? rawMime : 'image/png';
         // usage 기록 — 이미지 호출 (per-image 단가)
         if (window.gddUsage) {
           try {

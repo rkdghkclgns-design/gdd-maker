@@ -1,10 +1,12 @@
 /* === Chat panel + Right sidebar (Chat / History / Comments) === */
 
-function ChatTab({ project, onSendCommand, isGenerating, generationMode, setGenerationMode }) {
+function ChatTab({ project, isConcept, onSendCommand, isGenerating, generationMode, setGenerationMode }) {
   const [input, setInput] = React.useState('');
   const [attachments, setAttachments] = React.useState([]);
   const bodyRef = React.useRef(null);
   const taRef = React.useRef(null);
+  // 현재 GDD를 보고 있고 AI 모드면 "수정 모드", 그 외엔 "신규 생성 모드"
+  const isEditMode = !!(project && !isConcept && generationMode === 'ai');
 
   const handlePaste = async (e) => {
     const { images } = readClipboard(e);
@@ -127,7 +129,11 @@ function ChatTab({ project, onSendCommand, isGenerating, generationMode, setGene
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKey}
             onPaste={handlePaste}
-            placeholder="기획서 수정 명령 또는 ⌘V로 이미지 첨부…  (Enter 전송)"
+            placeholder={
+              isEditMode
+                ? '현재 기획서 수정 명령 (예: "사망 FLOW 슬라이드 추가", "data-table에 status 컬럼 추가")…  (Enter 전송)'
+                : '새 기획서 생성 명령 또는 ⌘V로 이미지 첨부…  (Enter 전송)'
+            }
             rows={2}
             disabled={isGenerating}
           />
@@ -136,7 +142,15 @@ function ChatTab({ project, onSendCommand, isGenerating, generationMode, setGene
           </button>
         </div>
         <div style={{ fontSize: 10, color: 'var(--text-4)', fontFamily: 'var(--font-mono)', marginTop: 6 }}>
-          예: "사망 FLOW 슬라이드 추가" / 이미지 붙여넣기 + "이 디자인 참고해서 화면 설계 슬라이드"
+          {isEditMode ? (
+            <>
+              <span style={{ color: 'var(--accent)' }}>● 수정 모드</span> — 현재 GDD에 add / replace / patch / delete / move 적용. 예: "사망 FLOW 슬라이드 추가", "5번 슬라이드 삭제", "제목을 XX로"
+            </>
+          ) : (
+            <>
+              <span style={{ color: 'var(--text-3)' }}>● 신규 생성 모드</span> — 새 기획서를 만듭니다. 예: "사망 FLOW 슬라이드 추가" / 이미지 붙여넣기 + "이 디자인 참고해서 화면 설계 슬라이드"
+            </>
+          )}
         </div>
       </div>
     </>

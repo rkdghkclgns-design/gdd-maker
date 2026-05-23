@@ -242,6 +242,11 @@ async function exportPptx(project) {
 
     if (s.type === 'cover') {
       slide.background = { color: '0A0D12' };
+      // 배경 이미지 + 어두운 오버레이 (AI 생성된 표지 이미지)
+      if (d.imageSrc && typeof d.imageSrc === 'string' && d.imageSrc.startsWith('data:image/')) {
+        slide.addImage({ data: d.imageSrc, x: 0, y: 0, w: W, h: H, sizing: { type: 'cover', w: W, h: H } });
+        slide.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: '0A0D12', transparency: 35 }, line: { color: '0A0D12', width: 0 } });
+      }
       // accent bar
       slide.addShape('rect', { x: PAD_X, y: 0.55, w: 0.3, h: 0.04, fill: { color: ACCENT } });
       slide.addText(d.product || '', { x: PAD_X + 0.4, y: 0.45, w: 5, h: 0.3, fontSize: 12, fontFace: MONO, color: ACCENT, charSpacing: 1.6 });
@@ -256,6 +261,11 @@ async function exportPptx(project) {
 
     if (s.type === 'section-divider') {
       slide.background = { color: '0A0D12' };
+      // 배경 컨셉 아트 (AI 생성)
+      if (d.imageSrc && typeof d.imageSrc === 'string' && d.imageSrc.startsWith('data:image/')) {
+        slide.addImage({ data: d.imageSrc, x: 0, y: 0, w: W, h: H, sizing: { type: 'cover', w: W, h: H } });
+        slide.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: '0A0D12', transparency: 25 }, line: { color: '0A0D12', width: 0 } });
+      }
       slide.addText(d.num || '', { x: W - PAD_X - 6, y: 1.0, w: 6, h: 5.5, fontSize: 220, fontFace: MONO, color: 'FFFFFF22', align: 'right', valign: 'middle', bold: true });
       slide.addShape('rect', { x: PAD_X, y: 0.55, w: 0.25, h: 0.04, fill: { color: ACCENT } });
       slide.addText(`CHAPTER ${d.num || ''}`, { x: PAD_X + 0.35, y: 0.45, w: 5, h: 0.3, fontSize: 12, fontFace: MONO, color: ACCENT, charSpacing: 1.6 });
@@ -435,6 +445,123 @@ async function exportPptx(project) {
         slide.addText(c.count || '', { x: x + catW - 1.0, y: y + 0.3, w: 0.8, h: 0.4, fontSize: 11, fontFace: MONO, color: ACCENT, bold: true, align: 'right' });
         const itemsText = (c.items || []).map(it => ({ text: it, options: { bullet: { code: '2022' } } }));
         slide.addText(itemsText, { x: x + 0.4, y: y + 0.85, w: catW - 0.6, h: catH - 0.95, fontSize: 11, fontFace: FONT, color: '424A55', paraSpaceAfter: 5 });
+      });
+    } else if (s.type === 'image-embed') {
+      // 캡션 + 중앙 정렬된 참고 이미지
+      const cap = d.caption || '';
+      if (cap) {
+        slide.addText(cap, { x: PAD_X, y: 1.5, w: W - 2 * PAD_X, h: 0.4, fontSize: 12, fontFace: FONT, color: TEXT2, italic: true });
+      }
+      const imgY = cap ? 2.0 : 1.7;
+      const imgH = H - imgY - 0.7;
+      if (d.imageSrc && typeof d.imageSrc === 'string' && d.imageSrc.startsWith('data:image/')) {
+        slide.addImage({ data: d.imageSrc, x: PAD_X, y: imgY, w: W - 2 * PAD_X, h: imgH, sizing: { type: 'contain', w: W - 2 * PAD_X, h: imgH } });
+      } else {
+        slide.addShape('rect', { x: PAD_X, y: imgY, w: W - 2 * PAD_X, h: imgH, fill: { color: 'F3F5F7' }, line: { color: 'E3E7EB', width: 0.5 } });
+        slide.addText('REFERENCE IMAGE\n(이미지 미생성)', { x: PAD_X, y: imgY, w: W - 2 * PAD_X, h: imgH, fontSize: 12, fontFace: MONO, color: '7D8590', align: 'center', valign: 'middle' });
+        if (d.imagePrompt) {
+          slide.addText(`prompt: ${d.imagePrompt}`, { x: PAD_X + 0.5, y: imgY + imgH - 0.45, w: W - 2 * PAD_X - 1, h: 0.35, fontSize: 9, fontFace: MONO, color: '7D8590', italic: true });
+        }
+      }
+    } else if (s.type === 'sequence-diagram') {
+      // 참여자 가로 배치 + 세로 lifeline + 메시지 화살표
+      const parts = d.participants || [];
+      const msgs = d.messages || [];
+      const frameX = PAD_X, frameY = 1.6, frameW = W - 2 * PAD_X, frameH = H - 2.6;
+      slide.addShape('roundRect', { x: frameX, y: frameY, w: frameW, h: frameH, fill: { color: 'FCFDFE' }, line: { color: 'E3E7EB', width: 0.5 }, rectRadius: 0.08 });
+      if (parts.length === 0) {
+        slide.addText('(참여자 없음)', { x: frameX, y: frameY + frameH / 2 - 0.2, w: frameW, h: 0.4, fontSize: 12, fontFace: FONT, color: '7D8590', align: 'center' });
+      } else {
+        const colW = (frameW - 0.6) / parts.length;
+        const headY = frameY + 0.25;
+        const headH = 0.55;
+        const lifeTop = headY + headH + 0.1;
+        const lifeBottom = frameY + frameH - 0.3;
+        const partX = (i) => frameX + 0.3 + i * colW + colW / 2;
+        // 참여자 박스 + lifeline
+        parts.forEach((p, i) => {
+          const cx = partX(i);
+          let fill = 'FFFFFF', bd = '303A45', col = TEXT;
+          if (p.kind === 'actor') { fill = ACCENT; col = '061018'; bd = ACCENT; }
+          else if (p.kind === 'service') { fill = 'ECF3FF'; bd = '58A6FF'; }
+          else if (p.kind === 'data') { fill = 'F0F9EB'; bd = '3FB950'; }
+          slide.addShape('roundRect', { x: cx - colW / 2 + 0.15, y: headY, w: colW - 0.3, h: headH, fill: { color: fill }, line: { color: bd, width: 1.5 }, rectRadius: 0.06 });
+          slide.addText(p.name || p.id || '', { x: cx - colW / 2 + 0.15, y: headY, w: colW - 0.3, h: headH, fontSize: 12, bold: true, fontFace: FONT, color: col, align: 'center', valign: 'middle' });
+          // lifeline (dashed)
+          slide.addShape('line', { x: cx, y: lifeTop, w: 0, h: lifeBottom - lifeTop, line: { color: 'A0A8B2', width: 0.8, dashType: 'dash' } });
+        });
+        // 메시지: 위에서 아래로 배치, 가로 화살표
+        const msgGap = msgs.length > 0 ? Math.min(0.45, (lifeBottom - lifeTop - 0.3) / msgs.length) : 0;
+        msgs.forEach((m, i) => {
+          const fromI = parts.findIndex(p => p.id === m.from);
+          const toI = parts.findIndex(p => p.id === m.to);
+          if (fromI < 0 || toI < 0) return;
+          const y = lifeTop + 0.2 + i * msgGap;
+          const x1 = partX(fromI);
+          const x2 = partX(toI);
+          const dashed = (m.kind === 'async' || m.kind === 'return');
+          slide.addShape('line', { x: Math.min(x1, x2), y, w: Math.abs(x2 - x1), h: 0, line: { color: '303A45', width: 1.2, dashType: dashed ? 'dash' : undefined, endArrowType: x2 > x1 ? 'triangle' : undefined, beginArrowType: x2 < x1 ? 'triangle' : undefined } });
+          if (m.label) {
+            slide.addText(m.label, { x: Math.min(x1, x2), y: y - 0.22, w: Math.abs(x2 - x1) || 1.5, h: 0.22, fontSize: 9, fontFace: MONO, color: '303A45', align: 'center' });
+          }
+        });
+      }
+    } else if (s.type === 'class-diagram') {
+      // 클래스 박스(col/row) + 관계선
+      const classes = d.classes || [];
+      const relations = d.relations || [];
+      const frameX = PAD_X, frameY = 1.6, frameW = W - 2 * PAD_X, frameH = H - 2.6;
+      slide.addShape('roundRect', { x: frameX, y: frameY, w: frameW, h: frameH, fill: { color: 'FCFDFE' }, line: { color: 'E3E7EB', width: 0.5 }, rectRadius: 0.08 });
+      const cols = Math.max(2, Math.min(4, Math.max(0, ...classes.map(c => c.col ?? 0)) + 1));
+      const rows = Math.max(1, Math.max(0, ...classes.map(c => c.row ?? 0)) + 1);
+      const px = 0.3, py = 0.25;
+      const cw = (frameW - 2 * px - (cols - 1) * 0.4) / cols;
+      const baseH = Math.max(1.2, (frameH - 2 * py - (rows - 1) * 0.4) / rows);
+      const layouts = {};
+      classes.forEach(c => {
+        const col = Math.min(cols - 1, Math.max(0, c.col ?? 0));
+        const row = Math.min(rows - 1, Math.max(0, c.row ?? 0));
+        const x = frameX + px + col * (cw + 0.4);
+        const y = frameY + py + row * (baseH + 0.4);
+        layouts[c.id] = { x, y, w: cw, h: baseH };
+      });
+      // 관계선 (단순 직선 + 라벨)
+      const RELATION_DASH = { inherit: undefined, implement: 'dash', compose: undefined, aggregate: undefined, assoc: undefined, depend: 'dash' };
+      relations.forEach(r => {
+        const a = layouts[r.from], b = layouts[r.to];
+        if (!a || !b) return;
+        const ax = a.x + a.w / 2, ay = a.y + a.h / 2;
+        const bx = b.x + b.w / 2, by = b.y + b.h / 2;
+        slide.addShape('line', { x: Math.min(ax, bx), y: Math.min(ay, by), w: Math.abs(bx - ax), h: Math.abs(by - ay), line: { color: '303A45', width: 1.2, dashType: RELATION_DASH[r.kind], endArrowType: 'triangle' } });
+        if (r.label) {
+          const lx = (ax + bx) / 2, ly = (ay + by) / 2;
+          slide.addText(r.label, { x: lx - 0.5, y: ly - 0.12, w: 1, h: 0.24, fontSize: 9, fontFace: MONO, color: '303A45', align: 'center', fill: { color: 'FFFFFF' } });
+        }
+      });
+      // 클래스 박스
+      classes.forEach(c => {
+        const l = layouts[c.id];
+        if (!l) return;
+        slide.addShape('roundRect', { x: l.x, y: l.y, w: l.w, h: l.h, fill: { color: 'FFFFFF' }, line: { color: '303A45', width: 1.5 }, rectRadius: 0.04 });
+        // header
+        slide.addShape('rect', { x: l.x, y: l.y, w: l.w, h: 0.55, fill: { color: 'F0F4F8' }, line: { color: '303A45', width: 0 } });
+        if (c.stereotype) {
+          slide.addText(c.stereotype, { x: l.x, y: l.y + 0.05, w: l.w, h: 0.2, fontSize: 8, fontFace: MONO, color: '586A75', italic: true, align: 'center' });
+        }
+        slide.addText(c.name || c.id || '', { x: l.x, y: l.y + (c.stereotype ? 0.22 : 0.1), w: l.w, h: 0.35, fontSize: 13, bold: true, fontFace: FONT, color: TEXT, align: 'center' });
+        // attrs
+        const attrs = c.attrs || [];
+        if (attrs.length) {
+          const attrText = attrs.map(a => ({ text: a, options: {} }));
+          slide.addText(attrText, { x: l.x + 0.1, y: l.y + 0.6, w: l.w - 0.2, h: Math.min(0.7, attrs.length * 0.2), fontSize: 9, fontFace: MONO, color: TEXT, paraSpaceAfter: 1 });
+        }
+        // methods
+        const methods = c.methods || [];
+        if (methods.length) {
+          const methStart = l.y + 0.6 + Math.min(0.7, attrs.length * 0.2) + 0.05;
+          const methText = methods.map(m => ({ text: m, options: {} }));
+          slide.addText(methText, { x: l.x + 0.1, y: methStart, w: l.w - 0.2, h: l.h - (methStart - l.y) - 0.05, fontSize: 9, fontFace: MONO, color: TEXT, paraSpaceAfter: 1 });
+        }
       });
     } else if (s.type === 'diagram') {
       // Render diagram nodes laid out by col/row, with edges

@@ -150,7 +150,11 @@ function TocSlide({ data, patch, page, totalPages }) {
 /* ------ 4. Section divider ------ */
 function SectionDividerSlide({ data, patch, page, totalPages }) {
   return (
-    <div className="slide section-divider">
+    <div className={'slide section-divider ' + (data.imageSrc ? 'has-bg' : '')}>
+      {data.imageSrc && (
+        <div className="sd-bg-img" style={{ backgroundImage: `url(${data.imageSrc})` }}></div>
+      )}
+      <div className="sd-shade"></div>
       <div className="sd-num">{data.num}</div>
       <div className="sd-tag">
         <span className="bar"></span>
@@ -158,6 +162,51 @@ function SectionDividerSlide({ data, patch, page, totalPages }) {
       </div>
       <Editable tag="div" className="sd-title" value={data.title} onChange={(v) => patch({ title: v })} />
       <Editable tag="div" className="sd-subtitle" value={data.subtitle} onChange={(v) => patch({ subtitle: v })} multiline />
+    </div>
+  );
+}
+
+/* ------ 4b. Image embed (참고 이미지) ------ */
+function ImageEmbedSlide({ data, patch, page, totalPages }) {
+  const fileRef = React.useRef(null);
+  const onPick = (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => patch({ imageSrc: reader.result });
+    reader.readAsDataURL(f);
+  };
+  const onDrop = (e) => {
+    e.preventDefault();
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!f || !f.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = () => patch({ imageSrc: reader.result });
+    reader.readAsDataURL(f);
+  };
+  return (
+    <div className="slide">
+      <TopTag section={data.section} sectionName={data.sectionName} />
+      <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
+      <Editable tag="div" className="image-embed-caption" value={data.caption} onChange={(v) => patch({ caption: v })} multiline placeholder="이미지가 보여주는 핵심 시각 요소·참조 의도를 한 줄로" />
+      <div className="image-embed-wrap"
+           onDragOver={(e) => e.preventDefault()}
+           onDrop={onDrop}
+           onClick={() => !data.imageSrc && fileRef.current?.click()}>
+        <input type="file" accept="image/*" ref={fileRef} style={{ display: 'none' }} onChange={onPick} />
+        {data.imageSrc ? (
+          <>
+            <img src={data.imageSrc} alt="reference" />
+            <button className="image-embed-replace" onClick={(e) => { e.stopPropagation(); fileRef.current?.click(); }} title="이미지 교체">↻ 교체</button>
+          </>
+        ) : (
+          <div className="empty">
+            <div className="lbl">REFERENCE IMAGE</div>
+            <div className="desc">클릭 또는 드래그하여 이미지 첨부<br />또는 AI 프롬프트로 자동 생성</div>
+          </div>
+        )}
+      </div>
+      <SlideFooter section={data.section} sectionName={data.sectionName} page={page} totalPages={totalPages} />
     </div>
   );
 }
@@ -223,7 +272,8 @@ function TermsSlide({ data, patch, page, totalPages }) {
 }
 
 /* ------ 7. Rules (block list) ------ */
-function RulesSlide({ data, patch, page, totalPages }) {
+function RulesSlide({ data, patch, replace, page, totalPages }) {
+  const [converting, setConverting] = React.useState(false);
   const updateBlock = (i, key, val) => {
     const blocks = [...(data.blocks || [])];
     blocks[i] = { ...blocks[i], [key]: val };
@@ -236,11 +286,53 @@ function RulesSlide({ data, patch, page, totalPages }) {
     blocks[bi] = { ...blocks[bi], items };
     patch({ blocks });
   };
+
+  // 현재 rules 슬라이드의 텍스트 내용을 모아 AI에 보내고, flow 슬라이드로 변환
+  const convertToFlow = async () => {
+    if (!replace) return;
+    const rulesText = [
+      `규칙 제목: ${data.title || ''}`,
+      ...(data.blocks || []).map(b => {
+        return `[${b.head || '블록'}]\n` + (b.items || []).map(i => '- ' + i).join('\n');
+      }),
+    ].join('\n\n') + '\n\n위 규칙들에 포함된 조건/동작/분기/엣지케이스를 절차적 흐름(flow chart)으로 시각화하라. 정적 상수만 있는 규칙은 무시하고, [조건]→[동작] 패턴을 decision/process/end 노드로 표현한다.';
+
+    setConverting(true);
+    try {
+      const result = await (window.aiGenerateFlow ? window.aiGenerateFlow(rulesText) : null);
+      if (result && Array.isArray(result.nodes) && result.nodes.length) {
+        replace({
+          type: 'flow',
+          data: {
+            section: data.section || '02',
+            sectionName: data.sectionName || '플로우 차트',
+            title: data.title || '플로우 차트',
+            nodes: result.nodes,
+          },
+        });
+      } else if (window.gddToast) {
+        window.gddToast('변환 실패 — AI 응답을 파싱하지 못했습니다.', 'err');
+      }
+    } catch (e) {
+      if (window.gddToast) window.gddToast('변환 실패: ' + (e.message || e), 'err');
+    } finally {
+      setConverting(false);
+    }
+  };
+
   const useGrid = (data.blocks || []).length > 2;
   return (
     <div className="slide">
       <TopTag section={data.section} sectionName={data.sectionName} />
       <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
+      {replace && (
+        <div className="flow-edit-bar">
+          <button className="mini-btn ai" onClick={convertToFlow} disabled={converting}
+                  title="이 규칙들의 절차적 분기를 flow chart로 변환합니다. 원래 슬라이드는 대체됩니다.">
+            {converting ? '변환 중…' : '⇄ 플로우 차트로 변환'}
+          </button>
+        </div>
+      )}
       <div className={useGrid ? 'rules-grid' : 'rules-wrap'} style={{ flex: 1, minHeight: 0 }}>
         {(data.blocks || []).map((b, i) => (
           <div className="rule-block" key={i}>
@@ -440,6 +532,7 @@ const SLIDE_RENDERERS = {
   'history': HistorySlide,
   'toc': TocSlide,
   'section-divider': SectionDividerSlide,
+  'image-embed': ImageEmbedSlide,
   'intent': IntentSlide,
   'terms': TermsSlide,
   'rules': RulesSlide,
@@ -454,6 +547,7 @@ const SLIDE_LABELS = {
   'history': '문서 이력',
   'toc': '목차',
   'section-divider': '섹션 구분',
+  'image-embed': '참고 이미지',
   'intent': '기획 의도',
   'terms': '용어 정의',
   'rules': '규칙',
@@ -461,14 +555,18 @@ const SLIDE_LABELS = {
   'flow': '플로우 차트',
   'ui-design': 'UI/UX',
   'resources': '필요 리소스',
+  'diagram': '다이어그램',
+  'sequence-diagram': '시퀀스 다이어그램',
+  'class-diagram': '클래스 다이어그램',
 };
 
-function SlideRenderer({ slide, patch, page, totalPages }) {
+function SlideRenderer({ slide, patch, replace, page, totalPages }) {
   const R = SLIDE_RENDERERS[slide.type] || (() => <div className="slide"><div>Unknown type: {slide.type}</div></div>);
-  return <R data={slide.data || {}} patch={patch} page={page} totalPages={totalPages} />;
+  return <R data={slide.data || {}} patch={patch} replace={replace} page={page} totalPages={totalPages} />;
 }
 
 Object.assign(window, {
   SlideRenderer, SLIDE_RENDERERS, SLIDE_LABELS,
   Editable, SlideFooter, TopTag,
+  ImageEmbedSlide,
 });

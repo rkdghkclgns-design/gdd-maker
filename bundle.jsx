@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-22T09:02:42.997Z
+   생성 시각: 2026-05-23T04:39:13.213Z
 */
 
 // ============================================================
@@ -732,7 +732,11 @@ function TocSlide({ data, patch, page, totalPages }) {
 /* ------ 4. Section divider ------ */
 function SectionDividerSlide({ data, patch, page, totalPages }) {
   return (
-    <div className="slide section-divider">
+    <div className={'slide section-divider ' + (data.imageSrc ? 'has-bg' : '')}>
+      {data.imageSrc && (
+        <div className="sd-bg-img" style={{ backgroundImage: `url(${data.imageSrc})` }}></div>
+      )}
+      <div className="sd-shade"></div>
       <div className="sd-num">{data.num}</div>
       <div className="sd-tag">
         <span className="bar"></span>
@@ -740,6 +744,51 @@ function SectionDividerSlide({ data, patch, page, totalPages }) {
       </div>
       <Editable tag="div" className="sd-title" value={data.title} onChange={(v) => patch({ title: v })} />
       <Editable tag="div" className="sd-subtitle" value={data.subtitle} onChange={(v) => patch({ subtitle: v })} multiline />
+    </div>
+  );
+}
+
+/* ------ 4b. Image embed (참고 이미지) ------ */
+function ImageEmbedSlide({ data, patch, page, totalPages }) {
+  const fileRef = React.useRef(null);
+  const onPick = (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => patch({ imageSrc: reader.result });
+    reader.readAsDataURL(f);
+  };
+  const onDrop = (e) => {
+    e.preventDefault();
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!f || !f.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = () => patch({ imageSrc: reader.result });
+    reader.readAsDataURL(f);
+  };
+  return (
+    <div className="slide">
+      <TopTag section={data.section} sectionName={data.sectionName} />
+      <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
+      <Editable tag="div" className="image-embed-caption" value={data.caption} onChange={(v) => patch({ caption: v })} multiline placeholder="이미지가 보여주는 핵심 시각 요소·참조 의도를 한 줄로" />
+      <div className="image-embed-wrap"
+           onDragOver={(e) => e.preventDefault()}
+           onDrop={onDrop}
+           onClick={() => !data.imageSrc && fileRef.current?.click()}>
+        <input type="file" accept="image/*" ref={fileRef} style={{ display: 'none' }} onChange={onPick} />
+        {data.imageSrc ? (
+          <>
+            <img src={data.imageSrc} alt="reference" />
+            <button className="image-embed-replace" onClick={(e) => { e.stopPropagation(); fileRef.current?.click(); }} title="이미지 교체">↻ 교체</button>
+          </>
+        ) : (
+          <div className="empty">
+            <div className="lbl">REFERENCE IMAGE</div>
+            <div className="desc">클릭 또는 드래그하여 이미지 첨부<br />또는 AI 프롬프트로 자동 생성</div>
+          </div>
+        )}
+      </div>
+      <SlideFooter section={data.section} sectionName={data.sectionName} page={page} totalPages={totalPages} />
     </div>
   );
 }
@@ -805,7 +854,8 @@ function TermsSlide({ data, patch, page, totalPages }) {
 }
 
 /* ------ 7. Rules (block list) ------ */
-function RulesSlide({ data, patch, page, totalPages }) {
+function RulesSlide({ data, patch, replace, page, totalPages }) {
+  const [converting, setConverting] = React.useState(false);
   const updateBlock = (i, key, val) => {
     const blocks = [...(data.blocks || [])];
     blocks[i] = { ...blocks[i], [key]: val };
@@ -818,11 +868,53 @@ function RulesSlide({ data, patch, page, totalPages }) {
     blocks[bi] = { ...blocks[bi], items };
     patch({ blocks });
   };
+
+  // 현재 rules 슬라이드의 텍스트 내용을 모아 AI에 보내고, flow 슬라이드로 변환
+  const convertToFlow = async () => {
+    if (!replace) return;
+    const rulesText = [
+      `규칙 제목: ${data.title || ''}`,
+      ...(data.blocks || []).map(b => {
+        return `[${b.head || '블록'}]\n` + (b.items || []).map(i => '- ' + i).join('\n');
+      }),
+    ].join('\n\n') + '\n\n위 규칙들에 포함된 조건/동작/분기/엣지케이스를 절차적 흐름(flow chart)으로 시각화하라. 정적 상수만 있는 규칙은 무시하고, [조건]→[동작] 패턴을 decision/process/end 노드로 표현한다.';
+
+    setConverting(true);
+    try {
+      const result = await (window.aiGenerateFlow ? window.aiGenerateFlow(rulesText) : null);
+      if (result && Array.isArray(result.nodes) && result.nodes.length) {
+        replace({
+          type: 'flow',
+          data: {
+            section: data.section || '02',
+            sectionName: data.sectionName || '플로우 차트',
+            title: data.title || '플로우 차트',
+            nodes: result.nodes,
+          },
+        });
+      } else if (window.gddToast) {
+        window.gddToast('변환 실패 — AI 응답을 파싱하지 못했습니다.', 'err');
+      }
+    } catch (e) {
+      if (window.gddToast) window.gddToast('변환 실패: ' + (e.message || e), 'err');
+    } finally {
+      setConverting(false);
+    }
+  };
+
   const useGrid = (data.blocks || []).length > 2;
   return (
     <div className="slide">
       <TopTag section={data.section} sectionName={data.sectionName} />
       <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
+      {replace && (
+        <div className="flow-edit-bar">
+          <button className="mini-btn ai" onClick={convertToFlow} disabled={converting}
+                  title="이 규칙들의 절차적 분기를 flow chart로 변환합니다. 원래 슬라이드는 대체됩니다.">
+            {converting ? '변환 중…' : '⇄ 플로우 차트로 변환'}
+          </button>
+        </div>
+      )}
       <div className={useGrid ? 'rules-grid' : 'rules-wrap'} style={{ flex: 1, minHeight: 0 }}>
         {(data.blocks || []).map((b, i) => (
           <div className="rule-block" key={i}>
@@ -1022,6 +1114,7 @@ const SLIDE_RENDERERS = {
   'history': HistorySlide,
   'toc': TocSlide,
   'section-divider': SectionDividerSlide,
+  'image-embed': ImageEmbedSlide,
   'intent': IntentSlide,
   'terms': TermsSlide,
   'rules': RulesSlide,
@@ -1036,6 +1129,7 @@ const SLIDE_LABELS = {
   'history': '문서 이력',
   'toc': '목차',
   'section-divider': '섹션 구분',
+  'image-embed': '참고 이미지',
   'intent': '기획 의도',
   'terms': '용어 정의',
   'rules': '규칙',
@@ -1043,16 +1137,20 @@ const SLIDE_LABELS = {
   'flow': '플로우 차트',
   'ui-design': 'UI/UX',
   'resources': '필요 리소스',
+  'diagram': '다이어그램',
+  'sequence-diagram': '시퀀스 다이어그램',
+  'class-diagram': '클래스 다이어그램',
 };
 
-function SlideRenderer({ slide, patch, page, totalPages }) {
+function SlideRenderer({ slide, patch, replace, page, totalPages }) {
   const R = SLIDE_RENDERERS[slide.type] || (() => <div className="slide"><div>Unknown type: {slide.type}</div></div>);
-  return <R data={slide.data || {}} patch={patch} page={page} totalPages={totalPages} />;
+  return <R data={slide.data || {}} patch={patch} replace={replace} page={page} totalPages={totalPages} />;
 }
 
 Object.assign(window, {
   SlideRenderer, SLIDE_RENDERERS, SLIDE_LABELS,
   Editable, SlideFooter, TopTag,
+  ImageEmbedSlide,
 });
 
 
@@ -1453,7 +1551,7 @@ async function aiGenerateFlow(prompt) {
     const parsed = window.parseAiJson(raw);
     if (parsed.nodes && Array.isArray(parsed.nodes)) return parsed;
   } catch (e) {
-    console.error('aiGenerateFlow', e);
+    if (window.gddToast) try { window.gddToast('AI 플로우 생성 실패: ' + (e?.message || e), 'err'); } catch {}
   }
   return null;
 }
@@ -1491,7 +1589,7 @@ async function aiGenerateDiagram(prompt) {
     const parsed = window.parseAiJson(raw);
     if (parsed.nodes && parsed.edges) return parsed;
   } catch (e) {
-    console.error('aiGenerateDiagram', e);
+    if (window.gddToast) try { window.gddToast('AI 다이어그램 생성 실패: ' + (e?.message || e), 'err'); } catch {}
   }
   return null;
 }
@@ -1504,9 +1602,556 @@ function stripJson(raw) {
   return raw;
 }
 
+/* ====== 12. Sequence diagram (시퀀스 다이어그램) ====== */
+function SequenceDiagramSlide({ data, patch, page, totalPages }) {
+  const wrapRef = React.useRef(null);
+  const [size, setSize] = React.useState({ w: 760, h: 480 });
+  const [aiOpen, setAiOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!wrapRef.current) return;
+    const ro = new ResizeObserver(() => {
+      if (wrapRef.current) setSize({ w: wrapRef.current.clientWidth, h: wrapRef.current.clientHeight });
+    });
+    ro.observe(wrapRef.current);
+    return () => ro.disconnect();
+  }, []);
+
+  const participants = data.participants || [];
+  const messages = data.messages || [];
+
+  const TOP_PAD = 14;
+  const PART_H = 44;
+  const MSG_GAP = 36;
+  const PART_W = 124;
+  const sideMargin = 28;
+  const lifelineCount = Math.max(1, participants.length);
+  const innerW = Math.max(220, size.w - sideMargin * 2);
+  const colWidth = lifelineCount > 1 ? innerW / (lifelineCount - 1) : 0;
+  const partXs = participants.map((_, i) => {
+    if (lifelineCount === 1) return size.w / 2;
+    return sideMargin + i * colWidth;
+  });
+  const partById = {};
+  participants.forEach((p, i) => { partById[p.id] = { x: partXs[i], idx: i, ...p }; });
+  const contentH = Math.max(size.h, TOP_PAD + PART_H + 16 + MSG_GAP * (messages.length + 1));
+
+  const updatePart = (i, k, v) => {
+    const ps = [...participants];
+    ps[i] = { ...ps[i], [k]: v };
+    patch({ participants: ps });
+  };
+  const updateMsg = (i, k, v) => {
+    const ms = [...messages];
+    ms[i] = { ...ms[i], [k]: v };
+    patch({ messages: ms });
+  };
+  const removePart = (id) => {
+    if (participants.length <= 1) return;
+    patch({
+      participants: participants.filter(p => p.id !== id),
+      messages: messages.filter(m => m.from !== id && m.to !== id),
+    });
+  };
+  const removeMsg = (i) => {
+    patch({ messages: messages.filter((_, idx) => idx !== i) });
+  };
+  const addPart = () => {
+    const id = 'p' + uid().slice(0, 4);
+    patch({ participants: [...participants, { id, name: '참여자', kind: 'system' }] });
+  };
+  const addMsg = () => {
+    if (!participants.length) return;
+    const from = participants[0].id;
+    const to = (participants[1] || participants[0]).id;
+    patch({ messages: [...messages, { from, to, label: '메시지', kind: 'sync' }] });
+  };
+  const cycleMsgKind = (i) => {
+    const order = ['sync', 'async', 'return'];
+    const cur = messages[i]?.kind || 'sync';
+    updateMsg(i, 'kind', order[(order.indexOf(cur) + 1) % order.length]);
+  };
+  const cyclePartKind = (i) => {
+    const order = ['actor', 'system', 'service', 'data'];
+    const cur = participants[i]?.kind || 'system';
+    updatePart(i, 'kind', order[(order.indexOf(cur) + 1) % order.length]);
+  };
+  const movePart = (i, delta) => {
+    const j = i + delta;
+    if (j < 0 || j >= participants.length) return;
+    const ps = [...participants];
+    [ps[i], ps[j]] = [ps[j], ps[i]];
+    patch({ participants: ps });
+  };
+  const moveMsg = (i, delta) => {
+    const j = i + delta;
+    if (j < 0 || j >= messages.length) return;
+    const ms = [...messages];
+    [ms[i], ms[j]] = [ms[j], ms[i]];
+    patch({ messages: ms });
+  };
+
+  const runAi = async (prompt) => {
+    const result = await aiGenerateSequence(prompt);
+    if (result) patch(result);
+    setAiOpen(false);
+  };
+
+  return (
+    <div className="slide">
+      <TopTag section={data.section} sectionName={data.sectionName} />
+      <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
+
+      <div className="flow-edit-bar">
+        <button className="mini-btn" onClick={addPart}>+ 참여자</button>
+        <button className="mini-btn" onClick={addMsg} disabled={!participants.length}>+ 메시지</button>
+        <button className="mini-btn ai" onClick={() => setAiOpen(true)}>✦ AI로 그리기</button>
+      </div>
+
+      <div className="seq-layout">
+        <div className="seq-canvas" ref={wrapRef}>
+          <svg className="seq-svg" viewBox={`0 0 ${size.w} ${contentH}`}
+               width={size.w} height={contentH} preserveAspectRatio="xMidYMin meet">
+            <defs>
+              <marker id="seq-arrow-fill" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#303a45" />
+              </marker>
+              <marker id="seq-arrow-open" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                <path d="M 0 1 L 10 5 L 0 9" fill="none" stroke="#303a45" strokeWidth="1.5" strokeLinejoin="round" />
+              </marker>
+            </defs>
+            {participants.map((p, i) => (
+              <line key={'ll' + p.id}
+                    x1={partXs[i]} y1={TOP_PAD + PART_H}
+                    x2={partXs[i]} y2={contentH - 12}
+                    stroke="#a3afbb" strokeDasharray="4 5" strokeWidth="1.2" />
+            ))}
+            {messages.map((m, i) => {
+              const a = partById[m.from], b = partById[m.to];
+              if (!a || !b) return null;
+              const y = TOP_PAD + PART_H + 16 + MSG_GAP * i + MSG_GAP / 2;
+              const dashed = m.kind === 'async' || m.kind === 'return';
+              const markerEnd = m.kind === 'return' ? 'url(#seq-arrow-open)' : 'url(#seq-arrow-fill)';
+              if (a.x === b.x) {
+                const off = 32;
+                const d = `M ${a.x + 6} ${y - 6} L ${a.x + off} ${y - 6} L ${a.x + off} ${y + 14} L ${a.x + 8} ${y + 14}`;
+                return (
+                  <g key={'m' + i}>
+                    <path d={d} stroke="#303a45" strokeWidth="1.6" fill="none"
+                          markerEnd={markerEnd} strokeDasharray={dashed ? '5 4' : undefined} />
+                    <text x={a.x + off + 8} y={y + 4} fontSize="11"
+                          fontFamily="JetBrains Mono, monospace" fill="#303a45" fontWeight="600">
+                      {m.label || ''}
+                    </text>
+                  </g>
+                );
+              }
+              const labelX = (a.x + b.x) / 2;
+              return (
+                <g key={'m' + i}>
+                  <line x1={a.x} y1={y} x2={b.x} y2={y} stroke="#303a45" strokeWidth="1.6"
+                        markerEnd={markerEnd} strokeDasharray={dashed ? '5 4' : undefined} />
+                  <text x={labelX} y={y - 6} fontSize="11"
+                        fontFamily="JetBrains Mono, monospace" fill="#303a45"
+                        textAnchor="middle" fontWeight="600">
+                    {m.label || ''}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+          {participants.map((p, i) => (
+            <div key={'pt' + p.id}
+                 className={'seq-participant ' + (p.kind || 'system')}
+                 style={{ left: partXs[i] - PART_W / 2, top: TOP_PAD, width: PART_W, height: PART_H }}>
+              <Editable value={p.name} onChange={(v) => updatePart(i, 'name', v)} />
+              <div className="seq-participant-controls">
+                <button onClick={() => cyclePartKind(i)} title="유형">⇄</button>
+                <button onClick={() => movePart(i, -1)} disabled={i === 0} title="왼쪽">◀</button>
+                <button onClick={() => movePart(i, 1)} disabled={i === participants.length - 1} title="오른쪽">▶</button>
+                <button onClick={() => removePart(p.id)} className="del" title="삭제">✕</button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="seq-editor">
+          <div className="seq-editor-head">메시지 편집</div>
+          <div className="seq-editor-list">
+            {messages.map((m, i) => (
+              <div key={'me' + i} className="seq-msg-row">
+                <span className="seq-msg-idx">{i + 1}</span>
+                <select value={m.from || ''} onChange={(e) => updateMsg(i, 'from', e.target.value)}>
+                  {participants.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                <span style={{ color: 'var(--text-3)', fontFamily: 'var(--font-mono)' }}>→</span>
+                <select value={m.to || ''} onChange={(e) => updateMsg(i, 'to', e.target.value)}>
+                  {participants.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                <input type="text" value={m.label || ''} placeholder="메시지"
+                       onChange={(e) => updateMsg(i, 'label', e.target.value)}
+                       className="seq-msg-label" />
+                <button onClick={() => cycleMsgKind(i)} title={m.kind || 'sync'}>
+                  {m.kind === 'async' ? '⇢' : m.kind === 'return' ? '↩' : '→'}
+                </button>
+                <button onClick={() => moveMsg(i, -1)} disabled={i === 0} title="위로">↑</button>
+                <button onClick={() => moveMsg(i, 1)} disabled={i === messages.length - 1} title="아래로">↓</button>
+                <button onClick={() => removeMsg(i)} className="del" title="삭제">✕</button>
+              </div>
+            ))}
+            {!messages.length && <div className="seq-empty">아직 메시지가 없습니다. "+ 메시지"로 추가하세요.</div>}
+          </div>
+        </div>
+      </div>
+
+      {aiOpen && <AiDrawModal onClose={() => setAiOpen(false)} onRun={runAi}
+        placeholder="예: 로그인 시퀀스. 클라이언트 → 게이트웨이 → 인증서버 → DB. JWT 발급 후 응답 흐름." />}
+
+      <SlideFooter section={data.section} sectionName={data.sectionName} page={page} totalPages={totalPages} />
+    </div>
+  );
+}
+
+/* ====== 13. Class diagram (클래스 다이어그램) ====== */
+function computeClassLayout(classes, viewW, viewH, padX = 18, padY = 10) {
+  if (!classes || !classes.length) return [];
+  const cols = Math.max(2, Math.min(4, Math.max(...classes.map(n => (n.col ?? 0))) + 1));
+  const rows = Math.max(1, Math.max(...classes.map(n => (n.row ?? 0))) + 1);
+  const w = (viewW - padX * 2 - (cols - 1) * 28) / cols;
+  const h = Math.max(120, Math.min(180, (viewH - padY * 2 - (rows - 1) * 24) / rows));
+  const ySpace = rows > 1 ? (viewH - padY * 2 - h) / (rows - 1) : 0;
+  return classes.map(c => {
+    const col = Math.min(cols - 1, Math.max(0, c.col ?? 0));
+    const row = Math.min(rows - 1, Math.max(0, c.row ?? 0));
+    return {
+      ...c,
+      _x: padX + col * (w + 28),
+      _y: padY + row * ySpace,
+      _w: w,
+      _h: h,
+    };
+  });
+}
+
+function ClassDiagramSlide({ data, patch, page, totalPages }) {
+  const wrapRef = React.useRef(null);
+  const [size, setSize] = React.useState({ w: 760, h: 480 });
+  const [aiOpen, setAiOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!wrapRef.current) return;
+    const ro = new ResizeObserver(() => {
+      if (wrapRef.current) setSize({ w: wrapRef.current.clientWidth, h: wrapRef.current.clientHeight });
+    });
+    ro.observe(wrapRef.current);
+    return () => ro.disconnect();
+  }, []);
+
+  const classes = data.classes || [];
+  const relations = data.relations || [];
+  const layout = React.useMemo(() => computeClassLayout(classes, size.w, size.h), [classes, size]);
+  const byId = {};
+  layout.forEach(c => { byId[c.id] = c; });
+
+  const updateClass = (i, k, v) => {
+    const cs = [...classes];
+    cs[i] = { ...cs[i], [k]: v };
+    patch({ classes: cs });
+  };
+  const updateAttr = (ci, ai, v) => {
+    const cs = [...classes];
+    const attrs = [...(cs[ci].attrs || [])];
+    attrs[ai] = v;
+    cs[ci] = { ...cs[ci], attrs };
+    patch({ classes: cs });
+  };
+  const updateMethod = (ci, mi, v) => {
+    const cs = [...classes];
+    const methods = [...(cs[ci].methods || [])];
+    methods[mi] = v;
+    cs[ci] = { ...cs[ci], methods };
+    patch({ classes: cs });
+  };
+  const addAttr = (ci) => {
+    const cs = [...classes];
+    cs[ci] = { ...cs[ci], attrs: [...(cs[ci].attrs || []), '+attr: Type'] };
+    patch({ classes: cs });
+  };
+  const addMethod = (ci) => {
+    const cs = [...classes];
+    cs[ci] = { ...cs[ci], methods: [...(cs[ci].methods || []), '+method(): void'] };
+    patch({ classes: cs });
+  };
+  const removeAttr = (ci, ai) => {
+    const cs = [...classes];
+    cs[ci] = { ...cs[ci], attrs: (cs[ci].attrs || []).filter((_, idx) => idx !== ai) };
+    patch({ classes: cs });
+  };
+  const removeMethod = (ci, mi) => {
+    const cs = [...classes];
+    cs[ci] = { ...cs[ci], methods: (cs[ci].methods || []).filter((_, idx) => idx !== mi) };
+    patch({ classes: cs });
+  };
+  const addClass = () => {
+    const id = 'c' + uid().slice(0, 4);
+    const maxRow = Math.max(-1, ...classes.map(c => c.row ?? 0)) + 1;
+    patch({ classes: [...classes, { id, name: '새 클래스', stereotype: '', attrs: ['+attr: Type'], methods: ['+method(): void'], col: 0, row: maxRow }] });
+  };
+  const removeClass = (id) => {
+    patch({
+      classes: classes.filter(c => c.id !== id),
+      relations: relations.filter(r => r.from !== id && r.to !== id),
+    });
+  };
+  const addRelation = () => {
+    if (classes.length < 2) return;
+    patch({ relations: [...relations, { from: classes[0].id, to: classes[1].id, kind: 'assoc', label: '' }] });
+  };
+  const updateRelation = (i, k, v) => {
+    const rs = [...relations];
+    rs[i] = { ...rs[i], [k]: v };
+    patch({ relations: rs });
+  };
+  const removeRelation = (i) => {
+    patch({ relations: relations.filter((_, idx) => idx !== i) });
+  };
+
+  const runAi = async (prompt) => {
+    const result = await aiGenerateClass(prompt);
+    if (result) patch(result);
+    setAiOpen(false);
+  };
+
+  const renderRelation = (r, i) => {
+    const a = byId[r.from], b = byId[r.to];
+    if (!a || !b) return null;
+    const ax = a._x + a._w / 2, ay = a._y + a._h / 2;
+    const bx = b._x + b._w / 2, by = b._y + b._h / 2;
+    const dx = bx - ax, dy = by - ay;
+    const ang = Math.atan2(dy, dx);
+    const inset = 60;
+    const x1 = ax + Math.cos(ang) * inset;
+    const y1 = ay + Math.sin(ang) * inset;
+    const x2 = bx - Math.cos(ang) * inset;
+    const y2 = by - Math.sin(ang) * inset;
+    const labelX = (x1 + x2) / 2, labelY = (y1 + y2) / 2;
+    const markerStart = r.kind === 'compose' ? 'url(#cls-diamond-fill)'
+                     : r.kind === 'aggregate' ? 'url(#cls-diamond-open)' : undefined;
+    const markerEnd = r.kind === 'inherit' ? 'url(#cls-triangle)'
+                    : r.kind === 'implement' ? 'url(#cls-triangle)'
+                    : 'url(#cls-arrow)';
+    const dashed = r.kind === 'depend' || r.kind === 'implement';
+    return (
+      <g key={'r' + i}>
+        <line x1={x1} y1={y1} x2={x2} y2={y2}
+              stroke="#303a45" strokeWidth="1.6" fill="none"
+              markerStart={markerStart} markerEnd={markerEnd}
+              strokeDasharray={dashed ? '6 5' : undefined} />
+        {r.label && (
+          <text x={labelX} y={labelY - 6} fontSize="11" fontFamily="JetBrains Mono, monospace"
+                fill="#303a45" textAnchor="middle" fontWeight="600"
+                paintOrder="stroke" stroke="white" strokeWidth="4" strokeLinejoin="round">{r.label}</text>
+        )}
+      </g>
+    );
+  };
+
+  return (
+    <div className="slide">
+      <TopTag section={data.section} sectionName={data.sectionName} />
+      <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
+
+      <div className="flow-edit-bar">
+        <button className="mini-btn" onClick={addClass}>+ 클래스</button>
+        <button className="mini-btn" onClick={addRelation} disabled={classes.length < 2}>+ 관계</button>
+        <button className="mini-btn ai" onClick={() => setAiOpen(true)}>✦ AI로 그리기</button>
+      </div>
+
+      <div className="cls-layout">
+        <div className="cls-canvas" ref={wrapRef}>
+          <svg className="cls-svg" viewBox={`0 0 ${size.w} ${size.h}`} preserveAspectRatio="none">
+            <defs>
+              <marker id="cls-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                <path d="M 0 1 L 10 5 L 0 9" fill="none" stroke="#303a45" strokeWidth="1.5" />
+              </marker>
+              <marker id="cls-triangle" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="12" markerHeight="12" orient="auto-start-reverse">
+                <path d="M 0 0 L 12 6 L 0 12 z" fill="white" stroke="#303a45" strokeWidth="1.4" />
+              </marker>
+              <marker id="cls-diamond-fill" viewBox="0 0 14 12" refX="0" refY="6" markerWidth="14" markerHeight="12" orient="auto">
+                <path d="M 0 6 L 7 0 L 14 6 L 7 12 z" fill="#303a45" />
+              </marker>
+              <marker id="cls-diamond-open" viewBox="0 0 14 12" refX="0" refY="6" markerWidth="14" markerHeight="12" orient="auto">
+                <path d="M 0 6 L 7 0 L 14 6 L 7 12 z" fill="white" stroke="#303a45" strokeWidth="1.4" />
+              </marker>
+            </defs>
+            {relations.map(renderRelation)}
+          </svg>
+          {layout.map((c, ci) => (
+            <div key={c.id} className="cls-box"
+                 style={{ left: c._x, top: c._y, width: c._w, minHeight: c._h }}>
+              <div className="cls-header">
+                <Editable className="cls-stereotype" value={c.stereotype || ''}
+                          placeholder="<<stereotype>>"
+                          onChange={(v) => updateClass(ci, 'stereotype', v)} />
+                <Editable className="cls-name" value={c.name}
+                          onChange={(v) => updateClass(ci, 'name', v)} />
+              </div>
+              <div className="cls-section attrs">
+                {(c.attrs || []).map((a, ai) => (
+                  <div key={ai} className="cls-line">
+                    <Editable value={a} onChange={(v) => updateAttr(ci, ai, v)} />
+                    <button className="cls-line-del" onClick={() => removeAttr(ci, ai)} title="삭제">✕</button>
+                  </div>
+                ))}
+                <button className="cls-add-btn" onClick={() => addAttr(ci)}>+ attr</button>
+              </div>
+              <div className="cls-section methods">
+                {(c.methods || []).map((m, mi) => (
+                  <div key={mi} className="cls-line">
+                    <Editable value={m} onChange={(v) => updateMethod(ci, mi, v)} />
+                    <button className="cls-line-del" onClick={() => removeMethod(ci, mi)} title="삭제">✕</button>
+                  </div>
+                ))}
+                <button className="cls-add-btn" onClick={() => addMethod(ci)}>+ method</button>
+              </div>
+              <div className="cls-box-controls">
+                <button title="왼쪽" disabled={(c.col ?? 0) <= 0} onClick={() => updateClass(ci, 'col', Math.max(0, (c.col ?? 0) - 1))}>◀</button>
+                <button title="오른쪽" disabled={(c.col ?? 0) >= 3} onClick={() => updateClass(ci, 'col', Math.min(3, (c.col ?? 0) + 1))}>▶</button>
+                <button title="위" disabled={(c.row ?? 0) <= 0} onClick={() => updateClass(ci, 'row', Math.max(0, (c.row ?? 0) - 1))}>▲</button>
+                <button title="아래" onClick={() => updateClass(ci, 'row', (c.row ?? 0) + 1)}>▼</button>
+                <button title="삭제" className="del" onClick={() => removeClass(c.id)}>✕</button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="cls-editor">
+          <div className="cls-editor-head">관계 편집</div>
+          <div className="cls-editor-list">
+            {relations.map((r, i) => (
+              <div key={'r' + i} className="cls-rel-row">
+                <select value={r.from} onChange={(e) => updateRelation(i, 'from', e.target.value)}>
+                  {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <select value={r.kind || 'assoc'} onChange={(e) => updateRelation(i, 'kind', e.target.value)}>
+                  <option value="assoc">→ 연관</option>
+                  <option value="inherit">▷ 상속</option>
+                  <option value="implement">▷ 구현(점선)</option>
+                  <option value="compose">◆ 컴포지션</option>
+                  <option value="aggregate">◇ 집합</option>
+                  <option value="depend">⇢ 의존(점선)</option>
+                </select>
+                <select value={r.to} onChange={(e) => updateRelation(i, 'to', e.target.value)}>
+                  {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <input type="text" value={r.label || ''} placeholder="라벨 (1..*)"
+                       onChange={(e) => updateRelation(i, 'label', e.target.value)}
+                       className="cls-rel-label" />
+                <button onClick={() => removeRelation(i)} className="del" title="삭제">✕</button>
+              </div>
+            ))}
+            {!relations.length && <div className="cls-empty">아직 관계가 없습니다. "+ 관계"로 추가하세요.</div>}
+          </div>
+        </div>
+      </div>
+
+      {aiOpen && <AiDrawModal onClose={() => setAiOpen(false)} onRun={runAi}
+        placeholder="예: 인벤토리 시스템의 클래스 구조. Item, Inventory, Stack, Player, Equipment, Slot 의 상속/컴포지션 관계." />}
+
+      <SlideFooter section={data.section} sectionName={data.sectionName} page={page} totalPages={totalPages} />
+    </div>
+  );
+}
+
+async function aiGenerateSequence(prompt) {
+  const persona = window.SENIOR_PERSONA || '';
+  const ai = `${persona}
+
+# 임무
+30년차 시니어 게임 메이커로서, 아래 설명에 맞는 시퀀스 다이어그램을 작성하라.
+
+설명: "${prompt}"
+
+# 출력 형식 (JSON만, 코드블록 금지)
+{
+  "participants": [
+    { "id": "p1", "name": "클라이언트", "kind": "actor|system|service|data" }
+  ],
+  "messages": [
+    { "from": "p1", "to": "p2", "label": "auth.login(id, pw)", "kind": "sync|async|return" }
+  ]
+}
+
+# 시니어 표준 작성 기준
+- 참여자 3~6개. id는 p1, p2... 형식. 왼쪽일수록 외부/사용자에 가깝게 배치.
+- kind 의미: actor(사용자/외부), system(컴포넌트), service(서비스/마이크로서비스), data(DB/캐시/큐).
+- 메시지 6~12개. 실제 호출명·이벤트명으로 라벨 (예: "auth.login(id, pw)", "match.create", "session.persist").
+- kind 의미: sync(동기 호출), async(비동기/이벤트), return(응답·콜백).
+- 최소 1개의 return 메시지 포함. 비동기성 통신은 async 사용.
+- 라벨은 영문 식별자(snake_case 또는 camelCase) 권장.`;
+
+  try {
+    const raw = await window.gemini.complete(ai);
+    const parsed = window.parseAiJson(raw);
+    if (parsed.participants && parsed.messages) return parsed;
+  } catch (e) {
+    if (window.gddToast) try { window.gddToast('AI 시퀀스 다이어그램 생성 실패: ' + (e?.message || e), 'err'); } catch {}
+  }
+  return null;
+}
+
+async function aiGenerateClass(prompt) {
+  const persona = window.SENIOR_PERSONA || '';
+  const ai = `${persona}
+
+# 임무
+30년차 시니어 게임 메이커로서, 아래 설명에 맞는 UML 클래스 다이어그램을 작성하라.
+
+설명: "${prompt}"
+
+# 출력 형식 (JSON만, 코드블록 금지)
+{
+  "classes": [
+    {
+      "id": "c1",
+      "name": "Player",
+      "stereotype": "<<entity>>|<<interface>>|<<service>>|<<value>>|",
+      "attrs": ["+id: UUID", "-hp: int", "-mp: int"],
+      "methods": ["+takeDamage(amount: int): void", "+heal(amount: int): void"],
+      "col": 0, "row": 0
+    }
+  ],
+  "relations": [
+    { "from": "c1", "to": "c2", "kind": "inherit|implement|compose|aggregate|assoc|depend", "label": "1..*" }
+  ]
+}
+
+# 시니어 표준 작성 기준
+- 클래스 4~7개. id는 c1, c2... col은 0~3, row는 0부터 시작.
+- 가시성 prefix: + public, - private, # protected, ~ package.
+- attrs: 필드 3~5개. methods: 핵심 메서드 2~4개. 시그니처는 (param: Type, ...): ReturnType.
+- 관계 종류:
+  - inherit (상속): 일반화/extends 관계. 자식 → 부모.
+  - implement (구현): 인터페이스 구현. 클래스 → 인터페이스(<<interface>>). 점선.
+  - compose (컴포지션): 강한 소유. 부분의 생명주기가 전체에 종속.
+  - aggregate (집합): 약한 소유. 부분이 전체 없이도 존재 가능.
+  - assoc (연관): 일반 양방향/단방향 참조.
+  - depend (의존): 일시적 사용. 점선.
+- 라벨: 다중도(1..*, 0..1, *) 또는 역할명.`;
+
+  try {
+    const raw = await window.gemini.complete(ai);
+    const parsed = window.parseAiJson(raw);
+    if (parsed.classes) return parsed;
+  } catch (e) {
+    if (window.gddToast) try { window.gddToast('AI 클래스 다이어그램 생성 실패: ' + (e?.message || e), 'err'); } catch {}
+  }
+  return null;
+}
+
 Object.assign(window, {
   DiagramSlide, EnhancedFlowSlide, AiDrawModal,
-  aiGenerateFlow, aiGenerateDiagram, stripJson,
+  SequenceDiagramSlide, ClassDiagramSlide,
+  aiGenerateFlow, aiGenerateDiagram, aiGenerateSequence, aiGenerateClass,
+  stripJson,
 });
 
 
@@ -2834,11 +3479,13 @@ async function aiPartialRegen(concept, section) {
 // ============================================================
 /* === Chat panel + Right sidebar (Chat / History / Comments) === */
 
-function ChatTab({ project, onSendCommand, isGenerating, generationMode, setGenerationMode }) {
+function ChatTab({ project, isConcept, onSendCommand, isGenerating, generationMode, setGenerationMode }) {
   const [input, setInput] = React.useState('');
   const [attachments, setAttachments] = React.useState([]);
   const bodyRef = React.useRef(null);
   const taRef = React.useRef(null);
+  // 현재 GDD를 보고 있고 AI 모드면 "수정 모드", 그 외엔 "신규 생성 모드"
+  const isEditMode = !!(project && !isConcept && generationMode === 'ai');
 
   const handlePaste = async (e) => {
     const { images } = readClipboard(e);
@@ -2961,7 +3608,11 @@ function ChatTab({ project, onSendCommand, isGenerating, generationMode, setGene
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKey}
             onPaste={handlePaste}
-            placeholder="기획서 수정 명령 또는 ⌘V로 이미지 첨부…  (Enter 전송)"
+            placeholder={
+              isEditMode
+                ? '현재 기획서 수정 명령 (예: "사망 FLOW 슬라이드 추가", "data-table에 status 컬럼 추가")…  (Enter 전송)'
+                : '새 기획서 생성 명령 또는 ⌘V로 이미지 첨부…  (Enter 전송)'
+            }
             rows={2}
             disabled={isGenerating}
           />
@@ -2970,7 +3621,15 @@ function ChatTab({ project, onSendCommand, isGenerating, generationMode, setGene
           </button>
         </div>
         <div style={{ fontSize: 10, color: 'var(--text-4)', fontFamily: 'var(--font-mono)', marginTop: 6 }}>
-          예: "사망 FLOW 슬라이드 추가" / 이미지 붙여넣기 + "이 디자인 참고해서 화면 설계 슬라이드"
+          {isEditMode ? (
+            <>
+              <span style={{ color: 'var(--accent)' }}>● 수정 모드</span> — 현재 GDD에 add / replace / patch / delete / move 적용. 예: "사망 FLOW 슬라이드 추가", "5번 슬라이드 삭제", "제목을 XX로"
+            </>
+          ) : (
+            <>
+              <span style={{ color: 'var(--text-3)' }}>● 신규 생성 모드</span> — 새 기획서를 만듭니다. 예: "사망 FLOW 슬라이드 추가" / 이미지 붙여넣기 + "이 디자인 참고해서 화면 설계 슬라이드"
+            </>
+          )}
         </div>
       </div>
     </>
@@ -3347,6 +4006,11 @@ async function exportPptx(project) {
 
     if (s.type === 'cover') {
       slide.background = { color: '0A0D12' };
+      // 배경 이미지 + 어두운 오버레이 (AI 생성된 표지 이미지)
+      if (d.imageSrc && typeof d.imageSrc === 'string' && d.imageSrc.startsWith('data:image/')) {
+        slide.addImage({ data: d.imageSrc, x: 0, y: 0, w: W, h: H, sizing: { type: 'cover', w: W, h: H } });
+        slide.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: '0A0D12', transparency: 35 }, line: { color: '0A0D12', width: 0 } });
+      }
       // accent bar
       slide.addShape('rect', { x: PAD_X, y: 0.55, w: 0.3, h: 0.04, fill: { color: ACCENT } });
       slide.addText(d.product || '', { x: PAD_X + 0.4, y: 0.45, w: 5, h: 0.3, fontSize: 12, fontFace: MONO, color: ACCENT, charSpacing: 1.6 });
@@ -3361,6 +4025,11 @@ async function exportPptx(project) {
 
     if (s.type === 'section-divider') {
       slide.background = { color: '0A0D12' };
+      // 배경 컨셉 아트 (AI 생성)
+      if (d.imageSrc && typeof d.imageSrc === 'string' && d.imageSrc.startsWith('data:image/')) {
+        slide.addImage({ data: d.imageSrc, x: 0, y: 0, w: W, h: H, sizing: { type: 'cover', w: W, h: H } });
+        slide.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: '0A0D12', transparency: 25 }, line: { color: '0A0D12', width: 0 } });
+      }
       slide.addText(d.num || '', { x: W - PAD_X - 6, y: 1.0, w: 6, h: 5.5, fontSize: 220, fontFace: MONO, color: 'FFFFFF22', align: 'right', valign: 'middle', bold: true });
       slide.addShape('rect', { x: PAD_X, y: 0.55, w: 0.25, h: 0.04, fill: { color: ACCENT } });
       slide.addText(`CHAPTER ${d.num || ''}`, { x: PAD_X + 0.35, y: 0.45, w: 5, h: 0.3, fontSize: 12, fontFace: MONO, color: ACCENT, charSpacing: 1.6 });
@@ -3540,6 +4209,123 @@ async function exportPptx(project) {
         slide.addText(c.count || '', { x: x + catW - 1.0, y: y + 0.3, w: 0.8, h: 0.4, fontSize: 11, fontFace: MONO, color: ACCENT, bold: true, align: 'right' });
         const itemsText = (c.items || []).map(it => ({ text: it, options: { bullet: { code: '2022' } } }));
         slide.addText(itemsText, { x: x + 0.4, y: y + 0.85, w: catW - 0.6, h: catH - 0.95, fontSize: 11, fontFace: FONT, color: '424A55', paraSpaceAfter: 5 });
+      });
+    } else if (s.type === 'image-embed') {
+      // 캡션 + 중앙 정렬된 참고 이미지
+      const cap = d.caption || '';
+      if (cap) {
+        slide.addText(cap, { x: PAD_X, y: 1.5, w: W - 2 * PAD_X, h: 0.4, fontSize: 12, fontFace: FONT, color: TEXT2, italic: true });
+      }
+      const imgY = cap ? 2.0 : 1.7;
+      const imgH = H - imgY - 0.7;
+      if (d.imageSrc && typeof d.imageSrc === 'string' && d.imageSrc.startsWith('data:image/')) {
+        slide.addImage({ data: d.imageSrc, x: PAD_X, y: imgY, w: W - 2 * PAD_X, h: imgH, sizing: { type: 'contain', w: W - 2 * PAD_X, h: imgH } });
+      } else {
+        slide.addShape('rect', { x: PAD_X, y: imgY, w: W - 2 * PAD_X, h: imgH, fill: { color: 'F3F5F7' }, line: { color: 'E3E7EB', width: 0.5 } });
+        slide.addText('REFERENCE IMAGE\n(이미지 미생성)', { x: PAD_X, y: imgY, w: W - 2 * PAD_X, h: imgH, fontSize: 12, fontFace: MONO, color: '7D8590', align: 'center', valign: 'middle' });
+        if (d.imagePrompt) {
+          slide.addText(`prompt: ${d.imagePrompt}`, { x: PAD_X + 0.5, y: imgY + imgH - 0.45, w: W - 2 * PAD_X - 1, h: 0.35, fontSize: 9, fontFace: MONO, color: '7D8590', italic: true });
+        }
+      }
+    } else if (s.type === 'sequence-diagram') {
+      // 참여자 가로 배치 + 세로 lifeline + 메시지 화살표
+      const parts = d.participants || [];
+      const msgs = d.messages || [];
+      const frameX = PAD_X, frameY = 1.6, frameW = W - 2 * PAD_X, frameH = H - 2.6;
+      slide.addShape('roundRect', { x: frameX, y: frameY, w: frameW, h: frameH, fill: { color: 'FCFDFE' }, line: { color: 'E3E7EB', width: 0.5 }, rectRadius: 0.08 });
+      if (parts.length === 0) {
+        slide.addText('(참여자 없음)', { x: frameX, y: frameY + frameH / 2 - 0.2, w: frameW, h: 0.4, fontSize: 12, fontFace: FONT, color: '7D8590', align: 'center' });
+      } else {
+        const colW = (frameW - 0.6) / parts.length;
+        const headY = frameY + 0.25;
+        const headH = 0.55;
+        const lifeTop = headY + headH + 0.1;
+        const lifeBottom = frameY + frameH - 0.3;
+        const partX = (i) => frameX + 0.3 + i * colW + colW / 2;
+        // 참여자 박스 + lifeline
+        parts.forEach((p, i) => {
+          const cx = partX(i);
+          let fill = 'FFFFFF', bd = '303A45', col = TEXT;
+          if (p.kind === 'actor') { fill = ACCENT; col = '061018'; bd = ACCENT; }
+          else if (p.kind === 'service') { fill = 'ECF3FF'; bd = '58A6FF'; }
+          else if (p.kind === 'data') { fill = 'F0F9EB'; bd = '3FB950'; }
+          slide.addShape('roundRect', { x: cx - colW / 2 + 0.15, y: headY, w: colW - 0.3, h: headH, fill: { color: fill }, line: { color: bd, width: 1.5 }, rectRadius: 0.06 });
+          slide.addText(p.name || p.id || '', { x: cx - colW / 2 + 0.15, y: headY, w: colW - 0.3, h: headH, fontSize: 12, bold: true, fontFace: FONT, color: col, align: 'center', valign: 'middle' });
+          // lifeline (dashed)
+          slide.addShape('line', { x: cx, y: lifeTop, w: 0, h: lifeBottom - lifeTop, line: { color: 'A0A8B2', width: 0.8, dashType: 'dash' } });
+        });
+        // 메시지: 위에서 아래로 배치, 가로 화살표
+        const msgGap = msgs.length > 0 ? Math.min(0.45, (lifeBottom - lifeTop - 0.3) / msgs.length) : 0;
+        msgs.forEach((m, i) => {
+          const fromI = parts.findIndex(p => p.id === m.from);
+          const toI = parts.findIndex(p => p.id === m.to);
+          if (fromI < 0 || toI < 0) return;
+          const y = lifeTop + 0.2 + i * msgGap;
+          const x1 = partX(fromI);
+          const x2 = partX(toI);
+          const dashed = (m.kind === 'async' || m.kind === 'return');
+          slide.addShape('line', { x: Math.min(x1, x2), y, w: Math.abs(x2 - x1), h: 0, line: { color: '303A45', width: 1.2, dashType: dashed ? 'dash' : undefined, endArrowType: x2 > x1 ? 'triangle' : undefined, beginArrowType: x2 < x1 ? 'triangle' : undefined } });
+          if (m.label) {
+            slide.addText(m.label, { x: Math.min(x1, x2), y: y - 0.22, w: Math.abs(x2 - x1) || 1.5, h: 0.22, fontSize: 9, fontFace: MONO, color: '303A45', align: 'center' });
+          }
+        });
+      }
+    } else if (s.type === 'class-diagram') {
+      // 클래스 박스(col/row) + 관계선
+      const classes = d.classes || [];
+      const relations = d.relations || [];
+      const frameX = PAD_X, frameY = 1.6, frameW = W - 2 * PAD_X, frameH = H - 2.6;
+      slide.addShape('roundRect', { x: frameX, y: frameY, w: frameW, h: frameH, fill: { color: 'FCFDFE' }, line: { color: 'E3E7EB', width: 0.5 }, rectRadius: 0.08 });
+      const cols = Math.max(2, Math.min(4, Math.max(0, ...classes.map(c => c.col ?? 0)) + 1));
+      const rows = Math.max(1, Math.max(0, ...classes.map(c => c.row ?? 0)) + 1);
+      const px = 0.3, py = 0.25;
+      const cw = (frameW - 2 * px - (cols - 1) * 0.4) / cols;
+      const baseH = Math.max(1.2, (frameH - 2 * py - (rows - 1) * 0.4) / rows);
+      const layouts = {};
+      classes.forEach(c => {
+        const col = Math.min(cols - 1, Math.max(0, c.col ?? 0));
+        const row = Math.min(rows - 1, Math.max(0, c.row ?? 0));
+        const x = frameX + px + col * (cw + 0.4);
+        const y = frameY + py + row * (baseH + 0.4);
+        layouts[c.id] = { x, y, w: cw, h: baseH };
+      });
+      // 관계선 (단순 직선 + 라벨)
+      const RELATION_DASH = { inherit: undefined, implement: 'dash', compose: undefined, aggregate: undefined, assoc: undefined, depend: 'dash' };
+      relations.forEach(r => {
+        const a = layouts[r.from], b = layouts[r.to];
+        if (!a || !b) return;
+        const ax = a.x + a.w / 2, ay = a.y + a.h / 2;
+        const bx = b.x + b.w / 2, by = b.y + b.h / 2;
+        slide.addShape('line', { x: Math.min(ax, bx), y: Math.min(ay, by), w: Math.abs(bx - ax), h: Math.abs(by - ay), line: { color: '303A45', width: 1.2, dashType: RELATION_DASH[r.kind], endArrowType: 'triangle' } });
+        if (r.label) {
+          const lx = (ax + bx) / 2, ly = (ay + by) / 2;
+          slide.addText(r.label, { x: lx - 0.5, y: ly - 0.12, w: 1, h: 0.24, fontSize: 9, fontFace: MONO, color: '303A45', align: 'center', fill: { color: 'FFFFFF' } });
+        }
+      });
+      // 클래스 박스
+      classes.forEach(c => {
+        const l = layouts[c.id];
+        if (!l) return;
+        slide.addShape('roundRect', { x: l.x, y: l.y, w: l.w, h: l.h, fill: { color: 'FFFFFF' }, line: { color: '303A45', width: 1.5 }, rectRadius: 0.04 });
+        // header
+        slide.addShape('rect', { x: l.x, y: l.y, w: l.w, h: 0.55, fill: { color: 'F0F4F8' }, line: { color: '303A45', width: 0 } });
+        if (c.stereotype) {
+          slide.addText(c.stereotype, { x: l.x, y: l.y + 0.05, w: l.w, h: 0.2, fontSize: 8, fontFace: MONO, color: '586A75', italic: true, align: 'center' });
+        }
+        slide.addText(c.name || c.id || '', { x: l.x, y: l.y + (c.stereotype ? 0.22 : 0.1), w: l.w, h: 0.35, fontSize: 13, bold: true, fontFace: FONT, color: TEXT, align: 'center' });
+        // attrs
+        const attrs = c.attrs || [];
+        if (attrs.length) {
+          const attrText = attrs.map(a => ({ text: a, options: {} }));
+          slide.addText(attrText, { x: l.x + 0.1, y: l.y + 0.6, w: l.w - 0.2, h: Math.min(0.7, attrs.length * 0.2), fontSize: 9, fontFace: MONO, color: TEXT, paraSpaceAfter: 1 });
+        }
+        // methods
+        const methods = c.methods || [];
+        if (methods.length) {
+          const methStart = l.y + 0.6 + Math.min(0.7, attrs.length * 0.2) + 0.05;
+          const methText = methods.map(m => ({ text: m, options: {} }));
+          slide.addText(methText, { x: l.x + 0.1, y: methStart, w: l.w - 0.2, h: l.h - (methStart - l.y) - 0.05, fontSize: 9, fontFace: MONO, color: TEXT, paraSpaceAfter: 1 });
+        }
       });
     } else if (s.type === 'diagram') {
       // Render diagram nodes laid out by col/row, with edges
@@ -3912,8 +4698,14 @@ function saveStateDebounced(state) {
 if (window.SLIDE_RENDERERS) {
   if (window.EnhancedFlowSlide) window.SLIDE_RENDERERS['flow'] = window.EnhancedFlowSlide;
   if (window.DiagramSlide) window.SLIDE_RENDERERS['diagram'] = window.DiagramSlide;
+  if (window.SequenceDiagramSlide) window.SLIDE_RENDERERS['sequence-diagram'] = window.SequenceDiagramSlide;
+  if (window.ClassDiagramSlide) window.SLIDE_RENDERERS['class-diagram'] = window.ClassDiagramSlide;
 }
-if (window.SLIDE_LABELS) window.SLIDE_LABELS['diagram'] = '다이어그램';
+if (window.SLIDE_LABELS) {
+  window.SLIDE_LABELS['diagram'] = '다이어그램';
+  window.SLIDE_LABELS['sequence-diagram'] = '시퀀스 다이어그램';
+  window.SLIDE_LABELS['class-diagram'] = '클래스 다이어그램';
+}
 
 /* Tweaks defaults */
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
@@ -3949,11 +4741,12 @@ const THEMES = {
 const ToastCtx = React.createContext(null);
 function ToastHost({ children }) {
   const [toasts, setToasts] = useState([]);
-  const push = (text, kind = '') => {
+  // useCallback 으로 식별자 고정 — context 소비자가 매 렌더마다 새 함수를 잡지 않도록 한다.
+  const push = useCallback((text, kind = '') => {
     const id = Math.random().toString(36).slice(2);
     setToasts(t => [...t, { id, text, kind }]);
     setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 3000);
-  };
+  }, []);
   return (
     <ToastCtx.Provider value={push}>
       {children}
@@ -4297,7 +5090,11 @@ function ShortcutsModal({ onClose }) {
     { keys: [`${mod} Z`], desc: '실행 취소 (Undo)' },
     { keys: [`${mod} ⇧ Z`], desc: '다시 실행 (Redo)' },
     { keys: [`${mod} D`], desc: '현재 슬라이드 복제' },
-    { keys: ['←', '→'], desc: '이전/다음 슬라이드' },
+    { keys: [`${mod} C`], desc: '현재 슬라이드 복사 (텍스트 선택 시 기본 동작)' },
+    { keys: [`${mod} X`], desc: '현재 슬라이드 잘라내기' },
+    { keys: [`${mod} V`], desc: '복사한 슬라이드 붙여넣기' },
+    { keys: ['←', '→', '↑', '↓'], desc: '이전/다음 슬라이드 이동' },
+    { keys: ['Alt + ←', 'Alt + →', 'Alt + ↑', 'Alt + ↓'], desc: '현재 슬라이드 위치 이동 (재정렬)' },
     { keys: ['PageUp', 'PageDn'], desc: '이전/다음 슬라이드 (대체)' },
     { keys: ['?'], desc: '단축키 도움말' },
     { keys: ['Esc'], desc: '모달/명령팔레트 닫기' },
@@ -4720,7 +5517,7 @@ function Sidebar({ concepts, projects, selection, onSelect, onNewBlank, onOpenCo
 }
 
 /* === Slide stage === */
-function SlideStage({ project, patchSlide, scale, setScale, currentIdx, setCurrentIdx, isGenerating }) {
+function SlideStage({ project, patchSlide, replaceSlide, scale, setScale, currentIdx, setCurrentIdx, isGenerating }) {
   const slides = project.slides || [];
   const slide = slides[currentIdx];
   const stageRef = useRef(null);
@@ -4751,6 +5548,7 @@ function SlideStage({ project, patchSlide, scale, setScale, currentIdx, setCurre
           <SlideRenderer
             slide={slide}
             patch={(u) => patchSlide(slide.id, { data: { ...slide.data, ...u } })}
+            replace={(newSlide) => replaceSlide && replaceSlide(slide.id, newSlide)}
             page={currentIdx + 1}
             totalPages={slides.length}
           />
@@ -4779,14 +5577,34 @@ function SlideStage({ project, patchSlide, scale, setScale, currentIdx, setCurre
   );
 }
 
-/* === Thumbnails strip === */
+/* === Thumbnails strip ===
+ * - 각 썸네일은 정확한 16:9 비율 (CSS aspect-ratio)
+ * - 컨테이너는 세로 스크롤 + 활성 슬라이드가 자동으로 viewport 안에 오도록 scrollIntoView
+ * - 키보드 방향키는 App 전역 핸들러가 처리 (← / → / ↑ / ↓ + PageUp/Down)
+ */
 function Thumbs({ slides, currentIdx, setCurrentIdx, onAddSlide, onDeleteSlide, onMoveSlide }) {
+  const activeRef = useRef(null);
+
+  // currentIdx 변경 시 활성 썸네일을 viewport 안으로 스크롤
+  useEffect(() => {
+    const el = activeRef.current;
+    if (!el || typeof el.scrollIntoView !== 'function') return;
+    // block: 'nearest' → 이미 보이면 스크롤하지 않음, 가려져있으면 가장 가까운 가장자리로
+    try { el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch {}
+  }, [currentIdx]);
+
   return (
-    <div className="thumbs">
+    <div className="thumbs" tabIndex={-1}>
       {slides.map((s, i) => {
-        const thumbScale = 124 / 1280;
+        const isActive = i === currentIdx;
         return (
-          <div className={'thumb ' + (i === currentIdx ? 'active' : '')} key={s.id} onClick={() => setCurrentIdx(i)}>
+          <div
+            className={'thumb ' + (isActive ? 'active' : '')}
+            key={s.id}
+            ref={isActive ? activeRef : null}
+            onClick={() => setCurrentIdx(i)}
+            title={`슬라이드 ${i + 1}`}
+          >
             <span className="num">{String(i + 1).padStart(2, '0')}</span>
             <div className="thumb-actions">
               {i > 0 && (
@@ -4800,14 +5618,37 @@ function Thumbs({ slides, currentIdx, setCurrentIdx, onAddSlide, onDeleteSlide, 
               )}
             </div>
             <div className="thumb-canvas">
-              <div className="scaler" style={{ transform: `scale(${thumbScale})` }}>
-                <SlideRenderer slide={s} patch={() => {}} page={i + 1} totalPages={slides.length} />
-              </div>
+              <ThumbScaler slide={s} index={i} total={slides.length} />
             </div>
           </div>
         );
       })}
       <button className="thumb-add" onClick={onAddSlide}>+ 슬라이드 추가</button>
+    </div>
+  );
+}
+
+/* 썸네일은 16:9 컨테이너 폭에 맞춰 1280px 슬라이드를 자동 비율로 축소 */
+function ThumbScaler({ slide, index, total }) {
+  const ref = useRef(null);
+  const [scale, setScale] = useState(124 / 1280);
+  useEffect(() => {
+    if (!ref.current) return;
+    const recompute = () => {
+      if (!ref.current) return;
+      const w = ref.current.clientWidth;
+      if (w > 0) setScale(w / 1280);
+    };
+    recompute();
+    const ro = new ResizeObserver(recompute);
+    ro.observe(ref.current);
+    return () => ro.disconnect();
+  }, []);
+  return (
+    <div ref={ref} className="thumb-scaler-host">
+      <div className="scaler" style={{ transform: `scale(${scale})` }}>
+        <SlideRenderer slide={slide} patch={() => {}} page={index + 1} totalPages={total} />
+      </div>
     </div>
   );
 }
@@ -4821,8 +5662,11 @@ function AddSlideMenu({ onAdd, onClose }) {
     { type: 'data-table', label: '데이터 테이블', icon: '▦' },
     { type: 'flow', label: '플로우 차트', icon: '⇣' },
     { type: 'diagram', label: '다이어그램 (2D)', icon: '◇' },
+    { type: 'sequence-diagram', label: '시퀀스 다이어그램', icon: '⇄' },
+    { type: 'class-diagram', label: '클래스 다이어그램', icon: '▤' },
     { type: 'ui-design', label: 'UI/UX', icon: '▣' },
     { type: 'resources', label: '필요 리소스', icon: '◉' },
+    { type: 'image-embed', label: '참고 이미지', icon: '🖼' },
     { type: 'section-divider', label: '섹션 구분', icon: '—' },
   ];
   return (
@@ -4859,6 +5703,12 @@ function App({ onStateChange }) {
     };
   });
   const [bootLoaded, setBootLoaded] = useState(false);
+
+  /* ===== Slide clipboard =====
+   * - Ctrl+C / Ctrl+X / Ctrl+V 가 슬라이드 단위로 동작.
+   * - 텍스트 선택이 있거나 입력 위젯에 포커스 중이면 브라우저 기본 동작에 양보.
+   * - 세션 단위로만 유지 (탭/페이지 새로고침 시 비워짐). */
+  const slideClipRef = useRef(null);
 
   /* ===== Undo/Redo 스택 =====
    * - 큰 변경(추가/삭제/이동/AI 생성/일괄/import) 직전에 commitNow() 호출.
@@ -4948,6 +5798,11 @@ function App({ onStateChange }) {
   const [usageTick, setUsageTick] = useState(0); // 토큰/비용 강제 갱신 트리거
 
   const toast = useToast();
+  // 슬라이드 내부(예: RulesSlide의 플로우 변환 버튼)에서 토스트를 띄울 수 있도록 글로벌 노출
+  useEffect(() => {
+    window.gddToast = toast;
+    return () => { if (window.gddToast === toast) delete window.gddToast; };
+  }, [toast]);
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
 
   /* Apply theme accent CSS vars */
@@ -5048,6 +5903,35 @@ function App({ onStateChange }) {
         { from: 'n3', to: 'n2', label: '세션 생성' },
         { from: 'n2', to: 'n4', label: '저장', kind: 'dashed' },
       ]},
+      'sequence-diagram': { section: '02', sectionName: '시퀀스 다이어그램', title: '시퀀스 다이어그램',
+        participants: [
+          { id: 'p1', name: '클라이언트', kind: 'actor' },
+          { id: 'p2', name: '게이트웨이', kind: 'system' },
+          { id: 'p3', name: '인증 서비스', kind: 'service' },
+          { id: 'p4', name: 'DB', kind: 'data' },
+        ],
+        messages: [
+          { from: 'p1', to: 'p2', label: 'POST /login', kind: 'sync' },
+          { from: 'p2', to: 'p3', label: 'auth.verify(id, pw)', kind: 'sync' },
+          { from: 'p3', to: 'p4', label: 'user.find(id)', kind: 'sync' },
+          { from: 'p4', to: 'p3', label: 'user record', kind: 'return' },
+          { from: 'p3', to: 'p2', label: 'JWT token', kind: 'return' },
+          { from: 'p2', to: 'p1', label: '200 OK + token', kind: 'return' },
+        ],
+      },
+      'class-diagram': { section: '02', sectionName: '클래스 다이어그램', title: '클래스 다이어그램',
+        classes: [
+          { id: 'c1', name: 'Entity', stereotype: '<<abstract>>', attrs: ['#id: UUID', '#createdAt: DateTime'], methods: ['+save(): void'], col: 1, row: 0 },
+          { id: 'c2', name: 'Player', stereotype: '', attrs: ['-hp: int', '-mp: int', '-level: int'], methods: ['+takeDamage(amount: int): void', '+heal(amount: int): void'], col: 0, row: 1 },
+          { id: 'c3', name: 'Inventory', stereotype: '', attrs: ['-slots: Item[]', '-capacity: int'], methods: ['+add(item: Item): bool', '+remove(slotIdx: int): Item'], col: 2, row: 1 },
+          { id: 'c4', name: 'Item', stereotype: '<<entity>>', attrs: ['+name: string', '+stack: int'], methods: ['+use(target: Entity): void'], col: 3, row: 0 },
+        ],
+        relations: [
+          { from: 'c2', to: 'c1', kind: 'inherit', label: '' },
+          { from: 'c2', to: 'c3', kind: 'compose', label: '1' },
+          { from: 'c3', to: 'c4', kind: 'aggregate', label: '0..*' },
+        ],
+      },
       'ui-design': { section: '03', sectionName: 'UI/UX', title: '화면 설계', callouts: [
         { name: '영역 1', desc: '설명' },
         { name: '영역 2', desc: '설명' },
@@ -5058,7 +5942,8 @@ function App({ onStateChange }) {
         { name: '사운드', count: 'x?', items: ['아이템 1'] },
         { name: '데이터', count: 'x?', items: ['아이템 1'] },
       ]},
-      'section-divider': { num: '0?', title: '섹션 제목', subtitle: '섹션 설명' },
+      'section-divider': { num: '0?', title: '섹션 제목', subtitle: '섹션 설명', imagePrompt: '' },
+      'image-embed': { section: '03', sectionName: '참고 이미지', title: '참고 이미지', caption: '참고 이미지 캡션', imagePrompt: '' },
     };
     const newSlide = { id: window.uid(), type, data: templates[type] || {} };
     setProject(p => ({ ...p, slides: [...(p.slides || []), newSlide] }));
@@ -5083,8 +5968,29 @@ function App({ onStateChange }) {
     return { concept: c, prior };
   };
 
-  /* Handle command → generate GDD (and link to concept if currently viewing one) */
+  /* Handle command:
+   *  - 현재 GDD가 선택된 상태 → 현재 GDD를 수정 (aiEditGdd)
+   *  - 그 외 (컨셉 선택 또는 선택 없음) → 새 GDD 생성 (aiGenerateGdd)
+   */
   const sendCommand = async (text, attachments) => {
+    // 분기: GDD 가 선택되어 있고, AI 모드일 때는 "수정 명령"으로 처리
+    if (selection.type === 'gdd' && project && generationMode === 'ai') {
+      commitNow('AI 기획서 수정');
+      setIsGenerating(true);
+      try {
+        const { project: updated, summary, opsCount } = await aiEditGdd(project, text, attachments);
+        setProject(_ => updated);
+        toast(`수정 완료 (${opsCount}개 변경) — ${summary}`, 'ok');
+      } catch (e) {
+        console.error(e);
+        toast('수정 실패: ' + (e.message || e), 'err');
+      } finally {
+        setIsGenerating(false);
+      }
+      return;
+    }
+
+    // 그 외: 새 GDD 생성
     commitNow('AI 기획서 생성');
     setIsGenerating(true);
     try {
@@ -5478,7 +6384,7 @@ function App({ onStateChange }) {
     toast('삭제됨', 'ok');
   };
 
-  /* Esc + arrow keys */
+  /* Esc + arrow keys + Ctrl+C/V/X */
   useEffect(() => {
     const isTypingTarget = (el) => {
       if (!el) return false;
@@ -5487,6 +6393,15 @@ function App({ onStateChange }) {
       if (el.isContentEditable) return true;
       return false;
     };
+    const hasTextSelection = () => {
+      const sel = window.getSelection && window.getSelection();
+      return !!(sel && !sel.isCollapsed && (sel.toString() || '').length > 0);
+    };
+    const anyModalOpen = () => (
+      showAddMenu || showBrief || showSettings || showCmdK || showShortcuts || showGddSnapshots || showStats || showConsistency
+    );
+    const inSlideContext = () => (selection.type === 'gdd' && view === 'slide' && !!project);
+
     const onKey = (e) => {
       const isTyping = isTypingTarget(document.activeElement);
       const ctrl = e.metaKey || e.ctrlKey;
@@ -5522,7 +6437,7 @@ function App({ onStateChange }) {
       }
       // Cmd/Ctrl+D — 현재 슬라이드 복제
       if (ctrl && (e.key === 'd' || e.key === 'D')) {
-        if (isTyping || selection.type !== 'gdd' || view !== 'slide' || !project) return;
+        if (isTyping || !inSlideContext()) return;
         e.preventDefault();
         const slides = project.slides || [];
         const cur = slides[currentIdx];
@@ -5535,6 +6450,63 @@ function App({ onStateChange }) {
         }));
         setCurrentIdx(currentIdx + 1);
         toast('슬라이드 복제됨', 'ok');
+        return;
+      }
+      // Cmd/Ctrl+C / X / V — 슬라이드 단위 클립보드
+      // 텍스트 입력/선택이 있을 때는 브라우저 기본 동작을 방해하지 않는다.
+      if (ctrl && !e.shiftKey && !e.altKey && (e.key === 'c' || e.key === 'C')) {
+        if (isTyping || hasTextSelection()) return;
+        if (!inSlideContext() || anyModalOpen()) return;
+        const cur = (project.slides || [])[currentIdx];
+        if (!cur) return;
+        e.preventDefault();
+        slideClipRef.current = { type: cur.type, data: JSON.parse(JSON.stringify(cur.data || {})) };
+        toast('슬라이드 복사됨', 'ok');
+        return;
+      }
+      if (ctrl && !e.shiftKey && !e.altKey && (e.key === 'x' || e.key === 'X')) {
+        if (isTyping || hasTextSelection()) return;
+        if (!inSlideContext() || anyModalOpen()) return;
+        const curSlides = project.slides || [];
+        const cur = curSlides[currentIdx];
+        if (!cur) return;
+        e.preventDefault();
+        slideClipRef.current = { type: cur.type, data: JSON.parse(JSON.stringify(cur.data || {})) };
+        commitNow('슬라이드 잘라내기');
+        // 함수형 updater 내부에서 slides 를 다시 계산 (stale closure 방지)
+        setProject(p => {
+          const slidesNow = p.slides || [];
+          const idx = Math.min(currentIdx, slidesNow.length - 1);
+          if (idx < 0) return p;
+          const filtered = slidesNow.filter((_, i) => i !== idx);
+          return { ...p, slides: filtered, updatedAt: new Date().toISOString().slice(0, 10) };
+        });
+        if (currentIdx >= curSlides.length - 1) setCurrentIdx(Math.max(0, curSlides.length - 2));
+        toast('슬라이드 잘라내기', 'ok');
+        return;
+      }
+      if (ctrl && !e.shiftKey && !e.altKey && (e.key === 'v' || e.key === 'V')) {
+        if (isTyping) return;
+        if (!inSlideContext() || anyModalOpen()) return;
+        const clip = slideClipRef.current;
+        if (!clip) { toast('붙여넣을 슬라이드가 없습니다', ''); return; }
+        e.preventDefault();
+        commitNow('슬라이드 붙여넣기');
+        const dup = { id: uid(), type: clip.type, data: JSON.parse(JSON.stringify(clip.data || {})) };
+        // 함수형 updater 내부에서 slides 를 다시 계산 (stale closure 방지)
+        let plannedInsertAt = currentIdx + 1;
+        setProject(p => {
+          const slidesNow = p.slides || [];
+          const insertAt = Math.min(slidesNow.length, currentIdx + 1);
+          plannedInsertAt = insertAt;
+          return {
+            ...p,
+            slides: [...slidesNow.slice(0, insertAt), dup, ...slidesNow.slice(insertAt)],
+            updatedAt: new Date().toISOString().slice(0, 10),
+          };
+        });
+        setCurrentIdx(plannedInsertAt);
+        toast('슬라이드 붙여넣기', 'ok');
         return;
       }
       // ? — 단축키 도움말
@@ -5554,17 +6526,34 @@ function App({ onStateChange }) {
         if (showGddSnapshots) setShowGddSnapshots(false);
         return;
       }
-      // 슬라이드 이동: GDD 슬라이드 뷰에서, 편집 중이 아니고, 모달도 닫혀있을 때
-      const isArrow = e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'PageUp' || e.key === 'PageDown';
+      // Alt + Arrow — 현재 슬라이드를 앞/뒤로 이동(재정렬)
+      const isArrow = e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'PageUp' || e.key === 'PageDown';
+      if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        if (anyModalOpen()) return;
+        if (!inSlideContext()) return;
+        if (isTyping) return;
+        const slides = project.slides || [];
+        if (slides.length < 2) return;
+        const delta = (e.key === 'ArrowLeft' || e.key === 'ArrowUp') ? -1 : 1;
+        const toIdx = currentIdx + delta;
+        if (toIdx < 0 || toIdx >= slides.length) return;
+        e.preventDefault();
+        commitNow('슬라이드 위치 이동');
+        const next = [...slides];
+        [next[currentIdx], next[toIdx]] = [next[toIdx], next[currentIdx]];
+        setProject(p => ({ ...p, slides: next, updatedAt: new Date().toISOString().slice(0, 10) }));
+        setCurrentIdx(toIdx);
+        return;
+      }
+      // 슬라이드 이동(네비게이션): GDD 슬라이드 뷰에서, 편집 중이 아니고, 모달도 닫혀있을 때
       if (!isArrow) return;
-      if (showAddMenu || showBrief || showSettings || showCmdK || showShortcuts || showGddSnapshots || showStats || showConsistency) return;
-      if (selection.type !== 'gdd' || view !== 'slide') return;
+      if (anyModalOpen()) return;
+      if (!inSlideContext()) return;
       if (isTypingTarget(document.activeElement)) return;
-      if (!project) return;
       const slides = project.slides || [];
       if (!slides.length) return;
-      const goPrev = e.key === 'ArrowLeft' || e.key === 'PageUp';
-      const goNext = e.key === 'ArrowRight' || e.key === 'PageDown';
+      const goPrev = e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'PageUp';
+      const goNext = e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'PageDown';
       if (goPrev && currentIdx > 0) {
         e.preventDefault();
         setCurrentIdx(currentIdx - 1);
@@ -5730,6 +6719,14 @@ function App({ onStateChange }) {
                 <SlideStage
                   project={project}
                   patchSlide={patchSlide}
+                  replaceSlide={(slideId, newSlide) => {
+                    commitNow('슬라이드 변환');
+                    setProject(p => ({
+                      ...p,
+                      slides: (p.slides || []).map(s => s.id === slideId ? { ...s, ...newSlide } : s),
+                      updatedAt: new Date().toISOString().slice(0, 10),
+                    }));
+                  }}
                   scale={scale}
                   setScale={setScale}
                   currentIdx={currentIdx}
@@ -5958,6 +6955,8 @@ async function aiGenerateGdd(command, existingTitles, attachments, context) {
   // nano-banana: 참고 이미지 자동 생성
   // - cover 슬라이드: 표지 배경
   // - ui-design 슬라이드: UI 목업 이미지
+  // - section-divider 슬라이드: 섹션 컨셉 아트 (imagePrompt 있는 경우)
+  // - image-embed 슬라이드: 참고 이미지 (imagePrompt 있는 경우)
   // 실패해도 GDD 생성은 정상 완료(이미지만 비어있음)
   const imageJobs = [];
   const coverIdx = slides.findIndex(s => s.type === 'cover');
@@ -5970,10 +6969,13 @@ async function aiGenerateGdd(command, existingTitles, attachments, context) {
     })());
   }
   slides.forEach((s, idx) => {
-    if (s.type === 'ui-design' && s.data?.imagePrompt) {
+    const t = s.type;
+    const p = s.data?.imagePrompt;
+    if (!p) return;
+    if (t === 'ui-design' || t === 'section-divider' || t === 'image-embed') {
       imageJobs.push((async () => {
         try {
-          const src = await window.gemini.generateImage(s.data.imagePrompt);
+          const src = await window.gemini.generateImage(p);
           slides[idx].data = { ...slides[idx].data, imageSrc: src };
         } catch (e) { /* swallow */ }
       })());
@@ -5997,6 +6999,171 @@ async function aiGenerateGdd(command, existingTitles, attachments, context) {
     history: [],
     comments: [],
   };
+}
+
+/* === AI 기획서 수정 (operations 기반) ===
+ * 현재 GDD + 사용자 명령을 받아 add/replace/patch/delete/move/meta 작업을 적용.
+ * 반환값: { project: 갱신된 project, summary }
+ */
+async function aiEditGdd(currentProject, command, attachments) {
+  const prompt = window.buildAiEditPrompt(currentProject, command, attachments);
+  let raw;
+  try {
+    const imageAttachments = (attachments || []).filter(a => a.kind === 'image');
+    if (imageAttachments.length > 0) {
+      try {
+        const parts = [
+          { text: prompt },
+          ...imageAttachments.slice(0, 6)
+            .map(a => window.gemini.imagePartFromDataUrl(a.src))
+            .filter(Boolean),
+        ];
+        raw = await window.gemini.complete({ contents: [{ role: 'user', parts }] });
+      } catch (multimodalErr) {
+        raw = await window.gemini.complete(prompt);
+      }
+    } else {
+      raw = await window.gemini.complete(prompt);
+    }
+  } catch (e) {
+    throw new Error('Gemini 호출 실패. 다시 시도해주세요.');
+  }
+
+  let parsed;
+  try {
+    parsed = window.parseAiJson(raw);
+  } catch (e) {
+    throw new Error(e.message || 'AI 응답을 JSON으로 변환하지 못했습니다.');
+  }
+  const ops = Array.isArray(parsed.operations) ? parsed.operations : [];
+  if (!ops.length) throw new Error('AI가 적용 가능한 변경을 반환하지 않았습니다. 명령을 더 구체적으로 적어주세요.');
+
+  // 1) 슬라이드 배열에 operations 적용
+  let slides = [...(currentProject.slides || [])];
+  const newOrChanged = []; // 이미지 생성 대상
+  const findIdx = (key) => {
+    if (key == null) return -1;
+    const idx = slides.findIndex(s => s.id === key);
+    if (idx >= 0) return idx;
+    const n = parseInt(key, 10);
+    if (!isNaN(n) && n >= 1 && n <= slides.length) return n - 1;
+    return -1;
+  };
+  // AI 가 patch/replace 로 imageSrc 같은 위험 필드를 임의 값으로 주입하지 못하도록 정제.
+  // imageSrc 는 data:image/* base64 만 허용 (LLM 이 javascript: 같은 스킴을 넣어도 차단).
+  const ALLOWED_IMG_RE = /^data:image\/(png|jpeg|jpg|webp|gif|svg\+xml);base64,/i;
+  const sanitizeSlideData = (data) => {
+    if (!data || typeof data !== 'object') return data;
+    const out = { ...data };
+    if (typeof out.imageSrc === 'string' && !ALLOWED_IMG_RE.test(out.imageSrc)) {
+      delete out.imageSrc; // 위험 스킴 / 비정형 URL 제거
+    }
+    return out;
+  };
+  const metaUpdate = {};
+  const fixes = [];
+  let opFailures = 0;
+  for (const op of ops) {
+    try {
+      if (op.op === 'add' && op.slide) {
+        const sanitizedData = sanitizeSlideData(op.slide.data || {});
+        const rawSlide = { id: window.uid(), type: op.slide.type || 'rules', data: sanitizedData };
+        const validated = window.validateSlide ? window.validateSlide(rawSlide) : { slide: rawSlide, fixes: [] };
+        fixes.push(...(validated.fixes || []));
+        const newSlide = validated.slide;
+        let pos;
+        if (op.after === 'start') pos = 0;
+        else if (op.after === 'end' || op.after == null) pos = slides.length;
+        else {
+          const idx = findIdx(op.after);
+          pos = idx >= 0 ? idx + 1 : slides.length;
+        }
+        slides = [...slides.slice(0, pos), newSlide, ...slides.slice(pos)];
+        newOrChanged.push(newSlide);
+      } else if (op.op === 'replace' && op.slide) {
+        const idx = findIdx(op.id);
+        if (idx < 0) continue;
+        const oldId = slides[idx].id;
+        const sanitizedData = sanitizeSlideData(op.slide.data || {});
+        const rawSlide = { id: oldId, type: op.slide.type || slides[idx].type, data: sanitizedData };
+        const validated = window.validateSlide ? window.validateSlide(rawSlide) : { slide: rawSlide, fixes: [] };
+        fixes.push(...(validated.fixes || []));
+        slides = slides.map((s, i) => i === idx ? validated.slide : s);
+        newOrChanged.push(validated.slide);
+      } else if (op.op === 'patch' && op.fields) {
+        const idx = findIdx(op.id);
+        if (idx < 0) continue;
+        const sanitizedFields = sanitizeSlideData(op.fields);
+        const merged = { ...slides[idx], data: { ...slides[idx].data, ...sanitizedFields } };
+        slides = slides.map((s, i) => i === idx ? merged : s);
+        if (sanitizedFields.imagePrompt) newOrChanged.push(merged);
+      } else if (op.op === 'delete') {
+        const idx = findIdx(op.id);
+        if (idx < 0) continue;
+        slides = slides.filter((_, i) => i !== idx);
+      } else if (op.op === 'move') {
+        const idx = findIdx(op.id);
+        const to = (parseInt(op.to, 10) || 1) - 1;
+        if (idx < 0 || to < 0 || to >= slides.length || idx === to) continue;
+        const moved = slides[idx];
+        const without = slides.filter((_, i) => i !== idx);
+        slides = [...without.slice(0, to), moved, ...without.slice(to)];
+      } else if (op.op === 'meta' && op.fields) {
+        for (const k of ['title', 'subtitle', 'team', 'badge']) {
+          if (typeof op.fields[k] === 'string' && op.fields[k].trim()) metaUpdate[k] = op.fields[k];
+        }
+      }
+    } catch (e) {
+      // 개별 op 적용 실패는 전체 수정을 중단시키지 않고 카운트만 누적
+      opFailures++;
+    }
+  }
+  if (fixes.length && window.gddToast) {
+    try { window.gddToast(`AI 응답 ${fixes.length}개 항목 자동 보정`, 'ok'); } catch {}
+  }
+  if (opFailures > 0 && window.gddToast) {
+    try { window.gddToast(`${opFailures}개 변경 작업 실패 (스킵됨)`, 'err'); } catch {}
+  }
+
+  // 2) 새/변경 슬라이드의 imagePrompt 가 있으면 nano-banana 로 이미지 생성.
+  // id 기반으로 트래킹 → 이후 ops 가 같은 슬라이드를 다시 교체해도 race 가 안 생긴다.
+  const imageTargets = newOrChanged
+    .filter(s => s.data?.imagePrompt && ['cover', 'ui-design', 'section-divider', 'image-embed'].includes(s.type))
+    .map(s => ({ id: s.id, prompt: s.data.imagePrompt }));
+  if (imageTargets.length > 0) {
+    const results = await Promise.allSettled(imageTargets.map(t => window.gemini.generateImage(t.prompt)));
+    const idToSrc = {};
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled' && typeof r.value === 'string') {
+        idToSrc[imageTargets[i].id] = r.value;
+      }
+    });
+    if (Object.keys(idToSrc).length > 0) {
+      slides = slides.map(s => {
+        const src = idToSrc[s.id];
+        if (!src) return s;
+        return { ...s, data: { ...s.data, imageSrc: src } };
+      });
+    }
+  }
+
+  // 3) 갱신된 project 반환
+  const summary = (parsed.summary && String(parsed.summary).slice(0, 200)) || `${ops.length}개 변경 적용`;
+  const updatedProject = {
+    ...currentProject,
+    ...metaUpdate,
+    slides,
+    updatedAt: new Date().toISOString().slice(0, 10),
+    history: [
+      ...(currentProject.history || []),
+      {
+        ts: new Date().toISOString().slice(0, 16).replace('T', ' '),
+        cmd: command + ((attachments || []).length ? ` [+${(attachments || []).length}개 첨부]` : ''),
+        summary,
+      },
+    ],
+  };
+  return { project: updatedProject, summary, opsCount: ops.length };
 }
 
 /* Mount */

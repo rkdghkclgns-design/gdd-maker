@@ -28,7 +28,11 @@
     },
     'section-divider': {
       required: ['title'],
-      defaults: { num: '01', title: '섹션', subtitle: '' },
+      defaults: { num: '01', title: '섹션', subtitle: '', imagePrompt: '', imageSrc: null },
+    },
+    'image-embed': {
+      required: ['title'],
+      defaults: { section: '03', sectionName: '참고 이미지', title: '참고 이미지', caption: '', imagePrompt: '', imageSrc: null },
     },
     intent: {
       required: ['title'],
@@ -64,6 +68,22 @@
       arrays: {
         nodes: { item: { id: 'n1', label: '노드', kind: 'process', col: 0, row: 0 } },
         edges: { item: { from: '', to: '', label: '' } },
+      },
+    },
+    'sequence-diagram': {
+      required: ['participants'],
+      defaults: { section: '02', sectionName: '시퀀스 다이어그램', title: '시퀀스 다이어그램', participants: [], messages: [] },
+      arrays: {
+        participants: { item: { id: 'p1', name: '참여자', kind: 'system' } },
+        messages: { item: { from: '', to: '', label: '메시지', kind: 'sync' } },
+      },
+    },
+    'class-diagram': {
+      required: ['classes'],
+      defaults: { section: '02', sectionName: '클래스 다이어그램', title: '클래스 다이어그램', classes: [], relations: [] },
+      arrays: {
+        classes: { item: { id: 'c1', name: '클래스', stereotype: '', attrs: [], methods: [], col: 0, row: 0 } },
+        relations: { item: { from: '', to: '', kind: 'assoc', label: '' } },
       },
     },
     'ui-design': {

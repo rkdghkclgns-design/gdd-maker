@@ -112,6 +112,16 @@
         '---',
         header(2, `${d.num || ''}. ${d.title || ''}`),
         d.subtitle ? `> ${d.subtitle}` : '',
+        d.imageSrc ? `\n![${d.title || 'section'}](${d.imageSrc})\n` : '',
+        '',
+      ].filter(Boolean).join('\n');
+    }
+    if (T === 'image-embed') {
+      return [
+        header(3, `${sectionLabel ? '[' + sectionLabel + '] ' : ''}${d.title || '참고 이미지'}`),
+        d.caption ? `*${d.caption}*` : '',
+        '',
+        d.imageSrc ? `![${d.title || 'reference'}](${d.imageSrc})` : (d.imagePrompt ? `*(이미지 미생성 — 프롬프트: ${d.imagePrompt})*` : '*(이미지 없음)*'),
         '',
       ].filter(Boolean).join('\n');
     }
@@ -189,6 +199,73 @@
         'flowchart LR',
         ...nodeLines,
         ...edgeLines,
+        '```',
+        '',
+      ].join('\n');
+    }
+    if (T === 'sequence-diagram') {
+      const partLines = (d.participants || []).map(p => {
+        const role = p.kind === 'actor' ? 'actor' : 'participant';
+        const name = (p.name || p.id || '').replace(/"/g, '\\"');
+        return `  ${role} ${p.id} as ${name}`;
+      });
+      const msgLines = (d.messages || []).map(m => {
+        const label = (m.label || '').replace(/\n/g, ' ');
+        // Mermaid sequence syntax:
+        //  ->>  solid head    (sync)
+        //  -->> dashed head   (async / return)
+        const arrow = (m.kind === 'async' || m.kind === 'return') ? '-->>' : '->>';
+        return `  ${m.from}${arrow}${m.to}: ${label}`;
+      });
+      return [
+        header(3, `${sectionLabel ? '[' + sectionLabel + '] ' : ''}${d.title || '시퀀스 다이어그램'}`),
+        '',
+        '```mermaid',
+        'sequenceDiagram',
+        ...partLines,
+        ...msgLines,
+        '```',
+        '',
+      ].join('\n');
+    }
+    if (T === 'class-diagram') {
+      const classLines = [];
+      (d.classes || []).forEach(c => {
+        const safeName = (c.name || c.id || 'Class').replace(/\s+/g, '_');
+        const lines = [`  class ${safeName} {`];
+        if (c.stereotype) {
+          const st = (c.stereotype || '').trim().replace(/^<+|>+$/g, '');
+          if (st) lines.push(`    <<${st}>>`);
+        }
+        (c.attrs || []).forEach(a => lines.push(`    ${a}`));
+        (c.methods || []).forEach(m => lines.push(`    ${m}`));
+        lines.push('  }');
+        classLines.push(lines.join('\n'));
+      });
+      const nameOf = (id) => {
+        const c = (d.classes || []).find(x => x.id === id);
+        return (c?.name || id || '').replace(/\s+/g, '_');
+      };
+      const relMap = {
+        inherit:   '--|>',
+        implement: '..|>',
+        compose:   '*--',
+        aggregate: 'o--',
+        assoc:     '-->',
+        depend:    '..>',
+      };
+      const relLines = (d.relations || []).map(r => {
+        const op = relMap[r.kind] || '-->';
+        const lbl = r.label ? ` : ${r.label}` : '';
+        return `  ${nameOf(r.from)} ${op} ${nameOf(r.to)}${lbl}`;
+      });
+      return [
+        header(3, `${sectionLabel ? '[' + sectionLabel + '] ' : ''}${d.title || '클래스 다이어그램'}`),
+        '',
+        '```mermaid',
+        'classDiagram',
+        ...classLines,
+        ...relLines,
         '```',
         '',
       ].join('\n');

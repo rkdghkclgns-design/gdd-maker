@@ -29,6 +29,16 @@
 - `loadState` 단계에 `stripStaleBlobUrls` 가 있어 과거 잔재도 1차 청소.
 - 새로 blob URL 을 만드는 코드 추가 시 반드시 역맵에 등록할 것.
 
+### CKPT-003a. AI 응답 토큰 한계로 인한 응답 잘림 + JSON 파싱 실패
+**증상**: `Error: AI 응답을 JSON으로 복구하지 못했습니다. (응답이 너무 길어 잘렸을 수 있음)` — 신규 슬라이드 22~32장을 단일 호출로 요청 시 Gemini 응답 토큰 한계 초과로 응답 끝부분이 잘림.
+**원인**: 단일 호출 `aiGenerateGdd` 가 풍부한 분량(22~32 슬라이드 × 새로운 7개 타입 × markdown 내용)을 한 번에 요구.
+**재발 방지**:
+- 표준 'ai' 모드도 자동으로 **2단계 파이프라인** `aiGenerateGddTwoStage` 를 사용. Outline → 배치 7개씩 Flesh-out 으로 각 호출의 토큰 부담을 분산.
+- 'deep' 모드는 추가로 self-critique 단계 활성.
+- 그래도 단일 호출이 실패하면 `aiGenerateGdd` 가 자동으로 2단계 파이프라인으로 폴백.
+- `parseAiJson` 에 `salvageSlidesArray` 추가 — "slides" 배열에서 완성된 객체만 추출 가능 (최후의 수단).
+- 새 슬라이드 타입을 추가하거나 분량을 늘릴 때는 반드시 2단계 파이프라인이 처리할 수 있는지 검증.
+
 ### CKPT-003. AI 응답의 무검증 필드 머지 (XSS 우려)
 **증상**: AI 가 patch op 의 `op.fields.imageSrc` 에 `javascript:alert(1)` 같은 위험 스킴을 넣을 수 있다 (이론적). 브라우저가 차단하긴 하지만 방어 가능.
 **원인**: `aiEditGdd` 의 patch/replace 가 LLM 응답의 임의 필드를 `slide.data` 에 그대로 머지.

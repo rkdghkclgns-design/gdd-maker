@@ -987,13 +987,69 @@ function parseAiJson(raw) {
   // 5) 잘린 응답 복구: 문자열 안에서 잘렸는지, brace/bracket 균형이 맞는지 확인 후 자동 보완
   const recovered = repairTruncatedJson(cleaned);
   try { return JSON.parse(recovered); } catch (e) {
-    // 마지막 시도: 마지막 정상 닫힘 위치까지만 사용
+    // 6) 마지막 정상 닫힘 위치까지만 사용
     const trimmed = trimToLastClosing(cleaned);
     if (trimmed) {
       try { return JSON.parse(trimmed); } catch (_) {}
     }
+    // 7) 최후의 수단: "slides" 배열 내부에서 완성된 객체만 추출
+    const partial = salvageSlidesArray(cleaned);
+    if (partial) return partial;
     throw new Error('AI 응답을 JSON으로 복구하지 못했습니다. (응답이 너무 길어 잘렸을 수 있음)');
   }
+}
+
+/** 잘린 응답에서 "slides": [ ... ] 배열을 찾아 완성된 객체만 추출 (각 객체는 brace 균형 확인) */
+function salvageSlidesArray(s) {
+  // "slides" 키 찾기
+  const slidesIdx = s.search(/"slides"\s*:\s*\[/);
+  if (slidesIdx === -1) return null;
+  const arrStart = s.indexOf('[', slidesIdx);
+  if (arrStart === -1) return null;
+  // arrStart 이후 완성된 { ... } 객체들을 하나씩 추출
+  const objs = [];
+  let i = arrStart + 1;
+  while (i < s.length) {
+    // 공백·콤마 skip
+    while (i < s.length && /[\s,]/.test(s[i])) i++;
+    if (i >= s.length || s[i] !== '{') break;
+    // brace 매칭으로 한 객체 끝 찾기
+    let depth = 0, inStr = false, escape = false;
+    const objStart = i;
+    let objEnd = -1;
+    for (let j = i; j < s.length; j++) {
+      const c = s[j];
+      if (escape) { escape = false; continue; }
+      if (c === '\\') { escape = true; continue; }
+      if (inStr) {
+        if (c === '"') inStr = false;
+        continue;
+      }
+      if (c === '"') { inStr = true; continue; }
+      if (c === '{') depth++;
+      else if (c === '}') {
+        depth--;
+        if (depth === 0) { objEnd = j; break; }
+      }
+    }
+    if (objEnd === -1) break; // 미완성 객체 — 무시
+    const objStr = s.slice(objStart, objEnd + 1);
+    try {
+      const obj = JSON.parse(objStr);
+      objs.push(obj);
+    } catch (_) { /* skip malformed */ }
+    i = objEnd + 1;
+  }
+  if (objs.length === 0) return null;
+  // 메타 키들도 추출 시도 (title/subtitle/badge)
+  const meta = {};
+  const tryExtract = (key) => {
+    const re = new RegExp(`"${key}"\\s*:\\s*"([^"]*?)"`);
+    const m = re.exec(s);
+    if (m) meta[key] = m[1];
+  };
+  ['title', 'subtitle', 'badge', 'team', 'author'].forEach(tryExtract);
+  return { ...meta, slides: objs, _salvaged: true, _salvagedCount: objs.length };
 }
 
 /** 잘린 JSON 문자열을 brace/bracket 균형 + string 닫힘 추정하여 복구 시도. */

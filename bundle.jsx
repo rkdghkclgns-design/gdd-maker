@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-23T07:08:01.015Z
+   생성 시각: 2026-05-23T07:20:26.331Z
 */
 
 // ============================================================
@@ -7569,17 +7569,19 @@ function App({ onStateChange }) {
         await new Promise(r => setTimeout(r, 700));
         result = window.generateDemoGdd(fullCommand);
       } else if (generationMode === 'deep') {
-        // 2단계 파이프라인 — 깊이↑, 비용 약 2.5배
+        // 2단계 + Self-critique — 비용 ~3배, 품질 ↑↑
         const ctx = concept ? buildGddContext(concept) : null;
         result = await aiGenerateGddTwoStage(fullCommand, state.projects.map(p => p.title), attachments, ctx, {
           selfCritique: true,
-          onProgress: ({ stage, message }) => {
-            try { toast(`[${stage}] ${message}`, ''); } catch {}
-          },
+          onProgress: ({ stage, message }) => { try { toast(`[${stage}] ${message}`, ''); } catch {} },
         });
       } else {
+        // 표준 'ai' 모드도 2단계 파이프라인 사용 (단일 호출은 분량 요구를 못 담음)
         const ctx = concept ? buildGddContext(concept) : null;
-        result = await aiGenerateGdd(fullCommand, state.projects.map(p => p.title), attachments, ctx);
+        result = await aiGenerateGddTwoStage(fullCommand, state.projects.map(p => p.title), attachments, ctx, {
+          selfCritique: false,
+          onProgress: ({ stage, message }) => { try { toast(`[${stage}] ${message}`, ''); } catch {} },
+        });
       }
       // If viewing a concept, inherit its team badge
       if (concept && concept.badge) result.team = concept.badge;
@@ -7667,7 +7669,19 @@ function App({ onStateChange }) {
           // brief에 conceptId가 지정되어 있으면 그 컨셉 + 형제 기획서 요약을 컨텍스트로 전달
           const baseCtx = conceptIdForLink ? buildGddContext(conceptIdForLink) : (concept ? buildGddContext(concept) : null);
           const ctx = baseCtx ? { ...baseCtx, plan: linkedPlan || { title } } : null;
-          result = await aiGenerateGdd(text, state.projects.map(p => p.title), attachments, ctx);
+          // 2단계 파이프라인을 표준 'ai' 모드의 기본값으로 사용 — 단일 호출은 22~32장 요구를
+          // 한 응답에 담지 못해 잘림. 'deep' 모드는 self-critique 까지 활성.
+          if (mode === 'deep') {
+            result = await aiGenerateGddTwoStage(text, state.projects.map(p => p.title), attachments, ctx, {
+              selfCritique: true,
+              onProgress: ({ stage, message }) => { try { toast(`[${stage}] ${message}`, ''); } catch {} },
+            });
+          } else {
+            result = await aiGenerateGddTwoStage(text, state.projects.map(p => p.title), attachments, ctx, {
+              selfCritique: false,
+              onProgress: ({ stage, message }) => { try { toast(`[${stage}] ${message}`, ''); } catch {} },
+            });
+          }
         }
         result.history = [{
           ts: new Date().toISOString().slice(0, 16).replace('T', ' '),
@@ -7824,7 +7838,11 @@ function App({ onStateChange }) {
           .filter(Boolean)
           .map(g => window.summarizeGddForContext(g));
         const ctx = { concept, prior, plan };
-        const result = await aiGenerateGdd(text, knownProjects.map(p => p.title), null, ctx);
+        // 2단계 파이프라인으로 — 단일 호출은 분량 잘림 위험
+        const result = await aiGenerateGddTwoStage(text, knownProjects.map(p => p.title), null, ctx, {
+          selfCritique: false,
+          onProgress: ({ stage, message }) => { try { toast(`(${i+1}/${pending.length}) [${stage}] ${message}`, ''); } catch {} },
+        });
         if (conceptBadge) result.team = conceptBadge;
         result.history = [{
           ts: new Date().toISOString().slice(0, 16).replace('T', ' '),
@@ -8840,12 +8858,14 @@ async function aiGenerateGdd(command, existingTitles, attachments, context) {
   } catch (e) {
     throw new Error('Gemini 호출 실패. 데모 모드로 전환하거나 다시 시도해주세요.');
   }
-  // 공용 복구 파서 사용 — 잘림/trailing comma/escape 문제까지 자동 복구
+  // 공용 복구 파서 사용 — 잘림/trailing comma/escape 문제까지 자동 복구.
+  // 그래도 실패하면 2단계 파이프라인으로 자동 폴백 (Outline 짧음 → Flesh-out 배치).
   let parsed;
   try {
     parsed = window.parseAiJson(raw);
   } catch (e) {
-    throw new Error(e.message || 'AI 응답을 JSON으로 변환하지 못했습니다.');
+    if (window.gddToast) try { window.gddToast('단일 호출 잘림 — 2단계 파이프라인으로 자동 재시도', ''); } catch {}
+    return await aiGenerateGddTwoStage(command, existingTitles, attachments, context, { selfCritique: false });
   }
 
   const rawSlides = (parsed.slides || []).map(s => ({ id: window.uid(), type: s.type, data: s.data || {} }));

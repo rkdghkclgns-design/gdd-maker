@@ -124,9 +124,15 @@
               continue;
             }
           } else if (typeof v === 'string' && v.startsWith('blob:')) {
-            // 이미 Blob URL인 경우(이전 로드에서 만들어진) — 그대로 보존 시 새로고침 후 무효해짐.
-            // 별도 처리는 하지 않음. 외부에서 dataUrl로 변환 후 저장해야 영구 보존됨.
-            out[k] = v;
+            // restoreImageRefs 가 만든 blob URL → reverse map 으로 원래 ref 복원.
+            // 매핑이 없으면 (외부에서 들어온 임시 blob URL 등) 그대로 두지 않고 null 처리해
+            // 다음 새로고침 후 ERR_FILE_NOT_FOUND 가 쏟아지지 않게 한다.
+            const known = _urlToUuid.get(v);
+            if (known) {
+              out[k] = REF_PREFIX + known;
+            } else {
+              out[k] = null;
+            }
             continue;
           }
           out[k] = walk(v);
@@ -150,8 +156,14 @@
     return cleaned;
   }
 
-  /* === Restore: state 안 idb-image:// ref → Blob URL 복원 === */
-  const _urlCache = new Map(); // uuid -> object URL (this session)
+  /* === Restore: state 안 idb-image:// ref → Blob URL 복원 ===
+   * 양방향 매핑 유지:
+   *   _urlCache    : uuid → blob URL  (복원 시 동일 ref 가 여러 번 나와도 1번만 생성)
+   *   _urlToUuid   : blob URL → uuid  (저장 시 blob URL 을 다시 ref 로 정규화)
+   * 두 맵 모두 메모리(이 세션) 한정. 새로고침되면 비워지고 blob URL 도 모두 무효 — 이것이 정상.
+   */
+  const _urlCache = new Map();
+  const _urlToUuid = new Map();
 
   async function restoreImageRefs(state) {
     const refs = new Set();
@@ -175,6 +187,7 @@
         try {
           const url = URL.createObjectURL(blob);
           _urlCache.set(id, url);
+          _urlToUuid.set(url, id); // 역방향 매핑 — 저장 시 ref 로 되돌릴 때 사용
         } catch (e) {
           _urlCache.set(id, null);
         }
@@ -214,7 +227,22 @@
     slot = slot || 'main';
     const cleaned = await dbGet(STATE_STORE, slot);
     if (!cleaned) return null;
-    return await restoreImageRefs(cleaned);
+    // 과거 버전에서 영속화된 blob: URL 잔재가 있다면 이 단계에서 제거
+    // (해당 URL 은 이번 세션에서 무효 → ERR_FILE_NOT_FOUND 방지)
+    const sanitized = stripStaleBlobUrls(cleaned);
+    return await restoreImageRefs(sanitized);
+  }
+
+  /** state 트리에서 blob: URL 문자열을 null 로 정규화 (immutable). 데이터 URL/ref/객체/배열은 그대로. */
+  function stripStaleBlobUrls(node) {
+    if (Array.isArray(node)) return node.map(stripStaleBlobUrls);
+    if (node && typeof node === 'object') {
+      const out = {};
+      for (const k of Object.keys(node)) out[k] = stripStaleBlobUrls(node[k]);
+      return out;
+    }
+    if (typeof node === 'string' && node.startsWith('blob:')) return null;
+    return node;
   }
 
   async function hasSlot(slot) {
@@ -266,11 +294,12 @@
       if (!used.has(k)) {
         await dbDelete(IMAGES_STORE, k);
         deleted++;
-        // 메모리 캐시에서도 제거 + URL revoke
+        // 메모리 캐시에서도 제거 + URL revoke + 역방향 매핑도 정리
         if (_urlCache.has(k)) {
           const url = _urlCache.get(k);
           if (url && typeof url === 'string' && url.startsWith('blob:')) {
             try { URL.revokeObjectURL(url); } catch {}
+            _urlToUuid.delete(url);
           }
           _urlCache.delete(k);
         }

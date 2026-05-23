@@ -93,28 +93,30 @@ function HistorySlide({ data, patch, page, totalPages }) {
     <div className="slide">
       <TopTag />
       <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
-      <table className="history-table">
-        <thead>
-          <tr>
-            <th style={{ width: '12%' }}>버전</th>
-            <th style={{ width: '16%' }}>변경일자</th>
-            <th style={{ width: '14%' }}>page</th>
-            <th>내용</th>
-            <th style={{ width: '16%' }}>작성자</th>
-          </tr>
-        </thead>
-        <tbody>
-          {(data.rows || []).map((r, i) => (
-            <tr key={i}>
-              <td className="ver"><Editable value={r.ver} onChange={(v) => updateRow(i, 'ver', v)} /></td>
-              <td><Editable value={r.date} onChange={(v) => updateRow(i, 'date', v)} /></td>
-              <td><Editable value={r.page} onChange={(v) => updateRow(i, 'page', v)} /></td>
-              <td><Editable value={r.content} onChange={(v) => updateRow(i, 'content', v)} multiline /></td>
-              <td><Editable value={r.author} onChange={(v) => updateRow(i, 'author', v)} /></td>
+      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+        <table className="history-table">
+          <thead>
+            <tr>
+              <th style={{ width: '12%' }}>버전</th>
+              <th style={{ width: '16%' }}>변경일자</th>
+              <th style={{ width: '14%' }}>page</th>
+              <th>내용</th>
+              <th style={{ width: '16%' }}>작성자</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {(data.rows || []).map((r, i) => (
+              <tr key={i}>
+                <td className="ver"><Editable value={r.ver} onChange={(v) => updateRow(i, 'ver', v)} /></td>
+                <td><Editable value={r.date} onChange={(v) => updateRow(i, 'date', v)} /></td>
+                <td><Editable value={r.page} onChange={(v) => updateRow(i, 'page', v)} /></td>
+                <td><Editable value={r.content} onChange={(v) => updateRow(i, 'content', v)} multiline /></td>
+                <td><Editable value={r.author} onChange={(v) => updateRow(i, 'author', v)} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       <SlideFooter sectionName="문서 이력" page={page} totalPages={totalPages} />
     </div>
   );
@@ -248,24 +250,26 @@ function TermsSlide({ data, patch, page, totalPages }) {
     <div className="slide">
       <TopTag section={data.section} sectionName={data.sectionName} />
       <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
-      <table className="terms-table">
-        <thead>
-          <tr>
-            <th>용어</th>
-            <th>정의</th>
-            <th>비고</th>
-          </tr>
-        </thead>
-        <tbody>
-          {(data.rows || []).map((r, i) => (
-            <tr key={i}>
-              <td className="term"><Editable value={r.term} onChange={(v) => updateRow(i, 'term', v)} /></td>
-              <td className="def"><Editable value={r.def} onChange={(v) => updateRow(i, 'def', v)} multiline /></td>
-              <td className="note"><Editable value={r.note} onChange={(v) => updateRow(i, 'note', v)} multiline /></td>
+      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+        <table className="terms-table">
+          <thead>
+            <tr>
+              <th>용어</th>
+              <th>정의</th>
+              <th>비고</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {(data.rows || []).map((r, i) => (
+              <tr key={i}>
+                <td className="term"><Editable value={r.term} onChange={(v) => updateRow(i, 'term', v)} /></td>
+                <td className="def"><Editable value={r.def} onChange={(v) => updateRow(i, 'def', v)} multiline /></td>
+                <td className="note"><Editable value={r.note} onChange={(v) => updateRow(i, 'note', v)} multiline /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       <SlideFooter section={data.section} sectionName={data.sectionName} page={page} totalPages={totalPages} />
     </div>
   );
@@ -424,11 +428,13 @@ function UiDesignSlide({ data, patch, page, totalPages }) {
     patch({ callouts: cs });
   };
 
-  /** 자동 배치 폴백: callout에 x/y가 없을 때 균등 배치(가장자리 우선). */
+  /** 자동 배치 폴백: callout에 x/y가 없을 때 균등 배치(가장자리 우선).
+   *  배지가 28px + 2px 흰 테두리 + translate(-50%, -50%) 이므로 절반(~16px)이
+   *  컨테이너 밖으로 나가지 않도록 safe area [4, 96] 으로 clamp. */
   const callouts = data.callouts || [];
   const positions = callouts.map((c, i) => {
     if (typeof c.x === 'number' && typeof c.y === 'number') {
-      return { x: Math.max(2, Math.min(98, c.x)), y: Math.max(2, Math.min(98, c.y)) };
+      return { x: Math.max(4, Math.min(96, c.x)), y: Math.max(4, Math.min(96, c.y)) };
     }
     // 가장자리 시계방향 자동 배치
     const fallbacks = [

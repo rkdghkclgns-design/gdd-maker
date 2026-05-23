@@ -283,13 +283,21 @@ input, textarea, select { font-family: inherit; color: inherit; }
   border-bottom: 1px solid var(--border);
   position: relative;
   z-index: 5;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
 }
+.topbar::-webkit-scrollbar { height: 4px; }
+.topbar::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
+.topbar > * { flex-shrink: 0; }
 .topbar .brand {
   display: flex;
   align-items: center;
   gap: 8px;
   font-weight: 700;
   letter-spacing: -0.01em;
+  flex-shrink: 0;
 }
 .topbar .brand .logo {
   width: 22px; height: 22px;
@@ -302,10 +310,26 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .topbar .brand .name { font-size: 14px; }
 .topbar .brand .ver { font-size: 11px; color: var(--text-3); font-family: var(--font-mono); margin-left: 6px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 999px; }
 
-.topbar .crumb { color: var(--text-3); font-size: 13px; display: flex; align-items: center; gap: 8px; }
-.topbar .crumb .sep { color: var(--text-4); }
-.topbar .crumb .doc { color: var(--text); font-weight: 500; }
-.topbar .spacer { flex: 1; }
+.topbar .crumb {
+  color: var(--text-3);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 360px;
+  flex-shrink: 1;
+}
+.topbar .crumb .sep { color: var(--text-4); flex-shrink: 0; }
+.topbar .crumb .doc {
+  color: var(--text);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.topbar .spacer { flex: 1 1 auto; min-width: 8px; }
 
 .view-toggle {
   display: flex;
@@ -460,7 +484,8 @@ input, textarea, select { font-family: inherit; color: inherit; }
   border-right: 1px solid var(--border);
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 12px 10px;
+  /* 활성 썸네일 box-shadow(2px outer glow)가 좌우에서 잘리지 않도록 좌우 여백 확보 */
+  padding: 12px 12px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -884,15 +909,42 @@ input, textarea, select { font-family: inherit; color: inherit; }
 }
 .slide.cover .cover-mark { position: absolute; top: 56px; left: 72px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--accent); letter-spacing: 0.08em; }
 .slide.cover .cover-mark .bar { display: inline-block; width: 28px; height: 2px; background: var(--accent); margin-right: 12px; vertical-align: middle; }
-.slide.cover .cover-team { position: absolute; top: 56px; right: 72px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #b1bac4; }
+.slide.cover .cover-team {
+  position: absolute;
+  top: 56px; right: 72px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: #b1bac4;
+  max-width: 40%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+}
 .slide.cover .cover-center {
   position: absolute; left: 72px; right: 72px;
   top: 50%; transform: translateY(-50%);
 }
 .slide.cover .cover-title { font-size: 64px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.05; }
 .slide.cover .cover-subtitle { font-size: 22px; color: #b1bac4; margin-top: 16px; font-weight: 500; }
-.slide.cover .cover-meta { position: absolute; bottom: 56px; left: 72px; right: 72px; display: flex; justify-content: space-between; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #7d8590; }
-.slide.cover .cover-meta .author { color: #e6edf3; font-size: 14px; font-family: 'Pretendard', sans-serif; font-weight: 500; }
+.slide.cover .cover-meta {
+  position: absolute;
+  bottom: 56px; left: 72px; right: 72px;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: #7d8590;
+  min-width: 0;
+}
+.slide.cover .cover-meta > * {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.slide.cover .cover-meta .author { color: #e6edf3; font-size: 14px; font-family: 'Pretendard', sans-serif; font-weight: 500; max-width: 60%; }
 .slide.cover .bg-grid {
   position: absolute; inset: 0;
   background-image:
@@ -936,6 +988,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
   background-repeat: no-repeat;
   filter: saturate(1.05) brightness(0.9);
   z-index: 0;
+  pointer-events: none;
 }
 .slide.section-divider .sd-shade {
   position: absolute; inset: 0;
@@ -991,7 +1044,16 @@ input, textarea, select { font-family: inherit; color: inherit; }
 /* Intent slide */
 .slide .intent-title { font-size: 32px; font-weight: 700; margin: 24px 0 6px; letter-spacing: -0.01em; }
 .slide .intent-tagline { font-size: 16px; color: #303a45; line-height: 1.7; margin-bottom: 24px; max-width: 760px; }
-.intent-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px 16px; flex: 1; min-height: 0; }
+.intent-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-auto-rows: minmax(0, 1fr);
+  gap: 14px 16px;
+  flex: 1;
+  min-height: 0;
+  /* 카드가 5개 이상이어도 슬라이드 하단에서 잘리지 않도록 자체 스크롤 허용 */
+  overflow-y: auto;
+}
 .intent-card {
   border: 1px solid #d0d7de;
   border-radius: 10px;
@@ -1179,6 +1241,13 @@ input, textarea, select { font-family: inherit; color: inherit; }
   border-radius: 8px;
   padding: 16px 18px;
   display: flex; flex-direction: column; gap: 8px;
+  min-height: 0;
+  overflow: hidden;
+}
+.resource-cat ul {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 .resource-cat .cat-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
 .resource-cat .cat-name { font-size: 14px; font-weight: 700; color: #1c222b; }
@@ -1376,6 +1445,10 @@ input, textarea, select { font-family: inherit; color: inherit; }
   padding: 2px 6px;
   border-radius: 3px;
   font-family: var(--font-mono);
+  max-width: calc(100% - 12px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .attach-tile .del {
   position: absolute; top: 6px; right: 6px;
@@ -1476,14 +1549,22 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .flow-edit-bar .mini-btn.ai:hover { background: var(--accent-strong); color: #061018; }
 
 .flow-node-wrap { position: relative; }
+/* 컨트롤을 노드 오른쪽 밖에 띄우는 대신 노드 위에 배치 — .flow-wrap{overflow:hidden} 으로 인한 잘림 방지 */
 .flow-node-controls {
   position: absolute;
-  right: -68px; top: 50%;
-  transform: translateY(-50%);
+  left: 50%;
+  top: -32px;
+  transform: translateX(-50%);
   display: flex; gap: 3px;
   opacity: 0;
   transition: opacity 0.15s;
   pointer-events: none;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 2px 4px;
+  border-radius: 5px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  z-index: 3;
 }
 .flow-node-wrap:hover .flow-node-controls { opacity: 1; pointer-events: all; }
 .flow-node-controls select, .flow-node-controls button {
@@ -1563,13 +1644,18 @@ input, textarea, select { font-family: inherit; color: inherit; }
 }
 .diagram-node-controls {
   position: absolute;
-  top: -28px; right: 0;
+  /* 노드 상단에 띄우면 .diagram-wrap { overflow: hidden } 으로 첫 행에서 잘림 — 아래로 이동 */
+  bottom: -28px; right: 0;
   display: flex;
   gap: 2px;
   opacity: 0;
   transition: opacity 0.15s;
   pointer-events: none;
   z-index: 5;
+  background: rgba(255,255,255,0.95);
+  padding: 2px 4px;
+  border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.12);
 }
 .diagram-node:hover .diagram-node-controls {
   opacity: 1;
@@ -1657,13 +1743,18 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .seq-participant.data    { background: #f0f9eb; border-color: #3fb950; box-shadow: 0 2px 0 #3fb950; }
 .seq-participant-controls {
   position: absolute;
-  top: -28px; right: 0;
+  /* 상단 참여자 박스의 컨트롤이 .seq-canvas { overflow: auto } 위쪽으로 잘리지 않도록 아래로 이동 */
+  bottom: -28px; right: 0;
   display: flex;
   gap: 2px;
   opacity: 0;
   transition: opacity 0.15s;
   pointer-events: none;
   z-index: 5;
+  background: rgba(255,255,255,0.95);
+  padding: 2px 4px;
+  border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.12);
 }
 .seq-participant:hover .seq-participant-controls { opacity: 1; pointer-events: all; }
 .seq-participant-controls button {
@@ -1784,7 +1875,8 @@ input, textarea, select { font-family: inherit; color: inherit; }
     #fcfdfe;
   border-radius: 10px;
   border: 1px solid #e3e7eb;
-  overflow: hidden;
+  /* seq-canvas 와 일관성 유지 — 클래스 박스가 캔버스를 벗어나면 스크롤 가능 */
+  overflow: auto;
 }
 .cls-svg { position: absolute; inset: 0; pointer-events: none; }
 .cls-box {
@@ -1870,10 +1962,15 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .cls-add-btn:hover { color: var(--accent); border-color: var(--accent); }
 .cls-box-controls {
   position: absolute;
-  top: -28px; right: 0;
+  /* .cls-canvas { overflow: hidden } 으로 상단 클래스의 컨트롤이 잘림 — 아래로 이동 */
+  bottom: -28px; right: 0;
   display: flex; gap: 2px;
   opacity: 0; transition: opacity 0.15s; pointer-events: none;
   z-index: 5;
+  background: rgba(255,255,255,0.95);
+  padding: 2px 4px;
+  border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.12);
 }
 .cls-box:hover .cls-box-controls { opacity: 1; pointer-events: all; }
 .cls-box-controls button {
@@ -2127,15 +2224,24 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .concept-palette .swatch .name { color: #b6c8c0; font-weight: 500; }
 .concept-palette .swatch .hex { color: #4a5a52; font-family: 'JetBrains Mono', monospace; font-size: 10px; }
 
-/* Core loop */
+/* Core loop — 노드가 컨테이너 폭을 넘어가면 가로 스크롤 */
 .concept-coreloop {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
+  overflow-x: auto;
+  overflow-y: visible;
+  padding: 14px 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(136,223,176,0.3) transparent;
 }
+.concept-coreloop::-webkit-scrollbar { height: 6px; }
+.concept-coreloop::-webkit-scrollbar-thumb { background: rgba(136,223,176,0.3); border-radius: 3px; }
+.concept-coreloop::-webkit-scrollbar-track { background: transparent; }
 .coreloop-node {
   width: 90px; height: 90px;
+  min-width: 90px;
   border-radius: 50%;
   border: 2px solid #88DFB0;
   background: rgba(10, 20, 16, 0.6);
@@ -2149,6 +2255,9 @@ input, textarea, select { font-family: inherit; color: inherit; }
   word-break: keep-all;
   flex-shrink: 0;
   box-shadow: 0 0 20px rgba(136, 223, 176, 0.15) inset;
+}
+.coreloop-connector {
+  min-width: 32px;
 }
 .coreloop-node:last-child { border-color: #F5D94F; box-shadow: 0 0 20px rgba(245, 217, 79, 0.15) inset; }
 .coreloop-connector {
@@ -2445,9 +2554,11 @@ input, textarea, select { font-family: inherit; color: inherit; }
   justify-content: space-between;
   padding: 14px 20px;
   border-bottom: 1px solid rgba(136, 223, 176, 0.18);
-  /* 완전 불투명 배경 + 섹션 내 스크롤 고정 — 카드가 화면에 보이는 동안 sc-head 가 상단에 붙음 */
+  /* 완전 불투명 배경 + 섹션 내 스크롤 고정 — 카드가 화면에 보이는 동안 sc-head 가 상단에 붙음
+   * top 은 concept-toolbar 의 실제 높이(padding 12px*2 + 컨텐츠 ~24px = ~48px) 와 정확히 맞춰 갭 제거.
+   */
   position: sticky;
-  top: 56px; /* concept-toolbar 높이만큼 아래에 고정 */
+  top: 48px;
   z-index: 20;
   background: #142822;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
@@ -2618,17 +2729,19 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .sc-add:hover { border-color: #88DFB0; color: #88DFB0; }
 
 .coreloop-node { position: relative; }
+/* 노드 내부 우상단에 배치 — .section-card { overflow: hidden } 으로 인한 잘림 방지 */
 .coreloop-del.coreloop-del {
   position: absolute;
-  top: -8px; right: -8px;
-  width: 22px; height: 22px;
+  top: 2px; right: 2px;
+  width: 20px; height: 20px;
   border-radius: 50%;
-  background: #1c222b;
+  background: rgba(28, 34, 43, 0.85);
   color: #e6edf3;
-  border: 1px solid #3a414d;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   font-size: 10px;
   opacity: 0;
   transition: opacity 0.15s;
+  z-index: 2;
 }
 .coreloop-node:hover .coreloop-del { opacity: 1; }
 .coreloop-add {

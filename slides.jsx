@@ -271,9 +271,15 @@ function SectionDividerSlide({ data, patch, page, totalPages }) {
   );
 }
 
-/* ------ 4b. Image embed (참고 이미지) ------ */
+/* ------ 4b. Image embed (참고 이미지) ------
+ * 인라인 AI 생성 지원: imagePrompt 필드 편집 + ✦ AI 생성 버튼.
+ * 비어 있는 placeholder 상태에서도 바로 prompt 입력 + 생성 가능.
+ */
 function ImageEmbedSlide({ data, patch, page, totalPages }) {
   const fileRef = React.useRef(null);
+  const [generating, setGenerating] = React.useState(false);
+  const [promptDraft, setPromptDraft] = React.useState('');
+
   const onPick = (e) => {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
@@ -289,25 +295,95 @@ function ImageEmbedSlide({ data, patch, page, totalPages }) {
     reader.onload = () => patch({ imageSrc: reader.result });
     reader.readAsDataURL(f);
   };
+
+  const generate = async (promptText) => {
+    const p = (promptText || data.imagePrompt || '').trim();
+    if (!p) {
+      if (window.gddToast) window.gddToast('영문 이미지 프롬프트를 입력하세요', 'err');
+      return;
+    }
+    if (!window.gemini || !window.gemini.generateImage) {
+      if (window.gddToast) window.gddToast('Gemini API 키를 먼저 설정하세요', 'err');
+      return;
+    }
+    setGenerating(true);
+    try {
+      const src = await window.gemini.generateImage(p);
+      patch({ imageSrc: src, imagePrompt: p });
+      setPromptDraft('');
+      if (window.gddToast) window.gddToast('🍌 참고 이미지 생성 완료', 'ok');
+    } catch (e) {
+      if (window.gddToast) window.gddToast('이미지 생성 실패: ' + (e?.message || e), 'err');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const hasPrompt = !!(data.imagePrompt && data.imagePrompt.trim());
+
   return (
     <div className="slide">
       <TopTag section={data.section} sectionName={data.sectionName} />
-      <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
-      <Editable tag="div" className="image-embed-caption" value={data.caption} onChange={(v) => patch({ caption: v })} multiline placeholder="이미지가 보여주는 핵심 시각 요소·참조 의도를 한 줄로" />
+      <div className="image-embed-headline">
+        <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
+        <div className="image-embed-actions">
+          <button
+            className="mini-btn ai"
+            onClick={() => generate()}
+            disabled={generating || !hasPrompt}
+            title={hasPrompt ? '아래 imagePrompt 로 이미지 생성' : '먼저 imagePrompt 를 입력하세요'}
+          >{generating ? '생성 중…' : '🍌 AI 이미지 생성'}</button>
+          <button className="mini-btn" onClick={() => fileRef.current?.click()} title="파일 첨부">📎 파일</button>
+        </div>
+      </div>
+      <Editable tag="div" className="image-embed-caption" value={data.caption} onChange={(v) => patch({ caption: v })} multiline markdown placeholder="이미지가 보여주는 핵심 시각 요소·참조 의도를 한 줄로" />
+      {/* imagePrompt 편집 — 영문 프롬프트 */}
+      <Editable
+        tag="div"
+        className="image-embed-prompt"
+        value={data.imagePrompt}
+        onChange={(v) => patch({ imagePrompt: v })}
+        multiline
+        placeholder="🍌 영문 이미지 프롬프트 (예: A frozen-in-time street scene with floating debris, cyan glow, cinematic lighting, ultra-detailed concept art)"
+      />
       <div className="image-embed-wrap"
            onDragOver={(e) => e.preventDefault()}
            onDrop={onDrop}
-           onClick={() => !data.imageSrc && fileRef.current?.click()}>
+           onClick={() => !data.imageSrc && !generating && fileRef.current?.click()}>
         <input type="file" accept="image/*" ref={fileRef} style={{ display: 'none' }} onChange={onPick} />
-        {data.imageSrc ? (
+        {generating ? (
+          <div className="empty image-embed-loading">
+            <div className="banana-spin">🍌</div>
+            <div className="desc">nano-banana 로 이미지 생성 중…</div>
+          </div>
+        ) : data.imageSrc ? (
           <>
             <img src={data.imageSrc} alt="reference" />
-            <button className="image-embed-replace" onClick={(e) => { e.stopPropagation(); fileRef.current?.click(); }} title="이미지 교체">↻ 교체</button>
+            <div className="image-embed-overlay-actions">
+              <button onClick={(e) => { e.stopPropagation(); fileRef.current?.click(); }} title="파일 교체">↻ 교체</button>
+              {hasPrompt && (
+                <button onClick={(e) => { e.stopPropagation(); generate(); }} title="AI 재생성">🍌 재생성</button>
+              )}
+            </div>
           </>
         ) : (
-          <div className="empty">
+          <div className="empty image-embed-empty" onClick={(e) => e.stopPropagation()}>
             <div className="lbl">REFERENCE IMAGE</div>
-            <div className="desc">클릭 또는 드래그하여 이미지 첨부<br />또는 AI 프롬프트로 자동 생성</div>
+            <div className="desc">클릭하여 이미지 첨부 · 드래그 가능</div>
+            <div className="image-embed-inline-gen">
+              <textarea
+                value={promptDraft || data.imagePrompt || ''}
+                onChange={(e) => setPromptDraft(e.target.value)}
+                placeholder="또는 영문 프롬프트로 자동 생성 (예: A cyan-glowing stopwatch frozen in time, cinematic)…"
+                rows={2}
+                spellCheck={false}
+              />
+              <button
+                className="btn primary"
+                onClick={() => generate(promptDraft || data.imagePrompt)}
+                disabled={generating || !((promptDraft || data.imagePrompt || '').trim())}
+              >🍌 AI 생성</button>
+            </div>
           </div>
         )}
       </div>

@@ -815,7 +815,7 @@ ${contextBlock}
     { "type": "terms", "data": { "section":"01", "sectionName":"개요", "title":"용어 정의", "rows":[{"term":"용어","def":"역할/제약/단위까지 포함한 정의","note":"전이 조건/예외/관련 시스템"}] } },
     { "type": "rules", "data": { "section":"02", "sectionName":"시스템 상세", "title":"규칙 제목", "blocks":[{"head":"블록 제목","items":["**핵심 키워드 굵게** + 정적 규칙·상수·밸런싱 값. 절차적 로직은 여기 두지 말고 flow로 빼라"]}] } },
     { "type": "data-table", "data": { "section":"04", "sectionName":"데이터 테이블", "title":"테이블명 (예: car_master)", "columns":[{"key":"field","label":"Field","width":"22%"},{"key":"type","label":"Type","width":"14%"},{"key":"req","label":"Req.","width":"10%"},{"key":"desc","label":"설명/제약/단위/예시"}], "rows":[{"field":"실제_필드명_1","type":"uuid","req":"Y","desc":"실제 설명 + 제약 + 예시값. rows는 반드시 8개 이상 채워라"},{"field":"실제_필드명_2","type":"int","req":"Y","desc":"..."}] } },
-    { "type": "flow", "data": { "section":"02", "sectionName":"플로우 차트", "title":"...", "direction":"vertical|horizontal|grid", "nodes":[{"kind":"start|process|decision|end","label":"단계 라벨 + 조건/시간 등 핵심 메타"}] } },
+    { "type": "flow", "data": { "section":"02", "sectionName":"플로우 차트", "title":"...", "direction":"vertical|horizontal|grid", "lines": 1, "nodes":[{"kind":"start|process|decision|end","label":"단계 라벨 + 조건/시간 등 핵심 메타"}] } },
     { "type": "diagram", "data": { "section":"02", "sectionName":"시스템 구조", "title":"...", "nodes":[{"id":"n1","label":"...","sub":"영문 약어/Tech 라벨","kind":"start|process|decision|end|service|data","col":0,"row":0}], "edges":[{"from":"n1","to":"n2","label":"호출/이벤트 이름"}] } },
     { "type": "sequence-diagram", "data": { "section":"02", "sectionName":"시퀀스 다이어그램", "title":"...", "participants":[{"id":"p1","name":"클라이언트","kind":"actor|system|service|data"}], "messages":[{"from":"p1","to":"p2","label":"호출/이벤트 시그니처","kind":"sync|async|return"}] } },
     { "type": "class-diagram", "data": { "section":"02", "sectionName":"클래스 다이어그램", "title":"...", "classes":[{"id":"c1","name":"Class","stereotype":"<<entity>>|<<interface>>|","attrs":["+field: Type"],"methods":["+method(): Type"],"col":0,"row":0}], "relations":[{"from":"c1","to":"c2","kind":"inherit|implement|compose|aggregate|assoc|depend","label":"1..*"}] } },
@@ -888,7 +888,10 @@ ${contextBlock}
 - **rules.blocks**: items 는 정적 규칙/상수/임계치만 (예: "최대 레벨: 10", "강화 비용: 파편 ×(현재레벨×100)+카드 1장"). 절차적 로직은 flow 슬라이드로 보낼 것. blocks 는 2~3개로 제한하고, 동일 시스템의 절차는 별도의 flow/sequence-diagram 슬라이드로 표현한다.
 - **data-table**: 실제 동작 가능한 스키마. field 영문 snake_case, type 명확(uuid/int/float/enum/string/datetime/json), req에 Y/N, desc에 단위·범위·예시값·외래키 표시 (예: "0~9999, FK→user.user_id"). **⚠ 절대 rows를 비우지 말 것 — columns만 정의하고 rows를 빈 배열로 두는 실수 금지. 최소 6개 이상의 실제 예시 row를 채워서 출력하라.** 컬럼 키와 row 키는 정확히 일치해야 한다 (예: columns에 key:"field"가 있으면 rows의 각 객체에 "field" 키가 반드시 있어야 함).
 - **flow.nodes**: decision 노드는 분기 조건을 label에 직접 포함 ("HP ≤ 0 ?", "타이머 = 300s ?", "재화 카드 보유?"). 정상 흐름 외에 실패/취소/네트워크 단절 경로도 1개 이상.
-- **flow.direction**: 노드 수에 맞춰 명시. \`vertical\` (≤5 단계, 수직 흐름), \`horizontal\` (4~8 단계, 가로 한 줄로 한눈에 보임 — **선호**), \`grid\` (9개 이상, 자동 wrap 그리드). 단조로운 vertical 만 쓰지 말 것. 6단계 이상이면 horizontal 또는 grid 권장.
+- **flow.direction / flow.lines**: 노드 수에 맞춰 두 필드를 함께 출력.
+  - \`direction\`: \`vertical\` | \`horizontal\` | \`grid\`. 단조로운 vertical 만 쓰지 말 것. 6단계 이상은 horizontal 또는 grid 권장.
+  - \`lines\`: 1 또는 2. 가로/세로 한 줄에 들어가는 노드 수가 너무 많으면(8개 이상) \`lines: 2\` 로 두 줄에 나누어 가독성 확보.
+  - 추천: 4~6 단계 = vertical/1, 6~8 단계 = horizontal/1, 9~12 단계 = horizontal/2 또는 vertical/2, 13개 이상 = grid.
 - **diagram**: 서버/클라/DB/외부 서비스의 역할 분리를 명확히. edges 라벨은 실제 호출명이나 이벤트명에 가깝게 ("session.create", "match.end").
 - **sequence-diagram**: 참여자 3~6명. 호출은 sync/async/return 구분. 최소 1개의 return 메시지 포함.
 - **class-diagram**: 가시성 prefix(+/-/#) 명시, 시그니처에 타입 포함. 관계는 inherit/implement/compose/aggregate/assoc/depend 중 선택.

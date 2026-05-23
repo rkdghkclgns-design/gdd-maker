@@ -214,14 +214,30 @@ function EnhancedFlowSlide({ data, patch, page, totalPages }) {
   // direction 미지정 시 노드 수 기반 자동 선택
   const autoDir = nodeCount <= 5 ? 'vertical' : nodeCount <= 8 ? 'horizontal' : 'grid';
   const direction = data.direction || autoDir;
+  // 줄 수 — vertical/horizontal 에서만 의미. 기본 1. 노드 9개 이상이고 사용자가 명시하지 않았으면 자동 2.
+  const lines = (direction === 'grid')
+    ? 1
+    : Math.max(1, Math.min(2, parseInt(data.lines, 10) || (nodeCount >= 10 ? 2 : 1)));
+  // 노드를 줄별로 분할 — horizontal 은 row, vertical 은 col 단위로 chunk
+  const nodeLines = React.useMemo(() => {
+    const arr = (data.nodes || []).map((node, idx) => ({ node, idx }));
+    if (direction === 'grid' || lines <= 1) return [arr];
+    const perLine = Math.ceil(arr.length / lines);
+    const chunks = [];
+    for (let i = 0; i < lines; i++) {
+      chunks.push(arr.slice(i * perLine, (i + 1) * perLine));
+    }
+    return chunks.filter(c => c.length > 0);
+  }, [data.nodes, direction, lines]);
 
-  /* 폴백 스케일 — 측정 실패 시에도 노드 수·방향 기반으로 보수적 스케일을 적용해 footer 침범 방지 */
+  /* 폴백 스케일 — 측정 실패 시에도 노드 수·방향·줄 수 기반으로 보수적 스케일을 적용해 footer 침범 방지 */
   const fallbackScale = React.useMemo(() => {
     const nodes = data.nodes || [];
-    const n = nodes.length;
-    const avgLen = n ? nodes.reduce((s, x) => s + ((x.label || '').length), 0) / n : 0;
+    // 줄 수가 2 이상이면 한 줄당 effective node 수가 줄어들어 더 큰 스케일 가능
+    const perLine = lines > 1 ? Math.ceil(nodes.length / lines) : nodes.length;
+    const n = perLine;
+    const avgLen = nodes.length ? nodes.reduce((s, x) => s + ((x.label || '').length), 0) / nodes.length : 0;
     const hasLongLabels = avgLen > 14;
-    // 가로/그리드는 폭이 넉넉해서 vertical 보다 큰 스케일 허용
     if (direction === 'horizontal') {
       if (n <= 4) return 1;
       if (n <= 6) return 0.9;
@@ -230,12 +246,13 @@ function EnhancedFlowSlide({ data, patch, page, totalPages }) {
       return hasLongLabels ? 0.55 : 0.6;
     }
     if (direction === 'grid') {
-      if (n <= 6) return 1;
-      if (n <= 9) return 0.9;
-      if (n <= 12) return 0.78;
+      const total = nodes.length;
+      if (total <= 6) return 1;
+      if (total <= 9) return 0.9;
+      if (total <= 12) return 0.78;
       return hasLongLabels ? 0.62 : 0.7;
     }
-    // vertical
+    // vertical — perLine 기준으로 fallback 계산 (lines=2 일 때 한 컬럼당 노드 수)
     if (n <= 5) return hasLongLabels ? 0.9 : 1;
     if (n <= 6) return hasLongLabels ? 0.75 : 0.85;
     if (n <= 7) return hasLongLabels ? 0.66 : 0.76;
@@ -244,7 +261,7 @@ function EnhancedFlowSlide({ data, patch, page, totalPages }) {
     if (n <= 10) return hasLongLabels ? 0.44 : 0.5;
     if (n <= 12) return hasLongLabels ? 0.38 : 0.44;
     return hasLongLabels ? 0.32 : 0.38;
-  }, [data.nodes, direction]);
+  }, [data.nodes, direction, lines]);
   const [chartScale, setChartScale] = React.useState(fallbackScale);
   React.useEffect(() => { setChartScale(fallbackScale); }, [fallbackScale]);
 
@@ -340,8 +357,8 @@ function EnhancedFlowSlide({ data, patch, page, totalPages }) {
         {/* 레이아웃 방향 토글 */}
         <div className="flow-dir-toggle" title="배치 방향">
           {[
-            { v: 'vertical',   label: '↓ 세로', t: '세로 한 줄' },
-            { v: 'horizontal', label: '→ 가로', t: '가로 한 줄' },
+            { v: 'vertical',   label: '↓ 세로', t: '세로' },
+            { v: 'horizontal', label: '→ 가로', t: '가로' },
             { v: 'grid',       label: '▦ 그리드', t: '자동 wrap 그리드' },
           ].map(opt => (
             <button
@@ -352,41 +369,63 @@ function EnhancedFlowSlide({ data, patch, page, totalPages }) {
             >{opt.label}</button>
           ))}
         </div>
+        {/* 줄 수 토글 — vertical/horizontal 일 때만 */}
+        {direction !== 'grid' && (
+          <div className="flow-lines-toggle" title="줄 수">
+            {[1, 2].map(n => (
+              <button
+                key={n}
+                className={'mini-btn dir ' + (lines === n ? 'on' : '')}
+                onClick={() => patch({ lines: n })}
+                title={direction === 'horizontal' ? `가로 ${n}줄` : `세로 ${n}열`}
+              >{n}{direction === 'horizontal' ? '줄' : '열'}</button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="flow-wrap" ref={wrapRef} style={{ overflow: 'hidden' }}>
         <div
-          className={'flow-chart flow-chart-edit flow-dir-' + direction}
+          className={`flow-chart flow-chart-edit flow-dir-${direction} flow-lines-${lines}`}
           ref={chartRef}
           style={{ transform: `scale(${chartScale})`, transformOrigin: 'center center' }}
         >
-          {(data.nodes || []).map((n, i, arr) => (
-            <React.Fragment key={i}>
-              <div className="flow-node-wrap" data-idx={String(i + 1).padStart(2, '0')}>
-                <div className={'flow-node ' + (n.kind || 'process')}>
-                  <Editable value={n.label} onChange={(v) => updateNode(i, 'label', v)} multiline />
-                </div>
-                <div className="flow-node-controls">
-                  <button title="이전" disabled={i === 0} onClick={() => moveNode(i, -1)}>{direction === 'horizontal' ? '←' : '↑'}</button>
-                  <button title="다음" disabled={i === arr.length - 1} onClick={() => moveNode(i, +1)}>{direction === 'horizontal' ? '→' : '↓'}</button>
-                  <select value={n.kind || 'process'} onChange={e => updateNode(i, 'kind', e.target.value)}>
-                    <option value="start">start</option>
-                    <option value="process">process</option>
-                    <option value="decision">decision</option>
-                    <option value="end">end</option>
-                  </select>
-                  <button className="del" onClick={() => removeNode(i)} title="삭제">✕</button>
-                </div>
-              </div>
-              {i < arr.length - 1 && direction !== 'grid' && (
-                <div className={'flow-arrow-wrap flow-arrow-' + direction}>
-                  <div className="flow-arrow"></div>
-                  <div className="flow-arrow-add">
-                    <button onClick={() => insertNodeAt(i + 1)} title="중간에 단계 추가">+</button>
-                  </div>
-                </div>
-              )}
-            </React.Fragment>
+          {nodeLines.map((line, li) => (
+            <div key={li} className={`flow-line flow-line-${direction}`}>
+              {line.map((entry, j, arr) => {
+                const { node: n, idx: i } = entry;
+                const isLastInLine = j === arr.length - 1;
+                const showArrow = direction !== 'grid' && !isLastInLine;
+                return (
+                  <React.Fragment key={i}>
+                    <div className="flow-node-wrap" data-idx={String(i + 1).padStart(2, '0')}>
+                      <div className={'flow-node ' + (n.kind || 'process')}>
+                        <Editable value={n.label} onChange={(v) => updateNode(i, 'label', v)} multiline />
+                      </div>
+                      <div className="flow-node-controls">
+                        <button title="이전" disabled={i === 0} onClick={() => moveNode(i, -1)}>{direction === 'horizontal' ? '←' : '↑'}</button>
+                        <button title="다음" disabled={i === (data.nodes || []).length - 1} onClick={() => moveNode(i, +1)}>{direction === 'horizontal' ? '→' : '↓'}</button>
+                        <select value={n.kind || 'process'} onChange={e => updateNode(i, 'kind', e.target.value)}>
+                          <option value="start">start</option>
+                          <option value="process">process</option>
+                          <option value="decision">decision</option>
+                          <option value="end">end</option>
+                        </select>
+                        <button className="del" onClick={() => removeNode(i)} title="삭제">✕</button>
+                      </div>
+                    </div>
+                    {showArrow && (
+                      <div className={'flow-arrow-wrap flow-arrow-' + direction}>
+                        <div className="flow-arrow"></div>
+                        <div className="flow-arrow-add">
+                          <button onClick={() => insertNodeAt(i + 1)} title="중간에 단계 추가">+</button>
+                        </div>
+                      </div>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </div>
           ))}
         </div>
       </div>

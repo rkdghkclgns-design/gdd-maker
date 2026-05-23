@@ -403,6 +403,7 @@ async function exportPptx(project) {
       const n = nodes.length;
       const autoDir = n <= 5 ? 'vertical' : n <= 8 ? 'horizontal' : 'grid';
       const dir = d.direction || autoDir;
+      const lines = (dir === 'grid') ? 1 : Math.max(1, Math.min(2, parseInt(d.lines, 10) || (n >= 10 ? 2 : 1)));
       const drawNode = (node, x, y, w, h) => {
         let fill = 'FFFFFF', col = TEXT, bd = '303A45';
         if (node.kind === 'start') { fill = ACCENT; col = '061018'; bd = ACCENT; }
@@ -413,19 +414,22 @@ async function exportPptx(project) {
       };
       if (dir === 'horizontal') {
         const frameY = 1.7, frameH = H - 2.8;
-        const totalNodes = nodes.length;
+        const perLine = Math.ceil(n / lines);
         const gap = 0.2;
         const usableW = W - 2 * PAD_X;
         const arrowW = 0.3;
-        const nodeW = (usableW - (totalNodes - 1) * (arrowW + gap)) / totalNodes;
-        const nodeH = Math.min(1.0, frameH - 0.2);
-        const cy = frameY + frameH / 2 - nodeH / 2;
+        const nodeW = (usableW - (perLine - 1) * (arrowW + gap)) / perLine;
+        const nodeH = Math.min(1.0, (frameH - (lines - 1) * 0.4) / lines - 0.2);
+        const lineSpacing = (frameH - lines * nodeH) / (lines + 1);
         nodes.forEach((node, idx) => {
-          const x = PAD_X + idx * (nodeW + arrowW + gap);
-          drawNode(node, x, cy, nodeW, nodeH);
-          if (idx < totalNodes - 1) {
+          const line = Math.floor(idx / perLine);
+          const col = idx % perLine;
+          const x = PAD_X + col * (nodeW + arrowW + gap);
+          const y = frameY + lineSpacing + line * (nodeH + lineSpacing);
+          drawNode(node, x, y, nodeW, nodeH);
+          if (col < perLine - 1 && idx < n - 1) {
             const ax = x + nodeW;
-            const ay = cy + nodeH / 2;
+            const ay = y + nodeH / 2;
             slide.addShape('line', { x: ax, y: ay, w: arrowW + gap - 0.05, h: 0, line: { color: '303A45', width: 1.5, endArrowType: 'triangle' } });
           }
         });
@@ -441,23 +445,30 @@ async function exportPptx(project) {
           const x = PAD_X + col * (cellW + 0.25);
           const y = frameY + row * (cellH + 0.25);
           drawNode(node, x, y, cellW, cellH);
-          // 그리드는 순서 번호로 흐름 표시
           slide.addShape('ellipse', { x: x - 0.12, y: y - 0.12, w: 0.28, h: 0.28, fill: { color: '303A45' }, line: { color: '303A45' } });
           slide.addText(String(idx + 1).padStart(2, '0'), { x: x - 0.12, y: y - 0.12, w: 0.28, h: 0.28, fontSize: 9, bold: true, fontFace: MONO, color: 'FFFFFF', align: 'center', valign: 'middle' });
         });
       } else {
-        // vertical (default)
+        // vertical with optional 2 columns
+        const frameY = 1.6, frameH = H - 2.4;
+        const perLine = Math.ceil(n / lines);
         const nodeH = 0.5;
-        const nodeW = 3.0;
+        const nodeW = lines === 1 ? 3.0 : 2.4;
         const gap = 0.25;
-        const totalH = nodes.length * nodeH + (nodes.length - 1) * gap;
-        const startY = 1.6 + ((H - 2.4 - totalH) / 2);
-        const cx = W / 2;
+        const totalH = perLine * nodeH + (perLine - 1) * gap;
+        const startY = frameY + ((frameH - totalH) / 2);
+        const usableW = W - 2 * PAD_X;
+        const colSpacing = lines === 1 ? 0 : (usableW - lines * nodeW) / (lines + 1);
         nodes.forEach((node, idx) => {
-          const x = cx - nodeW / 2;
-          const y = startY + idx * (nodeH + gap);
+          const col = Math.floor(idx / perLine);
+          const row = idx % perLine;
+          const x = lines === 1
+            ? (W / 2 - nodeW / 2)
+            : (PAD_X + colSpacing + col * (nodeW + colSpacing));
+          const y = startY + row * (nodeH + gap);
           drawNode(node, x, y, nodeW, nodeH);
-          if (idx < nodes.length - 1) {
+          if (row < perLine - 1 && idx < n - 1 && (idx + 1) % perLine !== 0) {
+            const cx = x + nodeW / 2;
             slide.addShape('line', { x: cx, y: y + nodeH, w: 0, h: gap, line: { color: '303A45', width: 1.5, endArrowType: 'triangle' } });
           }
         });

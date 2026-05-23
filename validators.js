@@ -98,7 +98,7 @@
     },
     flow: {
       required: ['nodes'],
-      defaults: { section: '02', sectionName: '플로우 차트', title: '플로우', direction: '', nodes: [] },
+      defaults: { section: '02', sectionName: '플로우 차트', title: '플로우', direction: '', lines: 1, nodes: [] },
       arrays: { nodes: { item: { kind: 'process', label: '단계' } } },
     },
   };

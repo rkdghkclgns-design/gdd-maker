@@ -730,8 +730,8 @@ function UiDesignSlide({ data, patch, page, totalPages }) {
   const hasPrompt = !!(data.imagePrompt && data.imagePrompt.trim());
 
   /** 자동 배치 폴백: callout에 x/y가 없을 때 균등 배치(가장자리 우선). [4,96] clamp. */
-  const callouts = data.callouts || [];
-  const positions = callouts.map((c, i) => {
+  const rawCallouts = data.callouts || [];
+  const rawPositions = rawCallouts.map((c, i) => {
     if (typeof c.x === 'number' && typeof c.y === 'number') {
       return { x: Math.max(4, Math.min(96, c.x)), y: Math.max(4, Math.min(96, c.y)) };
     }
@@ -742,6 +742,21 @@ function UiDesignSlide({ data, patch, page, totalPages }) {
     ];
     return fallbacks[i % fallbacks.length];
   });
+  /* 시각 읽기 순서로 정렬 — y 우선(차이 ≥8% 일 때 행이 다른 것으로 간주), 그 다음 x.
+   * 정렬은 표시 전용. 편집은 originalIdx 로 원본 배열에 적용해 컨텍스트 보존. */
+  const sortedCallouts = React.useMemo(() => {
+    return rawCallouts.map((c, originalIdx) => ({ c, originalIdx, pos: rawPositions[originalIdx] }))
+      .sort((a, b) => {
+        if (Math.abs(a.pos.y - b.pos.y) > 8) return a.pos.y - b.pos.y;
+        return a.pos.x - b.pos.x;
+      });
+  }, [rawCallouts, rawPositions]);
+  // originalIdx → 표시 번호 (1-based) 매핑
+  const displayNumByOriginal = React.useMemo(() => {
+    const m = new Map();
+    sortedCallouts.forEach((s, displayIdx) => m.set(s.originalIdx, displayIdx + 1));
+    return m;
+  }, [sortedCallouts]);
 
   return (
     <div className="slide">
@@ -805,26 +820,27 @@ function UiDesignSlide({ data, patch, page, totalPages }) {
                 </div>
               </>
             )}
-            {/* 콜아웃 넘버링 배지 오버레이 */}
-            {!generating && callouts.map((c, i) => (
+            {/* 콜아웃 넘버링 배지 — 시각 위치 기준 정렬된 번호 (y, x) */}
+            {!generating && rawCallouts.map((c, originalIdx) => (
               <div
-                key={i}
+                key={originalIdx}
                 className="ui-callout-badge"
-                style={{ left: `${positions[i].x}%`, top: `${positions[i].y}%` }}
+                style={{ left: `${rawPositions[originalIdx].x}%`, top: `${rawPositions[originalIdx].y}%` }}
                 title={c.name}
               >
-                {i + 1}
+                {displayNumByOriginal.get(originalIdx)}
               </div>
             ))}
           </div>
         </div>
         <div className="ui-callouts">
-          {callouts.map((c, i) => (
-            <div className="ui-callout" key={i}>
-              <div className="num">{i + 1}</div>
+          {/* 우측 리스트도 동일하게 시각 순서로 정렬해서 표시 — 배지 번호와 1:1 매칭 */}
+          {sortedCallouts.map((s) => (
+            <div className="ui-callout" key={s.originalIdx}>
+              <div className="num">{displayNumByOriginal.get(s.originalIdx)}</div>
               <div className="text" style={{ flex: 1 }}>
-                <Editable tag="div" className="name" value={c.name} onChange={(v) => updateCallout(i, 'name', v)} markdown />
-                <Editable tag="div" className="desc" value={c.desc} onChange={(v) => updateCallout(i, 'desc', v)} multiline markdown />
+                <Editable tag="div" className="name" value={s.c.name} onChange={(v) => updateCallout(s.originalIdx, 'name', v)} markdown />
+                <Editable tag="div" className="desc" value={s.c.desc} onChange={(v) => updateCallout(s.originalIdx, 'desc', v)} multiline markdown />
               </div>
             </div>
           ))}

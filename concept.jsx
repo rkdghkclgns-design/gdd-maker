@@ -6,7 +6,7 @@ const CONCEPT_SUPERBUMPERS = {
   id: 'concept-superbumpers',
   title: '슈퍼범퍼즈',
   subtitle: '속력은 곧 힘이다 — 캐주얼 차량 충돌 배틀',
-  badge: 'TEAM_7',
+  badge: 'TEAM',
   author: '작성자',
   updatedAt: '2026-02-15',
   visual: {
@@ -963,7 +963,7 @@ function ConceptBrief({ onClose, onSubmit, isGenerating, initialMode = 'ai' }) {
             <div className="cb-author-row">
               <input
                 className="cb-input"
-                placeholder="팀 / 스튜디오 (예: TEAM_7)"
+                placeholder="팀 / 스튜디오 (예: TEAM)"
                 value={team}
                 onChange={e => setTeam(e.target.value)}
               />

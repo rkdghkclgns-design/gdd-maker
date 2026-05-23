@@ -149,8 +149,15 @@ function TopBar({ project, view, setView, onDownload, isDownloading, onRename, t
         <div className="ver">v0.2 beta</div>
       </div>
       <div className="crumb">
+        {/* 카테고리: 컨셉 또는 GDD. 팀 표기는 project.team 이 실제 값일 때만 노출. */}
         <span className="sep">/</span>
-        <span>{isConcept ? '컨셉' : 'TEAM_7'}</span>
+        <span>{isConcept ? '컨셉' : '기획서'}</span>
+        {!isConcept && project?.team && project.team.trim() && !['TEAM', 'TEAM_7', 'AI', 'MVP'].includes(project.team) && (
+          <>
+            <span className="sep">/</span>
+            <span>{project.team}</span>
+          </>
+        )}
         <span className="sep">/</span>
         <span className="doc">{project?.title || '선택 없음'}</span>
       </div>
@@ -1019,9 +1026,7 @@ function Sidebar({ concepts, projects, selection, onSelect, onNewBlank, onOpenCo
           </div>
         ))}
       </div>
-      <div className="footer-meta">
-        <div>SAMPLE PDFs: 18 docs analyzed</div>
-      </div>
+      {/* 사이드바 푸터 — 하드코딩된 샘플 라벨 제거. 추후 동적 통계로 대체 가능. */}
     </div>
   );
 }

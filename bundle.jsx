@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-23T07:37:42.165Z
+   생성 시각: 2026-05-23T07:47:22.292Z
 */
 
 // ============================================================
@@ -3472,7 +3472,7 @@ const CONCEPT_SUPERBUMPERS = {
   id: 'concept-superbumpers',
   title: '슈퍼범퍼즈',
   subtitle: '속력은 곧 힘이다 — 캐주얼 차량 충돌 배틀',
-  badge: 'TEAM_7',
+  badge: 'TEAM',
   author: '작성자',
   updatedAt: '2026-02-15',
   visual: {
@@ -4429,7 +4429,7 @@ function ConceptBrief({ onClose, onSubmit, isGenerating, initialMode = 'ai' }) {
             <div className="cb-author-row">
               <input
                 className="cb-input"
-                placeholder="팀 / 스튜디오 (예: TEAM_7)"
+                placeholder="팀 / 스튜디오 (예: TEAM)"
                 value={team}
                 onChange={e => setTeam(e.target.value)}
               />
@@ -4607,7 +4607,7 @@ function ChatTab({ project, isConcept, onSendCommand, isGenerating, generationMo
             <div className="avatar">AI</div>
             <div className="bubble">
               <div>안녕하세요. 어떤 게임 기획서를 만들어 드릴까요?</div>
-              <div className="meta">샘플: PDF 18종 분석 완료 · 슈퍼범퍼즈 스타일 학습</div>
+              <div className="meta">한 줄 아이디어 → 22~32 슬라이드 자동 생성. DEEP 모드는 self-critique 까지.</div>
             </div>
           </div>
         )}
@@ -6111,8 +6111,15 @@ function TopBar({ project, view, setView, onDownload, isDownloading, onRename, t
         <div className="ver">v0.2 beta</div>
       </div>
       <div className="crumb">
+        {/* 카테고리: 컨셉 또는 GDD. 팀 표기는 project.team 이 실제 값일 때만 노출. */}
         <span className="sep">/</span>
-        <span>{isConcept ? '컨셉' : 'TEAM_7'}</span>
+        <span>{isConcept ? '컨셉' : '기획서'}</span>
+        {!isConcept && project?.team && project.team.trim() && !['TEAM', 'TEAM_7', 'AI', 'MVP'].includes(project.team) && (
+          <>
+            <span className="sep">/</span>
+            <span>{project.team}</span>
+          </>
+        )}
         <span className="sep">/</span>
         <span className="doc">{project?.title || '선택 없음'}</span>
       </div>
@@ -6981,9 +6988,7 @@ function Sidebar({ concepts, projects, selection, onSelect, onNewBlank, onOpenCo
           </div>
         ))}
       </div>
-      <div className="footer-meta">
-        <div>SAMPLE PDFs: 18 docs analyzed</div>
-      </div>
+      {/* 사이드바 푸터 — 하드코딩된 샘플 라벨 제거. 추후 동적 통계로 대체 가능. */}
     </div>
   );
 }

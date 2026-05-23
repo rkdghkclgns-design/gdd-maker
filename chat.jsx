@@ -51,7 +51,7 @@ function ChatTab({ project, isConcept, onSendCommand, isGenerating, generationMo
             <div className="avatar">AI</div>
             <div className="bubble">
               <div>안녕하세요. 어떤 게임 기획서를 만들어 드릴까요?</div>
-              <div className="meta">샘플: PDF 18종 분석 완료 · 슈퍼범퍼즈 스타일 학습</div>
+              <div className="meta">한 줄 아이디어 → 22~32 슬라이드 자동 생성. DEEP 모드는 self-critique 까지.</div>
             </div>
           </div>
         )}

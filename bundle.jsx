@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-23T07:47:22.292Z
+   생성 시각: 2026-05-23T07:55:27.827Z
 */
 
 // ============================================================
@@ -2157,6 +2157,108 @@ Object.assign(window, {
 // ============================================================
 /* === Diagram slide (2D node graph) + AI helpers for diagrams/flows === */
 
+/* ====== usePanZoom — 다이어그램 캔버스의 마우스 pan/zoom ======
+ *  - 빈 캔버스 영역 드래그 → translate
+ *  - 휠 → 커서 기준 scale (0.2x ~ 8x)
+ *  - 변환값은 patch({ _viewTransform: {scale,x,y} }) 로 persist (옵션)
+ *  - 노드/인풋/버튼 위에서 드래그하면 pan 안 됨 (편집 보호)
+ */
+function usePanZoom(slideData, patch, opts) {
+  opts = opts || {};
+  const NODE_SELECTORS = opts.nodeSelectors || '.diagram-node, .seq-participant, .cls-box, .sm-state, button, select, input, textarea, [contenteditable=true]';
+  const initial = slideData?._viewTransform || { scale: 1, x: 0, y: 0 };
+  const [transform, setTransform] = React.useState(initial);
+  const wrapRef = React.useRef(null);
+  const [dragging, setDragging] = React.useState(false);
+
+  // patch 가 슬라이드 변경 시 호출되어 부모 state 가 갱신될 때 동기화
+  React.useEffect(() => {
+    const t = slideData?._viewTransform;
+    if (t && (t.scale !== transform.scale || t.x !== transform.x || t.y !== transform.y)) {
+      setTransform(t);
+    }
+    // 의도적으로 transform 은 deps 에서 제외 — 외부 변경에만 반응
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slideData?._viewTransform?.scale, slideData?._viewTransform?.x, slideData?._viewTransform?.y]);
+
+  // 휠 줌 — passive 회피
+  React.useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const onWheel = (e) => {
+      if (e.ctrlKey || e.metaKey) return; // 시스템 줌은 양보
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.08 : 0.92;
+      setTransform(t => {
+        const rect = el.getBoundingClientRect();
+        const cx = e.clientX - rect.left;
+        const cy = e.clientY - rect.top;
+        const newScale = Math.max(0.2, Math.min(8, t.scale * factor));
+        // 커서 기준 줌: 새 transform 으로 같은 캔버스 좌표가 같은 화면 위치에 오도록 x/y 보정
+        const k = newScale / t.scale;
+        const nx = cx - k * (cx - t.x);
+        const ny = cy - k * (cy - t.y);
+        const next = { scale: newScale, x: nx, y: ny };
+        if (patch) patch({ _viewTransform: next });
+        return next;
+      });
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [patch]);
+
+  // 마우스 드래그 (pan) — 노드/버튼이 아닌 빈 영역만
+  const startDrag = (e) => {
+    if (e.target.closest(NODE_SELECTORS)) return;
+    if (e.button !== 0) return; // 좌클릭만
+    e.preventDefault();
+    setDragging(true);
+    const start = { ...transform };
+    const sx = e.clientX, sy = e.clientY;
+    const onMove = (ev) => {
+      setTransform({ scale: start.scale, x: start.x + (ev.clientX - sx), y: start.y + (ev.clientY - sy) });
+    };
+    const onUp = (ev) => {
+      setDragging(false);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      // 드래그 종료 시 한 번만 persist
+      const finalT = { scale: start.scale, x: start.x + (ev.clientX - sx), y: start.y + (ev.clientY - sy) };
+      if (patch) patch({ _viewTransform: finalT });
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  const reset = () => {
+    const next = { scale: 1, x: 0, y: 0 };
+    setTransform(next);
+    if (patch) patch({ _viewTransform: next });
+  };
+  const zoomBy = (factor) => {
+    setTransform(t => {
+      const next = { ...t, scale: Math.max(0.2, Math.min(8, t.scale * factor)) };
+      if (patch) patch({ _viewTransform: next });
+      return next;
+    });
+  };
+
+  return { wrapRef, transform, dragging, startDrag, reset, zoomBy };
+}
+
+function PanZoomControls({ transform, onZoom, onReset }) {
+  return (
+    <div className="pan-zoom-controls">
+      <button onClick={() => onZoom(0.85)} title="축소 (휠 ↓)">−</button>
+      <span className="zoom-label">{Math.round((transform?.scale || 1) * 100)}%</span>
+      <button onClick={() => onZoom(1.15)} title="확대 (휠 ↑)">+</button>
+      <span className="sep"></span>
+      <button onClick={onReset} title="초기화 (1x, 0,0)">↻ 초기화</button>
+    </div>
+  );
+}
+
+
 /* Diagram data shape:
    {
      section, sectionName, title,
@@ -2191,6 +2293,14 @@ function DiagramSlide({ data, patch, page, totalPages }) {
   const wrapRef = React.useRef(null);
   const [size, setSize] = React.useState({ w: 1136, h: 520 });
   const [aiOpen, setAiOpen] = React.useState(false);
+  // pan/zoom — wrap 자체에 wheel/mousedown 리스너 부착
+  const pz = usePanZoom(data, patch);
+
+  // pan/zoom hook 이 wrap 을 ref 로 잡도록 동기화 + ResizeObserver 도 동시 부착
+  const setWrap = React.useCallback((el) => {
+    wrapRef.current = el;
+    pz.wrapRef.current = el;
+  }, [pz.wrapRef]);
 
   React.useEffect(() => {
     if (!wrapRef.current) return;
@@ -2272,47 +2382,54 @@ function DiagramSlide({ data, patch, page, totalPages }) {
         <button className="mini-btn ai" onClick={() => setAiOpen(true)}>✦ AI로 그리기</button>
       </div>
 
-      <div className="diagram-wrap" ref={wrapRef}>
-        <svg className="diagram-svg" viewBox={`0 0 ${size.w} ${size.h}`} preserveAspectRatio="none">
-          <defs>
-            <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-              <path d="M 0 0 L 10 5 L 0 10 z" fill="#303a45" />
-            </marker>
-          </defs>
-          {(data.edges || []).map(renderEdge)}
-        </svg>
-        {laidOut.map((n, idx) => (
-          <div
-            key={n.id}
-            className={'diagram-node ' + (n.kind || 'process')}
-            style={{ left: n._x, top: n._y, width: n._w, height: n._h }}
-          >
-            <div style={{ width: '100%' }}>
-              <Editable
-                value={n.label}
-                onChange={(v) => updateNode(idx, 'label', v)}
-                multiline
-                tag="div"
-              />
-              {n.sub && (
+      <div
+        className={'diagram-wrap pz-host' + (pz.dragging ? ' panning' : '')}
+        ref={setWrap}
+        onMouseDown={pz.startDrag}
+      >
+        <div className="pz-stage" style={{ transform: `translate(${pz.transform.x}px, ${pz.transform.y}px) scale(${pz.transform.scale})`, transformOrigin: '0 0' }}>
+          <svg className="diagram-svg" viewBox={`0 0 ${size.w} ${size.h}`} preserveAspectRatio="none" style={{ width: size.w, height: size.h }}>
+            <defs>
+              <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#303a45" />
+              </marker>
+            </defs>
+            {(data.edges || []).map(renderEdge)}
+          </svg>
+          {laidOut.map((n, idx) => (
+            <div
+              key={n.id}
+              className={'diagram-node ' + (n.kind || 'process')}
+              style={{ left: n._x, top: n._y, width: n._w, height: n._h }}
+            >
+              <div style={{ width: '100%' }}>
                 <Editable
+                  value={n.label}
+                  onChange={(v) => updateNode(idx, 'label', v)}
+                  multiline
                   tag="div"
-                  className="sub"
-                  value={n.sub}
-                  onChange={(v) => updateNode(idx, 'sub', v)}
                 />
-              )}
+                {n.sub && (
+                  <Editable
+                    tag="div"
+                    className="sub"
+                    value={n.sub}
+                    onChange={(v) => updateNode(idx, 'sub', v)}
+                  />
+                )}
+              </div>
+              <div className="diagram-node-controls">
+                <button title="유형 변경" onClick={() => cycleKind(idx)}>⇄</button>
+                <button title="왼쪽" disabled={(n.col ?? 0) <= 0} onClick={() => updateNode(idx, 'col', Math.max(0, (n.col ?? 0) - 1))}>◀</button>
+                <button title="오른쪽" disabled={(n.col ?? 0) >= 3} onClick={() => updateNode(idx, 'col', Math.min(3, (n.col ?? 0) + 1))}>▶</button>
+                <button title="위로" disabled={(n.row ?? 0) <= 0} onClick={() => updateNode(idx, 'row', Math.max(0, (n.row ?? 0) - 1))}>▲</button>
+                <button title="아래로" onClick={() => updateNode(idx, 'row', (n.row ?? 0) + 1)}>▼</button>
+                <button title="삭제" className="del" onClick={() => deleteNode(n.id)}>✕</button>
+              </div>
             </div>
-            <div className="diagram-node-controls">
-              <button title="유형 변경" onClick={() => cycleKind(idx)}>⇄</button>
-              <button title="왼쪽" disabled={(n.col ?? 0) <= 0} onClick={() => updateNode(idx, 'col', Math.max(0, (n.col ?? 0) - 1))}>◀</button>
-              <button title="오른쪽" disabled={(n.col ?? 0) >= 3} onClick={() => updateNode(idx, 'col', Math.min(3, (n.col ?? 0) + 1))}>▶</button>
-              <button title="위로" disabled={(n.row ?? 0) <= 0} onClick={() => updateNode(idx, 'row', Math.max(0, (n.row ?? 0) - 1))}>▲</button>
-              <button title="아래로" onClick={() => updateNode(idx, 'row', (n.row ?? 0) + 1)}>▼</button>
-              <button title="삭제" className="del" onClick={() => deleteNode(n.id)}>✕</button>
-            </div>
-          </div>
-        ))}
+          ))}
+        </div>
+        <PanZoomControls transform={pz.transform} onZoom={pz.zoomBy} onReset={pz.reset} />
       </div>
 
       {aiOpen && <AiDrawModal onClose={() => setAiOpen(false)} onRun={runAi} placeholder="예: 매칭 → 로딩 → 카운트다운 → 데스매치 → 결과 화면 의 흐름. 데스매치 단계는 사망 분기와 시간 종료 분기를 가짐." />}
@@ -2684,6 +2801,8 @@ function SequenceDiagramSlide({ data, patch, page, totalPages }) {
   const wrapRef = React.useRef(null);
   const [size, setSize] = React.useState({ w: 760, h: 480 });
   const [aiOpen, setAiOpen] = React.useState(false);
+  const pz = usePanZoom(data, patch);
+  const setWrap = React.useCallback((el) => { wrapRef.current = el; pz.wrapRef.current = el; }, [pz.wrapRef]);
 
   React.useEffect(() => {
     if (!wrapRef.current) return;
@@ -2786,7 +2905,8 @@ function SequenceDiagramSlide({ data, patch, page, totalPages }) {
       </div>
 
       <div className="seq-layout">
-        <div className="seq-canvas" ref={wrapRef}>
+        <div className={'seq-canvas pz-host' + (pz.dragging ? ' panning' : '')} ref={setWrap} onMouseDown={pz.startDrag}>
+        <div className="pz-stage" style={{ transform: `translate(${pz.transform.x}px, ${pz.transform.y}px) scale(${pz.transform.scale})`, transformOrigin: '0 0', width: '100%', height: '100%' }}>
           <svg className="seq-svg" viewBox={`0 0 ${size.w} ${contentH}`}
                width={size.w} height={contentH} preserveAspectRatio="xMidYMin meet">
             <defs>
@@ -2851,6 +2971,8 @@ function SequenceDiagramSlide({ data, patch, page, totalPages }) {
             </div>
           ))}
         </div>
+        <PanZoomControls transform={pz.transform} onZoom={pz.zoomBy} onReset={pz.reset} />
+        </div>
         <div className="seq-editor">
           <div className="seq-editor-head">메시지 편집</div>
           <div className="seq-editor-list">
@@ -2913,6 +3035,8 @@ function ClassDiagramSlide({ data, patch, page, totalPages }) {
   const wrapRef = React.useRef(null);
   const [size, setSize] = React.useState({ w: 760, h: 480 });
   const [aiOpen, setAiOpen] = React.useState(false);
+  const pz = usePanZoom(data, patch);
+  const setWrap = React.useCallback((el) => { wrapRef.current = el; pz.wrapRef.current = el; }, [pz.wrapRef]);
 
   React.useEffect(() => {
     if (!wrapRef.current) return;
@@ -3044,7 +3168,8 @@ function ClassDiagramSlide({ data, patch, page, totalPages }) {
       </div>
 
       <div className="cls-layout">
-        <div className="cls-canvas" ref={wrapRef}>
+        <div className={'cls-canvas pz-host' + (pz.dragging ? ' panning' : '')} ref={setWrap} onMouseDown={pz.startDrag}>
+        <div className="pz-stage" style={{ transform: `translate(${pz.transform.x}px, ${pz.transform.y}px) scale(${pz.transform.scale})`, transformOrigin: '0 0', width: '100%', height: '100%' }}>
           <svg className="cls-svg" viewBox={`0 0 ${size.w} ${size.h}`} preserveAspectRatio="none">
             <defs>
               <marker id="cls-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
@@ -3099,6 +3224,8 @@ function ClassDiagramSlide({ data, patch, page, totalPages }) {
               </div>
             </div>
           ))}
+        </div>
+        <PanZoomControls transform={pz.transform} onZoom={pz.zoomBy} onReset={pz.reset} />
         </div>
         <div className="cls-editor">
           <div className="cls-editor-head">관계 편집</div>

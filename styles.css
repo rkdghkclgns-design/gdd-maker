@@ -1060,7 +1060,12 @@ input, textarea, select { font-family: inherit; color: inherit; }
   outline: 0;
   padding: 4px 6px;
   border-radius: 4px;
+  /* 슬라이드 frame 초과 차단 */
+  max-height: 56px;
+  overflow-y: auto;
+  flex-shrink: 0;
 }
+.image-embed-caption:focus { max-height: 160px; }
 .image-embed-caption:hover { background: rgba(76, 194, 255, 0.05); }
 .image-embed-caption:focus { background: rgba(76, 194, 255, 0.12); box-shadow: 0 0 0 1px var(--accent); }
 .image-embed-prompt {
@@ -1075,7 +1080,12 @@ input, textarea, select { font-family: inherit; color: inherit; }
   line-height: 1.5;
   outline: 0;
   word-break: break-all;
+  /* 영역 초과 차단 — 슬라이드 frame 을 벗어나지 않도록 자체 스크롤 */
+  max-height: 88px;
+  overflow-y: auto;
+  flex-shrink: 0;
 }
+.image-embed-prompt:focus { max-height: 220px; }
 .image-embed-prompt:empty::before {
   content: attr(data-placeholder);
   color: #a0a8b2;
@@ -2012,6 +2022,117 @@ input, textarea, select { font-family: inherit; color: inherit; }
   stroke: white; stroke-width: 4; stroke-linejoin: round;
 }
 
+/* ==== 다이어그램 캔버스 pan/zoom ====
+ * .pz-host: 마우스 드래그/휠 리스너 부착. cursor: grab.
+ * .pz-stage: 실제 transform 적용. 자식은 cursor: default 로 복귀해 클릭 가능.
+ */
+.pz-host { cursor: grab; user-select: none; position: relative; }
+.pz-host.panning { cursor: grabbing; }
+.pz-host .pz-stage {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  will-change: transform;
+  pointer-events: auto;
+}
+/* 자식들은 정상 인터랙션 가능 — pan 은 빈 영역 mousedown 에서만 시작 */
+.pz-host .pz-stage > * { cursor: default; }
+.pz-host .pz-stage .diagram-node,
+.pz-host .pz-stage .seq-participant,
+.pz-host .pz-stage .cls-box,
+.pz-host .pz-stage button,
+.pz-host .pz-stage select,
+.pz-host .pz-stage [contenteditable=true] {
+  cursor: default;
+}
+.pz-host .pz-stage [contenteditable=true] { cursor: text; }
+
+.pan-zoom-controls {
+  position: absolute;
+  bottom: 10px; left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(10, 13, 18, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+  padding: 4px 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: #e6edf3;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0.6;
+  transition: opacity 0.18s;
+  z-index: 6;
+  pointer-events: auto;
+}
+.pz-host:hover .pan-zoom-controls { opacity: 1; }
+.pan-zoom-controls button {
+  background: transparent;
+  border: 0;
+  color: #e6edf3;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+.pan-zoom-controls button:hover { background: rgba(255, 255, 255, 0.12); color: var(--accent, #4cc2ff); }
+.pan-zoom-controls .zoom-label {
+  min-width: 42px;
+  text-align: center;
+  color: #b1bac4;
+  font-size: 10.5px;
+}
+.pan-zoom-controls .sep { width: 1px; height: 14px; background: rgba(255,255,255,0.2); margin: 0 2px; }
+
+/* ==== 슬라이드 영역 초과 차단 — 모든 .slide 내부 콘텐츠가 footer 와 겹치지 않도록 ==== */
+/* slide-frame 의 overflow:hidden 으로 시각적 클리핑은 막혀있지만, 콘텐츠가 footer
+ * (absolute bottom:28+높이) 위로 침범하는 것을 layout 차원에서 방지.
+ * 모든 .slide 는 column flex 이고, footer 는 absolute. 따라서 slide 본문의
+ * 마지막 자식과 footer 사이에 padding-bottom 으로 안전 영역 확보. */
+.slide-frame .slide {
+  padding-bottom: 76px !important; /* footer 28+높이 ~48 = 76px 안전 영역 */
+}
+/* footer 자신은 absolute 라서 위 패딩에 영향 안 받음 */
+.slide-frame .slide > .footer {
+  padding-bottom: 0;
+}
+/* cover / section-divider 는 본문 자체가 absolute 배치라서 padding 영향 적음 */
+.slide-frame .slide.cover,
+.slide-frame .slide.section-divider {
+  padding-bottom: 0 !important;
+}
+/* 모든 multiline editable 의 기본 최대 높이 — 부모 flex 가 작아지면 자체 스크롤 */
+.slide .md-rendered,
+.slide [contenteditable=true] {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+/* 슬라이드 내부 가변 컨테이너의 안전한 기본값 */
+.slide > .data-wrap,
+.slide > .flow-wrap,
+.slide > .diagram-wrap,
+.slide > .ui-design-wrap,
+.slide > .resources-grid,
+.slide > .intent-grid,
+.slide > .rules-wrap,
+.slide > .rules-grid,
+.slide > .seq-layout,
+.slide > .cls-layout,
+.slide > .state-machine-wrap,
+.slide > .ac-list,
+.slide > .risk-wrap,
+.slide > .roadmap-wrap {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
 /* ==== 순차 스트리밍 생성 — placeholder 슬라이드 시각화 ==== */
 /* slide.data._placeholder === true 인 동안 빛나는 오버레이 + 진행 표시 */
 .slide-frame .slide > *:not(.footer):not(.top-tag) {
@@ -2362,6 +2483,8 @@ input, textarea, select { font-family: inherit; color: inherit; }
   margin: 0;
   white-space: pre-wrap;
   line-height: 1.5;
+  max-height: 220px;
+  overflow-y: auto;
   min-height: 90px;
   outline: none;
 }

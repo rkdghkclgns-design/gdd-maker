@@ -278,6 +278,122 @@
         '',
       ].join('\n');
     }
+    if (T === 'balance-table') {
+      const parts = [header(3, `${sectionLabel ? '[' + sectionLabel + '] ' : ''}${d.title || '수치 밸런싱'}`), ''];
+      if (d.formula) parts.push(`**공식**: ${d.formula}`, '');
+      if ((d.vars || []).length) {
+        parts.push('| 변수 | 공식/정의 | 범위 | 기본값 | 민감도/메모 |', '|---|---|---|---|---|');
+        for (const v of d.vars) {
+          parts.push(`| \`${v.name || ''}\` | ${(v.formula || '').replace(/\n/g, ' ')} | ${v.range || ''} | ${v.defaultValue || ''} | ${(v.sensitivity || v.notes || '').replace(/\n/g, ' ')} |`);
+        }
+        parts.push('');
+      }
+      if (d.curve && Array.isArray(d.curve.x)) {
+        parts.push(`**커브** (${d.curve.xLabel || 'x'} → ${d.curve.yLabel || 'y'}): ${d.curve.x.map((x, i) => `${x}=${d.curve.y[i]}`).join(' / ')}`, '');
+      }
+      return parts.join('\n');
+    }
+    if (T === 'state-machine') {
+      const parts = [header(3, `${sectionLabel ? '[' + sectionLabel + '] ' : ''}${d.title || '상태 머신'}`), ''];
+      parts.push('#### 상태');
+      for (const s of (d.states || [])) {
+        parts.push(`- **\`${s.id}\` ${s.name}** *(${s.kind || 'normal'})*`);
+        if (s.onEnter) parts.push(`  - onEnter: ${s.onEnter}`);
+        if (s.onExit) parts.push(`  - onExit: ${s.onExit}`);
+        if ((s.invariants || []).length) parts.push(`  - invariants: ${s.invariants.map(i => `\`${i}\``).join(', ')}`);
+      }
+      parts.push('', '#### 전이 (state × event → state)');
+      if ((d.transitions || []).length) {
+        parts.push('| from | event | guard | → to | action |', '|---|---|---|---|---|');
+        for (const t of d.transitions) {
+          parts.push(`| \`${t.from}\` | \`${t.event}\` | ${t.guard ? '`' + t.guard + '`' : '-'} | \`${t.to}\` | ${(t.action || '').replace(/\n/g, ' ')} |`);
+        }
+      }
+      return parts.join('\n');
+    }
+    if (T === 'api-contract') {
+      const parts = [
+        header(3, `${sectionLabel ? '[' + sectionLabel + '] ' : ''}\`${d.method || 'POST'} ${d.endpoint || ''}\``),
+        '',
+        `**Auth**: ${d.auth || 'bearer'} · **SLA**: ${d.slaMs || 200}ms`,
+        '',
+        '#### Request', '```json', d.request || '{}', '```', '',
+        '#### Response', '```json', d.response || '{}', '```', '',
+      ];
+      if ((d.errors || []).length) {
+        parts.push('#### Errors', '| code | message | when |', '|---|---|---|');
+        for (const e of d.errors) parts.push(`| \`${e.code}\` | ${e.message || ''} | ${e.when || ''} |`);
+        parts.push('');
+      }
+      if (d.idempotencyKey) parts.push(`**Idempotency**: ${d.idempotencyKey}`, '');
+      if (d.notes) parts.push(`**Notes**: ${d.notes}`, '');
+      return parts.join('\n');
+    }
+    if (T === 'acceptance-criteria') {
+      const s = d.userStory || {};
+      const parts = [
+        header(3, `${sectionLabel ? '[' + sectionLabel + '] ' : ''}${d.title || '수락 기준'}`),
+        '',
+        `> **As a** ${s.as || ''}, **I want** ${s.want || ''}, **so that** ${s.soThat || ''}`,
+        '',
+      ];
+      for (const c of (d.criteria || [])) {
+        parts.push(`#### ${c.id || ''}`);
+        parts.push(`- **GIVEN** ${c.given || ''}`);
+        parts.push(`- **WHEN** ${c.when || ''}`);
+        parts.push(`- **THEN** ${c.then || ''}`);
+        if ((c.edgeCases || []).length) {
+          parts.push('- **Edge cases**:');
+          for (const e of c.edgeCases) parts.push(`  - ${e}`);
+        }
+        parts.push('');
+      }
+      return parts.join('\n');
+    }
+    if (T === 'telemetry') {
+      const parts = [header(3, `${sectionLabel ? '[' + sectionLabel + '] ' : ''}${d.title || '텔레메트리'}`), ''];
+      for (const e of (d.events || [])) {
+        parts.push(`#### \`${e.name || ''}\``);
+        if (e.kpi) parts.push(`> KPI: **${e.kpi}**`);
+        if (e.when) parts.push(`*발생 시점*: ${e.when}`);
+        if ((e.props || []).length) {
+          parts.push('', '| key | type | req | 설명 |', '|---|---|---|---|');
+          for (const p of e.props) parts.push(`| \`${p.key}\` | \`${p.type}\` | ${p.required ? 'Y' : 'N'} | ${p.note || ''} |`);
+        }
+        parts.push('');
+      }
+      if ((d.funnels || []).length) {
+        parts.push('#### Funnels');
+        for (const f of d.funnels) {
+          parts.push(`- **${f.name}**: ${(f.steps || []).join(' → ')} *(${f.goal || ''})*`);
+        }
+      }
+      return parts.join('\n');
+    }
+    if (T === 'risk-register') {
+      const parts = [
+        header(3, `${sectionLabel ? '[' + sectionLabel + '] ' : ''}${d.title || '위험 등기부'}`),
+        '',
+        '| ID | 위험 | 영향 | 빈도 | 점수 | 완화책 | 담당 | 상태 |',
+        '|---|---|---|---|---|---|---|---|',
+      ];
+      const risks = [...(d.risks || [])].sort((a, b) => ((b.impact || 0) * (b.likelihood || 0)) - ((a.impact || 0) * (a.likelihood || 0)));
+      for (const r of risks) {
+        const sc = (r.impact || 0) * (r.likelihood || 0);
+        parts.push(`| ${r.id || ''} | ${r.title || ''} | ${r.impact || 0} | ${r.likelihood || 0} | **${sc}** | ${r.mitigation || ''} | ${r.owner || ''} | \`${r.status || 'open'}\` |`);
+      }
+      return parts.join('\n');
+    }
+    if (T === 'roadmap') {
+      const parts = [header(3, `${sectionLabel ? '[' + sectionLabel + '] ' : ''}${d.title || '로드맵'}`), ''];
+      for (const p of (d.phases || [])) {
+        parts.push(`### ${p.name} — \`${p.start} → ${p.end}\``);
+        if ((p.dependsOn || []).length) parts.push(`*의존*: ${p.dependsOn.join(', ')}`);
+        for (const dv of (p.deliverables || [])) parts.push(`- ${dv}`);
+        parts.push('');
+      }
+      return parts.join('\n');
+    }
     if (T === 'resources') {
       const parts = [header(3, `${sectionLabel ? '[' + sectionLabel + '] ' : ''}${d.title || '필요 리소스'}`), ''];
       for (const c of (d.categories || [])) {

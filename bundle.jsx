@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-23T06:27:50.923Z
+   생성 시각: 2026-05-23T06:49:52.745Z
 */
 
 // ============================================================
@@ -1501,6 +1501,588 @@ function ResourcesSlide({ data, patch, page, totalPages }) {
   );
 }
 
+/* ====== Phase 1 신규 슬라이드 — 개발 가능 수준 보장용 ====== */
+
+/* ------ 12. Balance Table (수치 밸런싱 + 공식) ------ */
+function BalanceTableSlide({ data, patch, page, totalPages }) {
+  const vars = data.vars || [];
+  const updateVar = (i, key, v) => {
+    const next = [...vars];
+    next[i] = { ...next[i], [key]: v };
+    patch({ vars: next });
+  };
+  const addVar = () => patch({ vars: [...vars, { name: '새 변수', formula: '', range: '', defaultValue: '', sensitivity: '', notes: '' }] });
+  const removeVar = (i) => patch({ vars: vars.filter((_, j) => j !== i) });
+  // 미니 라인 차트 — curve.x, curve.y 가 있을 때만
+  const curve = data.curve;
+  const renderCurve = () => {
+    if (!curve || !Array.isArray(curve.x) || !Array.isArray(curve.y) || curve.x.length < 2) return null;
+    const xs = curve.x, ys = curve.y;
+    const w = 1080, h = 140, padX = 36, padY = 12;
+    const xMin = Math.min(...xs), xMax = Math.max(...xs);
+    const yMin = Math.min(...ys), yMax = Math.max(...ys);
+    const xRange = (xMax - xMin) || 1;
+    const yRange = (yMax - yMin) || 1;
+    const pts = xs.map((x, i) => {
+      const px = padX + ((x - xMin) / xRange) * (w - padX * 2);
+      const py = h - padY - ((ys[i] - yMin) / yRange) * (h - padY * 2);
+      return `${px},${py}`;
+    }).join(' ');
+    return (
+      <div className="balance-curve">
+        <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
+          <polyline points={pts} fill="none" stroke="var(--accent, #4cc2ff)" strokeWidth="2" />
+          {xs.map((x, i) => {
+            const px = padX + ((x - xMin) / xRange) * (w - padX * 2);
+            const py = h - padY - ((ys[i] - yMin) / yRange) * (h - padY * 2);
+            return <circle key={i} cx={px} cy={py} r="3" fill="var(--accent, #4cc2ff)" />;
+          })}
+        </svg>
+        <div className="curve-axes">
+          <span className="x-label">{curve.xLabel || 'x'}</span>
+          <span className="y-label">{curve.yLabel || 'y'}</span>
+        </div>
+      </div>
+    );
+  };
+  return (
+    <div className="slide">
+      <TopTag section={data.section} sectionName={data.sectionName} />
+      <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
+      {(data.formula || data.formula === '') && (
+        <Editable tag="div" className="balance-formula"
+          value={data.formula}
+          onChange={(v) => patch({ formula: v })}
+          markdown multiline
+          placeholder="핵심 공식 (예: `dmg = base × (1 + str/100) × elem_mod`)" />
+      )}
+      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+        <table className="balance-table">
+          <thead>
+            <tr>
+              <th style={{ width: '18%' }}>변수</th>
+              <th style={{ width: '26%' }}>공식 / 정의</th>
+              <th style={{ width: '14%' }}>범위</th>
+              <th style={{ width: '12%' }}>기본값</th>
+              <th>민감도 / 메모</th>
+              <th style={{ width: '4%' }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {vars.map((v, i) => (
+              <tr key={i}>
+                <td className="tag"><Editable tag="div" value={v.name} onChange={(val) => updateVar(i, 'name', val)} multiline markdown /></td>
+                <td><Editable tag="div" value={v.formula} onChange={(val) => updateVar(i, 'formula', val)} multiline markdown /></td>
+                <td><Editable tag="div" value={v.range} onChange={(val) => updateVar(i, 'range', val)} multiline markdown placeholder="0~100" /></td>
+                <td><Editable tag="div" value={v.defaultValue} onChange={(val) => updateVar(i, 'defaultValue', val)} multiline markdown /></td>
+                <td><Editable tag="div" value={v.sensitivity || v.notes} onChange={(val) => updateVar(i, 'sensitivity', val)} multiline markdown placeholder="±10% 변경 시 영향" /></td>
+                <td><button className="sc-del" onClick={() => removeVar(i)} title="삭제">✕</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <button className="sc-add" onClick={addVar} style={{ marginTop: 8 }}>+ 변수 추가</button>
+        {renderCurve()}
+      </div>
+      <SlideFooter section={data.section} sectionName={data.sectionName} page={page} totalPages={totalPages} />
+    </div>
+  );
+}
+
+/* ------ 13. State Machine (상태 + 전이 매트릭스) ------ */
+function StateMachineSlide({ data, patch, page, totalPages }) {
+  const states = data.states || [];
+  const transitions = data.transitions || [];
+  const updateState = (i, key, v) => {
+    const next = [...states];
+    next[i] = { ...next[i], [key]: v };
+    patch({ states: next });
+  };
+  const updateTrans = (i, key, v) => {
+    const next = [...transitions];
+    next[i] = { ...next[i], [key]: v };
+    patch({ transitions: next });
+  };
+  const updateInvariant = (si, ii, v) => {
+    const next = [...states];
+    const inv = [...(next[si].invariants || [])];
+    inv[ii] = v;
+    next[si] = { ...next[si], invariants: inv };
+    patch({ states: next });
+  };
+  const addState = () => patch({ states: [...states, { id: 's' + (states.length + 1), name: 'STATE', kind: 'normal', onEnter: '', onExit: '', invariants: [] }] });
+  const addInvariant = (si) => {
+    const next = [...states];
+    next[si] = { ...next[si], invariants: [...(next[si].invariants || []), '불변 조건'] };
+    patch({ states: next });
+  };
+  const addTrans = () => patch({ transitions: [...transitions, { from: states[0]?.id || '', to: states[0]?.id || '', event: 'EVENT', guard: '', action: '' }] });
+  const removeState = (i) => patch({ states: states.filter((_, j) => j !== i) });
+  const removeTrans = (i) => patch({ transitions: transitions.filter((_, j) => j !== i) });
+  return (
+    <div className="slide">
+      <TopTag section={data.section} sectionName={data.sectionName} />
+      <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
+      <div className="state-machine-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'flex', gap: 16 }}>
+        <div className="sm-states-col">
+          <div className="sm-section-head">STATES <button className="sc-add inline" onClick={addState}>+</button></div>
+          {states.map((s, i) => (
+            <div className={'sm-state sm-kind-' + (s.kind || 'normal')} key={i}>
+              <div className="sm-state-head">
+                <Editable tag="span" className="sm-state-id" value={s.id} onChange={(v) => updateState(i, 'id', v)} placeholder="id" />
+                <Editable tag="span" className="sm-state-name" value={s.name} onChange={(v) => updateState(i, 'name', v)} placeholder="STATE_NAME" />
+                <select value={s.kind || 'normal'} onChange={(e) => updateState(i, 'kind', e.target.value)}>
+                  <option value="initial">initial</option>
+                  <option value="normal">normal</option>
+                  <option value="final">final</option>
+                  <option value="error">error</option>
+                </select>
+                <button className="sc-del" onClick={() => removeState(i)} title="삭제">✕</button>
+              </div>
+              <div className="sm-state-body">
+                <label>onEnter</label>
+                <Editable tag="div" className="sm-action" value={s.onEnter} onChange={(v) => updateState(i, 'onEnter', v)} multiline markdown placeholder="진입 시 동작 — `disableInput()`, `playEnterAnim()`" />
+                <label>onExit</label>
+                <Editable tag="div" className="sm-action" value={s.onExit} onChange={(v) => updateState(i, 'onExit', v)} multiline markdown placeholder="이탈 시 동작" />
+                <label>invariants</label>
+                <ul className="sm-invariants">
+                  {(s.invariants || []).map((inv, ii) => (
+                    <li key={ii}><Editable tag="div" value={inv} onChange={(v) => updateInvariant(i, ii, v)} multiline markdown placeholder="`input_locked == true`" /></li>
+                  ))}
+                  <button className="sc-add inline" onClick={() => addInvariant(i)}>+ 불변 조건</button>
+                </ul>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="sm-trans-col">
+          <div className="sm-section-head">TRANSITIONS <button className="sc-add inline" onClick={addTrans}>+</button></div>
+          <table className="sm-trans-table">
+            <thead><tr><th>from</th><th>event</th><th>guard</th><th>to</th><th>action</th><th></th></tr></thead>
+            <tbody>
+              {transitions.map((t, i) => (
+                <tr key={i}>
+                  <td>
+                    <select value={t.from} onChange={(e) => updateTrans(i, 'from', e.target.value)}>
+                      <option value="">-</option>
+                      {states.map(s => <option key={s.id} value={s.id}>{s.id}</option>)}
+                    </select>
+                  </td>
+                  <td><Editable tag="div" value={t.event} onChange={(v) => updateTrans(i, 'event', v)} markdown placeholder="EVENT" /></td>
+                  <td><Editable tag="div" value={t.guard} onChange={(v) => updateTrans(i, 'guard', v)} markdown placeholder="`hp > 0`" /></td>
+                  <td>
+                    <select value={t.to} onChange={(e) => updateTrans(i, 'to', e.target.value)}>
+                      <option value="">-</option>
+                      {states.map(s => <option key={s.id} value={s.id}>{s.id}</option>)}
+                    </select>
+                  </td>
+                  <td><Editable tag="div" value={t.action} onChange={(v) => updateTrans(i, 'action', v)} markdown multiline placeholder="동작" /></td>
+                  <td><button className="sc-del" onClick={() => removeTrans(i)}>✕</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <SlideFooter section={data.section} sectionName={data.sectionName} page={page} totalPages={totalPages} />
+    </div>
+  );
+}
+
+/* ------ 14. API Contract (엔드포인트 + 스키마 + 에러) ------ */
+function ApiContractSlide({ data, patch, page, totalPages }) {
+  const errors = data.errors || [];
+  const updateError = (i, key, v) => {
+    const next = [...errors];
+    next[i] = { ...next[i], [key]: v };
+    patch({ errors: next });
+  };
+  const addError = () => patch({ errors: [...errors, { code: '400', message: '에러 메시지', when: '발생 조건' }] });
+  const removeError = (i) => patch({ errors: errors.filter((_, j) => j !== i) });
+  return (
+    <div className="slide">
+      <TopTag section={data.section} sectionName={data.sectionName} />
+      <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
+      <div className="api-contract-head">
+        <select className="api-method" value={data.method || 'POST'} onChange={(e) => patch({ method: e.target.value })}>
+          <option value="GET">GET</option>
+          <option value="POST">POST</option>
+          <option value="PUT">PUT</option>
+          <option value="PATCH">PATCH</option>
+          <option value="DELETE">DELETE</option>
+        </select>
+        <Editable tag="div" className="api-endpoint" value={data.endpoint} onChange={(v) => patch({ endpoint: v })} placeholder="/api/match/create" />
+        <select className="api-auth" value={data.auth || 'bearer'} onChange={(e) => patch({ auth: e.target.value })}>
+          <option value="none">no auth</option>
+          <option value="bearer">Bearer</option>
+          <option value="session">Session</option>
+          <option value="signature">HMAC sig</option>
+        </select>
+        <Editable tag="div" className="api-sla" value={String(data.slaMs || '')} onChange={(v) => patch({ slaMs: parseInt(v, 10) || 200 })} placeholder="200ms" />
+      </div>
+      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="api-pane">
+          <div className="api-pane-label">REQUEST 스키마</div>
+          <Editable tag="pre" className="api-schema" value={data.request} onChange={(v) => patch({ request: v })} multiline placeholder='{"matchId":"uuid","userId":"uuid","mode":"casual|ranked"}' />
+        </div>
+        <div className="api-pane">
+          <div className="api-pane-label">RESPONSE 스키마</div>
+          <Editable tag="pre" className="api-schema" value={data.response} onChange={(v) => patch({ response: v })} multiline placeholder='{"sessionId":"uuid","gameServer":"host:port","token":"jwt"}' />
+        </div>
+        <div className="api-pane" style={{ gridColumn: '1 / -1' }}>
+          <div className="api-pane-label">ERRORS <button className="sc-add inline" onClick={addError}>+</button></div>
+          <table className="api-errors-table">
+            <thead><tr><th style={{ width: '14%' }}>code</th><th style={{ width: '28%' }}>message</th><th>when</th><th style={{ width: '4%' }}></th></tr></thead>
+            <tbody>
+              {errors.map((e, i) => (
+                <tr key={i}>
+                  <td className="tag"><Editable tag="div" value={e.code} onChange={(v) => updateError(i, 'code', v)} /></td>
+                  <td><Editable tag="div" value={e.message} onChange={(v) => updateError(i, 'message', v)} multiline markdown /></td>
+                  <td><Editable tag="div" value={e.when} onChange={(v) => updateError(i, 'when', v)} multiline markdown /></td>
+                  <td><button className="sc-del" onClick={() => removeError(i)}>✕</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {(data.idempotencyKey || data.notes) && (
+          <div className="api-pane" style={{ gridColumn: '1 / -1' }}>
+            <div className="api-pane-label">메모</div>
+            <Editable tag="div" className="api-notes" value={data.idempotencyKey} onChange={(v) => patch({ idempotencyKey: v })} markdown multiline placeholder="idempotency key 정책 — `X-Idempotency-Key` 헤더, 24h TTL 등" />
+            <Editable tag="div" className="api-notes" value={data.notes} onChange={(v) => patch({ notes: v })} markdown multiline placeholder="기타 메모" />
+          </div>
+        )}
+      </div>
+      <SlideFooter section={data.section} sectionName={data.sectionName} page={page} totalPages={totalPages} />
+    </div>
+  );
+}
+
+/* ------ 15. Acceptance Criteria (Given/When/Then + edge cases) ------ */
+function AcceptanceCriteriaSlide({ data, patch, page, totalPages }) {
+  const criteria = data.criteria || [];
+  const story = data.userStory || { as: '', want: '', soThat: '' };
+  const updateStory = (key, v) => patch({ userStory: { ...story, [key]: v } });
+  const updateCriterion = (i, key, v) => {
+    const next = [...criteria];
+    next[i] = { ...next[i], [key]: v };
+    patch({ criteria: next });
+  };
+  const updateEdge = (ci, ei, v) => {
+    const next = [...criteria];
+    const edges = [...(next[ci].edgeCases || [])];
+    edges[ei] = v;
+    next[ci] = { ...next[ci], edgeCases: edges };
+    patch({ criteria: next });
+  };
+  const addCriterion = () => patch({ criteria: [...criteria, { id: `AC-${criteria.length + 1}`, given: '', when: '', then: '', edgeCases: [] }] });
+  const addEdge = (ci) => {
+    const next = [...criteria];
+    next[ci] = { ...next[ci], edgeCases: [...(next[ci].edgeCases || []), '엣지 케이스'] };
+    patch({ criteria: next });
+  };
+  const removeCriterion = (i) => patch({ criteria: criteria.filter((_, j) => j !== i) });
+  return (
+    <div className="slide">
+      <TopTag section={data.section} sectionName={data.sectionName} />
+      <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
+      <div className="ac-story">
+        <span className="ac-label">AS A</span>
+        <Editable tag="div" className="ac-story-field" value={story.as} onChange={(v) => updateStory('as', v)} markdown placeholder="신규 유저" />
+        <span className="ac-label">I WANT</span>
+        <Editable tag="div" className="ac-story-field" value={story.want} onChange={(v) => updateStory('want', v)} markdown placeholder="첫 매치를 빠르게 시작하길" />
+        <span className="ac-label">SO THAT</span>
+        <Editable tag="div" className="ac-story-field" value={story.soThat} onChange={(v) => updateStory('soThat', v)} markdown placeholder="D1 리텐션이 60%↑ 유지된다" />
+      </div>
+      <div className="ac-list" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+        {criteria.map((c, i) => (
+          <div className="ac-card" key={i}>
+            <div className="ac-card-head">
+              <Editable tag="span" className="ac-id" value={c.id} onChange={(v) => updateCriterion(i, 'id', v)} />
+              <button className="sc-del" onClick={() => removeCriterion(i)}>✕</button>
+            </div>
+            <div className="ac-gwt">
+              <div className="ac-row"><span className="kw given">GIVEN</span><Editable tag="div" className="ac-text" value={c.given} onChange={(v) => updateCriterion(i, 'given', v)} markdown multiline placeholder="유저가 로그인 직후 메인 로비에 있다" /></div>
+              <div className="ac-row"><span className="kw when">WHEN</span><Editable tag="div" className="ac-text" value={c.when} onChange={(v) => updateCriterion(i, 'when', v)} markdown multiline placeholder="`매칭` 버튼을 탭한다" /></div>
+              <div className="ac-row"><span className="kw then">THEN</span><Editable tag="div" className="ac-text" value={c.then} onChange={(v) => updateCriterion(i, 'then', v)} markdown multiline placeholder="3초 이내에 매칭 진행 모달이 표시된다" /></div>
+            </div>
+            <div className="ac-edges">
+              <div className="ac-edges-label">엣지 케이스</div>
+              <ul>
+                {(c.edgeCases || []).map((e, ei) => (
+                  <li key={ei}><Editable tag="div" value={e} onChange={(v) => updateEdge(i, ei, v)} markdown multiline /></li>
+                ))}
+                <button className="sc-add inline" onClick={() => addEdge(i)}>+</button>
+              </ul>
+            </div>
+          </div>
+        ))}
+        <button className="sc-add" onClick={addCriterion} style={{ marginTop: 8 }}>+ 수락 기준 추가</button>
+      </div>
+      <SlideFooter section={data.section} sectionName={data.sectionName} page={page} totalPages={totalPages} />
+    </div>
+  );
+}
+
+/* ------ 16. Telemetry (이벤트 카탈로그 + 펀넬) ------ */
+function TelemetrySlide({ data, patch, page, totalPages }) {
+  const events = data.events || [];
+  const funnels = data.funnels || [];
+  const updateEvent = (i, key, v) => {
+    const next = [...events];
+    next[i] = { ...next[i], [key]: v };
+    patch({ events: next });
+  };
+  const updateProp = (ei, pi, key, v) => {
+    const next = [...events];
+    const props = [...(next[ei].props || [])];
+    props[pi] = { ...props[pi], [key]: v };
+    next[ei] = { ...next[ei], props };
+    patch({ events: next });
+  };
+  const addEvent = () => patch({ events: [...events, { name: 'new_event', when: '', props: [], kpi: '' }] });
+  const addProp = (ei) => {
+    const next = [...events];
+    next[ei] = { ...next[ei], props: [...(next[ei].props || []), { key: 'prop_key', type: 'string', required: true, note: '' }] };
+    patch({ events: next });
+  };
+  const removeEvent = (i) => patch({ events: events.filter((_, j) => j !== i) });
+  const removeProp = (ei, pi) => {
+    const next = [...events];
+    next[ei] = { ...next[ei], props: (next[ei].props || []).filter((_, j) => j !== pi) };
+    patch({ events: next });
+  };
+  return (
+    <div className="slide">
+      <TopTag section={data.section} sectionName={data.sectionName} />
+      <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
+      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+        {events.map((e, ei) => (
+          <div className="telemetry-event" key={ei}>
+            <div className="te-head">
+              <Editable tag="span" className="te-name" value={e.name} onChange={(v) => updateEvent(ei, 'name', v)} placeholder="event_name" />
+              <Editable tag="span" className="te-kpi" value={e.kpi} onChange={(v) => updateEvent(ei, 'kpi', v)} markdown placeholder="KPI: D1 retention" />
+              <button className="sc-del" onClick={() => removeEvent(ei)}>✕</button>
+            </div>
+            <Editable tag="div" className="te-when" value={e.when} onChange={(v) => updateEvent(ei, 'when', v)} markdown multiline placeholder="발생 시점 — `매칭 시작 버튼 탭` 또는 `세션 생성 완료`" />
+            <table className="te-props">
+              <thead><tr><th>key</th><th>type</th><th>req</th><th>설명</th><th></th></tr></thead>
+              <tbody>
+                {(e.props || []).map((p, pi) => (
+                  <tr key={pi}>
+                    <td className="tag"><Editable tag="div" value={p.key} onChange={(v) => updateProp(ei, pi, 'key', v)} /></td>
+                    <td>
+                      <select value={p.type || 'string'} onChange={(ev) => updateProp(ei, pi, 'type', ev.target.value)}>
+                        <option value="string">string</option>
+                        <option value="number">number</option>
+                        <option value="boolean">boolean</option>
+                        <option value="enum">enum</option>
+                        <option value="uuid">uuid</option>
+                        <option value="datetime">datetime</option>
+                      </select>
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <input type="checkbox" checked={!!p.required} onChange={(ev) => updateProp(ei, pi, 'required', ev.target.checked)} />
+                    </td>
+                    <td><Editable tag="div" value={p.note} onChange={(v) => updateProp(ei, pi, 'note', v)} markdown multiline /></td>
+                    <td><button className="sc-del" onClick={() => removeProp(ei, pi)}>✕</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <button className="sc-add inline" onClick={() => addProp(ei)}>+ prop</button>
+          </div>
+        ))}
+        <button className="sc-add" onClick={addEvent} style={{ marginTop: 8 }}>+ 이벤트 추가</button>
+        {funnels.length > 0 && (
+          <div className="telemetry-funnels">
+            <div className="te-section-label">FUNNELS</div>
+            {funnels.map((f, fi) => (
+              <div className="te-funnel" key={fi}>
+                <Editable tag="div" className="te-funnel-name" value={f.name} onChange={(v) => {
+                  const next = [...funnels]; next[fi] = { ...next[fi], name: v }; patch({ funnels: next });
+                }} placeholder="펀넬명" />
+                <div className="te-funnel-steps">
+                  {(f.steps || []).map((s, si) => (
+                    <span key={si} className="te-funnel-step">
+                      {s}{si < (f.steps || []).length - 1 ? ' → ' : ''}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <SlideFooter section={data.section} sectionName={data.sectionName} page={page} totalPages={totalPages} />
+    </div>
+  );
+}
+
+/* ------ 17. Risk Register (위험 × 영향 × 빈도) ------ */
+function RiskRegisterSlide({ data, patch, page, totalPages }) {
+  const risks = data.risks || [];
+  const updateRisk = (i, key, v) => {
+    const next = [...risks];
+    next[i] = { ...next[i], [key]: v };
+    patch({ risks: next });
+  };
+  const addRisk = () => patch({ risks: [...risks, { id: `R-${risks.length + 1}`, title: '새 위험', impact: 3, likelihood: 3, mitigation: '', owner: '', status: 'open' }] });
+  const removeRisk = (i) => patch({ risks: risks.filter((_, j) => j !== i) });
+  const score = (r) => (r.impact || 0) * (r.likelihood || 0);
+  const sorted = [...risks].sort((a, b) => score(b) - score(a));
+  return (
+    <div className="slide">
+      <TopTag section={data.section} sectionName={data.sectionName} />
+      <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
+      <div className="risk-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16 }}>
+        <div className="risk-heatmap">
+          <div className="rh-label">HEAT MAP</div>
+          <div className="rh-grid">
+            {[5, 4, 3, 2, 1].map(impact => (
+              <React.Fragment key={impact}>
+                <div className="rh-axis-y">{impact}</div>
+                {[1, 2, 3, 4, 5].map(likelihood => {
+                  const inCell = risks.filter(r => r.impact === impact && r.likelihood === likelihood);
+                  const score = impact * likelihood;
+                  const cls = score >= 16 ? 'critical' : score >= 9 ? 'high' : score >= 4 ? 'medium' : 'low';
+                  return (
+                    <div key={`${impact}-${likelihood}`} className={'rh-cell ' + cls} title={`I${impact} × L${likelihood} = ${score}`}>
+                      {inCell.length > 0 && <span className="rh-count">{inCell.length}</span>}
+                    </div>
+                  );
+                })}
+              </React.Fragment>
+            ))}
+            <div className="rh-axis-y"></div>
+            {[1, 2, 3, 4, 5].map(l => <div key={l} className="rh-axis-x">{l}</div>)}
+          </div>
+          <div className="rh-legend">
+            <span>Impact ↑</span><span>Likelihood →</span>
+          </div>
+        </div>
+        <div className="risk-list">
+          <table className="risk-table">
+            <thead><tr><th style={{ width: '10%' }}>ID</th><th>위험</th><th style={{ width: '8%' }}>영향</th><th style={{ width: '8%' }}>빈도</th><th style={{ width: '8%' }}>점수</th><th>완화책</th><th style={{ width: '10%' }}>담당</th><th style={{ width: '10%' }}>상태</th><th style={{ width: '4%' }}></th></tr></thead>
+            <tbody>
+              {sorted.map((r, i) => {
+                const idx = risks.indexOf(r);
+                const s = score(r);
+                const sevCls = s >= 16 ? 'critical' : s >= 9 ? 'high' : s >= 4 ? 'medium' : 'low';
+                return (
+                  <tr key={i} className={'risk-row sev-' + sevCls}>
+                    <td className="tag"><Editable tag="div" value={r.id} onChange={(v) => updateRisk(idx, 'id', v)} /></td>
+                    <td><Editable tag="div" value={r.title} onChange={(v) => updateRisk(idx, 'title', v)} markdown multiline /></td>
+                    <td><select value={r.impact || 3} onChange={(e) => updateRisk(idx, 'impact', parseInt(e.target.value, 10))}>{[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}</select></td>
+                    <td><select value={r.likelihood || 3} onChange={(e) => updateRisk(idx, 'likelihood', parseInt(e.target.value, 10))}>{[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}</select></td>
+                    <td className={'risk-score ' + sevCls}>{s}</td>
+                    <td><Editable tag="div" value={r.mitigation} onChange={(v) => updateRisk(idx, 'mitigation', v)} markdown multiline placeholder="완화 방안" /></td>
+                    <td><Editable tag="div" value={r.owner} onChange={(v) => updateRisk(idx, 'owner', v)} placeholder="담당자" /></td>
+                    <td>
+                      <select value={r.status || 'open'} onChange={(e) => updateRisk(idx, 'status', e.target.value)}>
+                        <option value="open">open</option>
+                        <option value="mitigated">mitigated</option>
+                        <option value="accepted">accepted</option>
+                        <option value="closed">closed</option>
+                      </select>
+                    </td>
+                    <td><button className="sc-del" onClick={() => removeRisk(idx)}>✕</button></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <button className="sc-add" onClick={addRisk} style={{ marginTop: 8 }}>+ 위험 추가</button>
+        </div>
+      </div>
+      <SlideFooter section={data.section} sectionName={data.sectionName} page={page} totalPages={totalPages} />
+    </div>
+  );
+}
+
+/* ------ 18. Roadmap (마일스톤 간트) ------ */
+function RoadmapSlide({ data, patch, page, totalPages }) {
+  const phases = data.phases || [];
+  const updatePhase = (i, key, v) => {
+    const next = [...phases];
+    next[i] = { ...next[i], [key]: v };
+    patch({ phases: next });
+  };
+  const updateDeliverable = (pi, di, v) => {
+    const next = [...phases];
+    const d = [...(next[pi].deliverables || [])];
+    d[di] = v;
+    next[pi] = { ...next[pi], deliverables: d };
+    patch({ phases: next });
+  };
+  const addPhase = () => patch({ phases: [...phases, { name: `Phase ${phases.length + 1}`, start: '2026.01', end: '2026.03', deliverables: [], dependsOn: [] }] });
+  const addDeliverable = (pi) => {
+    const next = [...phases];
+    next[pi] = { ...next[pi], deliverables: [...(next[pi].deliverables || []), '산출물'] };
+    patch({ phases: next });
+  };
+  const removePhase = (i) => patch({ phases: phases.filter((_, j) => j !== i) });
+  // 간트 — 모든 phase 의 start/end 를 YYYY.MM 으로 가정. 가장 빠른 start 와 가장 늦은 end 로 정규화.
+  const toMonth = (s) => {
+    if (!s) return 0;
+    const m = /(\d{4})\D+(\d{1,2})/.exec(String(s));
+    if (m) return parseInt(m[1], 10) * 12 + parseInt(m[2], 10);
+    return 0;
+  };
+  const allMonths = phases.flatMap(p => [toMonth(p.start), toMonth(p.end)]).filter(n => n > 0);
+  const minM = allMonths.length ? Math.min(...allMonths) : 0;
+  const maxM = allMonths.length ? Math.max(...allMonths) : 0;
+  const range = maxM - minM || 1;
+  return (
+    <div className="slide">
+      <TopTag section={data.section} sectionName={data.sectionName} />
+      <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
+      <div className="roadmap-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+        {phases.length > 0 && (
+          <div className="roadmap-gantt">
+            {phases.map((p, i) => {
+              const start = toMonth(p.start), end = toMonth(p.end);
+              const left = ((start - minM) / range) * 100;
+              const width = Math.max(4, ((end - start) / range) * 100);
+              return (
+                <div className="rm-row" key={i}>
+                  <div className="rm-row-label">{p.name}</div>
+                  <div className="rm-row-track">
+                    <div className="rm-row-bar" style={{ left: `${left}%`, width: `${width}%` }}>
+                      <span className="rm-bar-text">{p.start} – {p.end}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <div className="roadmap-phases">
+          {phases.map((p, i) => (
+            <div className="rm-phase" key={i}>
+              <div className="rm-phase-head">
+                <Editable tag="span" className="rm-phase-name" value={p.name} onChange={(v) => updatePhase(i, 'name', v)} />
+                <Editable tag="span" className="rm-phase-date" value={p.start} onChange={(v) => updatePhase(i, 'start', v)} placeholder="2026.01" />
+                <span style={{ color: 'var(--text-3, #7d8590)' }}>→</span>
+                <Editable tag="span" className="rm-phase-date" value={p.end} onChange={(v) => updatePhase(i, 'end', v)} placeholder="2026.03" />
+                <button className="sc-del" onClick={() => removePhase(i)}>✕</button>
+              </div>
+              <ul className="rm-deliverables">
+                {(p.deliverables || []).map((d, di) => (
+                  <li key={di}><Editable tag="div" value={d} onChange={(v) => updateDeliverable(i, di, v)} markdown multiline placeholder="산출물 (예: MVP 빌드, 알파 데모)" /></li>
+                ))}
+                <button className="sc-add inline" onClick={() => addDeliverable(i)}>+ 산출물</button>
+              </ul>
+            </div>
+          ))}
+          <button className="sc-add" onClick={addPhase} style={{ marginTop: 8 }}>+ Phase 추가</button>
+        </div>
+      </div>
+      <SlideFooter section={data.section} sectionName={data.sectionName} page={page} totalPages={totalPages} />
+    </div>
+  );
+}
+
 /* ------ Type registry ------ */
 const SLIDE_RENDERERS = {
   'cover': CoverSlide,
@@ -1515,6 +2097,14 @@ const SLIDE_RENDERERS = {
   'flow': FlowSlide,
   'ui-design': UiDesignSlide,
   'resources': ResourcesSlide,
+  // Phase 1 신규 7종 (engineer-ready)
+  'balance-table': BalanceTableSlide,
+  'state-machine': StateMachineSlide,
+  'api-contract': ApiContractSlide,
+  'acceptance-criteria': AcceptanceCriteriaSlide,
+  'telemetry': TelemetrySlide,
+  'risk-register': RiskRegisterSlide,
+  'roadmap': RoadmapSlide,
 };
 
 const SLIDE_LABELS = {
@@ -1533,6 +2123,14 @@ const SLIDE_LABELS = {
   'diagram': '다이어그램',
   'sequence-diagram': '시퀀스 다이어그램',
   'class-diagram': '클래스 다이어그램',
+  // Phase 1 신규 7종
+  'balance-table': '수치 밸런싱',
+  'state-machine': '상태 머신',
+  'api-contract': 'API 계약',
+  'acceptance-criteria': '수락 기준',
+  'telemetry': '텔레메트리',
+  'risk-register': '위험 등기부',
+  'roadmap': '로드맵',
 };
 
 function SlideRenderer({ slide, patch, replace, page, totalPages }) {
@@ -4758,6 +5356,175 @@ async function exportPptx(project) {
           slide.addText(itemBlocks, { x: x + 0.3, y: yCursor, w: catW - 0.6, h: y + catH - yCursor - 0.2, fontSize: 10.5, fontFace: FONT, color: '424A55', paraSpaceAfter: 4, valign: 'top' });
         }
       });
+    } else if (s.type === 'balance-table') {
+      const vars = d.vars || [];
+      if (d.formula) {
+        slide.addText(d.formula.replace(/`/g, ''), { x: PAD_X, y: 1.6, w: W - 2 * PAD_X, h: 0.45, fontSize: 13, fontFace: MONO, color: '1C4D70', fill: { color: 'F0F4F8' }, italic: true, valign: 'middle' });
+      }
+      const tableY = d.formula ? 2.15 : 1.7;
+      const header = [
+        { text: '변수', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: '공식/정의', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: '범위', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: '기본값', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: '민감도', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+      ];
+      const body = vars.map(v => [
+        { text: v.name || '', options: { fontFace: MONO, color: ACCENT, bold: true } },
+        { text: (v.formula || '').replace(/`/g, ''), options: { fontFace: MONO } },
+        { text: v.range || '' },
+        { text: v.defaultValue || '' },
+        { text: (v.sensitivity || v.notes || '').replace(/`/g, '') },
+      ]);
+      slide.addTable([header, ...body], { x: PAD_X, y: tableY, w: W - 2 * PAD_X, fontSize: 10, fontFace: FONT, color: TEXT, border: { type: 'solid', color: 'E3E7EB', pt: 0.5 }, rowH: 0.32 });
+    } else if (s.type === 'state-machine') {
+      const states = d.states || [];
+      const transitions = d.transitions || [];
+      const colW = (W - 2 * PAD_X - 0.3) / 2;
+      // states 좌측
+      slide.addText('STATES', { x: PAD_X, y: 1.6, w: colW, h: 0.3, fontSize: 11, fontFace: MONO, color: '7D8590', charSpacing: 1.6 });
+      let y = 1.95;
+      for (const st of states) {
+        const fill = st.kind === 'initial' ? 'F4FAFF' : st.kind === 'final' ? 'F4FAF6' : st.kind === 'error' ? 'FDF5F5' : 'FFFFFF';
+        const bd = st.kind === 'initial' ? ACCENT : st.kind === 'final' ? '3FB950' : st.kind === 'error' ? 'F85149' : '303A45';
+        const h = 0.55;
+        slide.addShape('roundRect', { x: PAD_X, y, w: colW, h, fill: { color: fill }, line: { color: bd, width: 1.5 }, rectRadius: 0.04 });
+        slide.addText(`${st.id} · ${st.name} (${st.kind})`, { x: PAD_X + 0.15, y, w: colW - 0.3, h, fontSize: 11, bold: true, fontFace: MONO, color: '1C222B', valign: 'middle' });
+        y += h + 0.06;
+        if (y > H - 1.0) break;
+      }
+      // transitions 우측 — 표
+      const trHeader = [
+        { text: 'from', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: 'event', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: 'guard', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: 'to', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+      ];
+      const trBody = transitions.map(t => [
+        { text: t.from || '', options: { fontFace: MONO, color: ACCENT } },
+        { text: t.event || '', options: { fontFace: MONO } },
+        { text: (t.guard || '').replace(/`/g, '') },
+        { text: t.to || '', options: { fontFace: MONO, color: ACCENT } },
+      ]);
+      slide.addText('TRANSITIONS', { x: PAD_X + colW + 0.3, y: 1.6, w: colW, h: 0.3, fontSize: 11, fontFace: MONO, color: '7D8590', charSpacing: 1.6 });
+      slide.addTable([trHeader, ...trBody], { x: PAD_X + colW + 0.3, y: 1.95, w: colW, fontSize: 9, fontFace: FONT, color: TEXT, border: { type: 'solid', color: 'E3E7EB', pt: 0.5 }, rowH: 0.3 });
+    } else if (s.type === 'api-contract') {
+      slide.addShape('rect', { x: PAD_X, y: 1.6, w: W - 2 * PAD_X, h: 0.6, fill: { color: '1C222B' } });
+      slide.addText(`${d.method || 'POST'}  ${d.endpoint || ''}`, { x: PAD_X + 0.2, y: 1.6, w: W - 2 * PAD_X - 2.5, h: 0.6, fontSize: 16, bold: true, fontFace: MONO, color: 'E6EDF3', valign: 'middle' });
+      slide.addText(`auth: ${d.auth || 'bearer'}  ·  SLA ${d.slaMs || 200}ms`, { x: W - PAD_X - 2.3, y: 1.6, w: 2.1, h: 0.6, fontSize: 11, fontFace: MONO, color: ACCENT, align: 'right', valign: 'middle' });
+      const colW = (W - 2 * PAD_X - 0.2) / 2;
+      slide.addText('REQUEST', { x: PAD_X, y: 2.35, w: colW, h: 0.25, fontSize: 10, fontFace: MONO, color: '7D8590', charSpacing: 1.4 });
+      slide.addText(d.request || '{}', { x: PAD_X, y: 2.6, w: colW, h: 1.6, fontSize: 10, fontFace: MONO, color: 'E6EDF3', fill: { color: '1C222B' } });
+      slide.addText('RESPONSE', { x: PAD_X + colW + 0.2, y: 2.35, w: colW, h: 0.25, fontSize: 10, fontFace: MONO, color: '7D8590', charSpacing: 1.4 });
+      slide.addText(d.response || '{}', { x: PAD_X + colW + 0.2, y: 2.6, w: colW, h: 1.6, fontSize: 10, fontFace: MONO, color: 'E6EDF3', fill: { color: '1C222B' } });
+      // errors
+      const errH = [
+        { text: 'code', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: 'message', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: 'when', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+      ];
+      const errB = (d.errors || []).map(e => [
+        { text: e.code || '', options: { fontFace: MONO, color: 'F85149', bold: true } },
+        { text: e.message || '', options: { fontFace: MONO } },
+        { text: e.when || '' },
+      ]);
+      slide.addTable([errH, ...errB], { x: PAD_X, y: 4.35, w: W - 2 * PAD_X, fontSize: 10, fontFace: FONT, color: TEXT, border: { type: 'solid', color: 'E3E7EB', pt: 0.5 }, rowH: 0.3 });
+    } else if (s.type === 'acceptance-criteria') {
+      const story = d.userStory || {};
+      slide.addShape('rect', { x: PAD_X, y: 1.6, w: W - 2 * PAD_X, h: 0.8, fill: { color: 'F8F9FA' }, line: { color: ACCENT, width: 0 } });
+      slide.addShape('rect', { x: PAD_X, y: 1.6, w: 0.05, h: 0.8, fill: { color: ACCENT } });
+      slide.addText(`AS A ${story.as || ''}  ·  I WANT ${story.want || ''}  ·  SO THAT ${story.soThat || ''}`, { x: PAD_X + 0.2, y: 1.6, w: W - 2 * PAD_X - 0.4, h: 0.8, fontSize: 12, fontFace: FONT, color: '1C222B', valign: 'middle' });
+      let y = 2.6;
+      for (const c of (d.criteria || [])) {
+        const h = 1.4;
+        slide.addShape('roundRect', { x: PAD_X, y, w: W - 2 * PAD_X, h, fill: { color: 'FFFFFF' }, line: { color: 'D0D7DE', width: 0.5 }, rectRadius: 0.05 });
+        slide.addText(c.id || '', { x: PAD_X + 0.15, y: y + 0.1, w: 0.8, h: 0.25, fontSize: 11, fontFace: MONO, color: ACCENT, bold: true });
+        slide.addText([
+          { text: 'GIVEN ', options: { bold: true, color: '1C4D70', fontFace: MONO } }, { text: (c.given || '') + '\n', options: {} },
+          { text: 'WHEN ', options: { bold: true, color: '9C6F00', fontFace: MONO } }, { text: (c.when || '').replace(/`/g, '') + '\n', options: {} },
+          { text: 'THEN ', options: { bold: true, color: '166534', fontFace: MONO } }, { text: c.then || '', options: {} },
+        ], { x: PAD_X + 0.15, y: y + 0.4, w: W - 2 * PAD_X - 0.3, h: h - 0.5, fontSize: 10.5, fontFace: FONT, color: '424A55' });
+        y += h + 0.15;
+        if (y > H - 1.0) break;
+      }
+    } else if (s.type === 'telemetry') {
+      let y = 1.7;
+      for (const e of (d.events || [])) {
+        const propsCount = (e.props || []).length;
+        const h = 0.5 + propsCount * 0.22 + 0.2;
+        slide.addShape('roundRect', { x: PAD_X, y, w: W - 2 * PAD_X, h, fill: { color: 'FAFBFC' }, line: { color: 'D0D7DE', width: 0.5 }, rectRadius: 0.04 });
+        slide.addText(e.name || '', { x: PAD_X + 0.15, y: y + 0.06, w: 4, h: 0.3, fontSize: 13, bold: true, fontFace: MONO, color: ACCENT });
+        if (e.kpi) slide.addText(`KPI: ${e.kpi}`, { x: W - PAD_X - 3, y: y + 0.08, w: 2.8, h: 0.25, fontSize: 10, fontFace: MONO, color: '88DFB0', align: 'right' });
+        if (e.when) slide.addText(e.when, { x: PAD_X + 0.15, y: y + 0.35, w: W - 2 * PAD_X - 0.3, h: 0.22, fontSize: 10, fontFace: FONT, italic: true, color: '586A75' });
+        let py = y + 0.6;
+        for (const p of (e.props || [])) {
+          slide.addText(`  ${p.key} : ${p.type}${p.required ? ' *' : ''}${p.note ? ' — ' + p.note : ''}`, { x: PAD_X + 0.15, y: py, w: W - 2 * PAD_X - 0.3, h: 0.2, fontSize: 9.5, fontFace: MONO, color: '424A55' });
+          py += 0.22;
+        }
+        y += h + 0.12;
+        if (y > H - 0.8) break;
+      }
+    } else if (s.type === 'risk-register') {
+      const risks = [...(d.risks || [])].sort((a, b) => ((b.impact || 0) * (b.likelihood || 0)) - ((a.impact || 0) * (a.likelihood || 0)));
+      const header = [
+        { text: 'ID', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: '위험', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: 'I', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: 'L', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: '점수', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: '완화책', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: '담당', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: '상태', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+      ];
+      const body = risks.map(r => {
+        const sc = (r.impact || 0) * (r.likelihood || 0);
+        const sevFill = sc >= 16 ? '8B0000' : sc >= 9 ? 'F85149' : sc >= 4 ? 'FFC107' : '3FB950';
+        return [
+          { text: r.id || '', options: { fontFace: MONO, color: 'FFFFFF', fill: { color: sevFill }, bold: true } },
+          { text: r.title || '' },
+          { text: String(r.impact || 0), options: { align: 'center', fontFace: MONO } },
+          { text: String(r.likelihood || 0), options: { align: 'center', fontFace: MONO } },
+          { text: String(sc), options: { bold: true, fontFace: MONO, align: 'center', color: sevFill } },
+          { text: r.mitigation || '' },
+          { text: r.owner || '', options: { fontFace: MONO } },
+          { text: r.status || 'open', options: { fontFace: MONO, fontSize: 9 } },
+        ];
+      });
+      slide.addTable([header, ...body], { x: PAD_X, y: 1.7, w: W - 2 * PAD_X, colW: [0.5, 2.6, 0.4, 0.4, 0.6, 3.0, 0.8, 0.8], fontSize: 9.5, fontFace: FONT, color: TEXT, border: { type: 'solid', color: 'E3E7EB', pt: 0.5 }, rowH: 0.3 });
+    } else if (s.type === 'roadmap') {
+      const phases = d.phases || [];
+      const toMonth = (str) => {
+        const m = /(\d{4})\D+(\d{1,2})/.exec(String(str || ''));
+        return m ? parseInt(m[1], 10) * 12 + parseInt(m[2], 10) : 0;
+      };
+      const allMonths = phases.flatMap(p => [toMonth(p.start), toMonth(p.end)]).filter(n => n > 0);
+      const minM = allMonths.length ? Math.min(...allMonths) : 0;
+      const maxM = allMonths.length ? Math.max(...allMonths) : 0;
+      const range = (maxM - minM) || 1;
+      const trackX = PAD_X + 1.4, trackW = W - 2 * PAD_X - 1.4;
+      // 간트
+      let y = 1.8;
+      for (const p of phases) {
+        const start = toMonth(p.start), end = toMonth(p.end);
+        const left = trackX + ((start - minM) / range) * trackW;
+        const w = Math.max(0.3, ((end - start) / range) * trackW);
+        slide.addText(p.name || '', { x: PAD_X, y: y - 0.05, w: 1.3, h: 0.3, fontSize: 11, fontFace: FONT, bold: true, color: TEXT, align: 'right' });
+        slide.addShape('roundRect', { x: trackX, y, w: trackW, h: 0.25, fill: { color: 'F0F4F8' }, line: { color: 'F0F4F8' }, rectRadius: 0.12 });
+        slide.addShape('roundRect', { x: left, y, w, h: 0.25, fill: { color: ACCENT }, line: { color: ACCENT_2 || '2B88C4' }, rectRadius: 0.12 });
+        slide.addText(`${p.start || ''} – ${p.end || ''}`, { x: left + 0.1, y, w: w - 0.2, h: 0.25, fontSize: 8.5, fontFace: MONO, color: '061018', valign: 'middle', bold: true });
+        y += 0.4;
+        if (y > 4.5) break;
+      }
+      // 산출물 리스트
+      let pY = y + 0.2;
+      for (const p of phases) {
+        if (pY > H - 0.6) break;
+        const text = (p.deliverables || []).map(dl => '▸ ' + dl).join('  ');
+        if (text) {
+          slide.addText(`${p.name}: ${text}`, { x: PAD_X, y: pY, w: W - 2 * PAD_X, h: 0.28, fontSize: 10, fontFace: FONT, color: '424A55' });
+          pY += 0.3;
+        }
+      }
     } else if (s.type === 'image-embed') {
       // 캡션 + 중앙 정렬된 참고 이미지
       const cap = d.caption || '';
@@ -6204,18 +6971,32 @@ function ThumbScaler({ slide, index, total }) {
 /* === Add slide menu === */
 function AddSlideMenu({ onAdd, onClose }) {
   const types = [
-    { type: 'intent', label: '기획 의도', icon: '◆' },
-    { type: 'terms', label: '용어 정의', icon: '≡' },
-    { type: 'rules', label: '규칙', icon: '§' },
-    { type: 'data-table', label: '데이터 테이블', icon: '▦' },
-    { type: 'flow', label: '플로우 차트', icon: '⇣' },
-    { type: 'diagram', label: '다이어그램 (2D)', icon: '◇' },
-    { type: 'sequence-diagram', label: '시퀀스 다이어그램', icon: '⇄' },
-    { type: 'class-diagram', label: '클래스 다이어그램', icon: '▤' },
-    { type: 'ui-design', label: 'UI/UX', icon: '▣' },
-    { type: 'resources', label: '필요 리소스', icon: '◉' },
-    { type: 'image-embed', label: '참고 이미지', icon: '🖼' },
-    { type: 'section-divider', label: '섹션 구분', icon: '—' },
+    // 개요/구조
+    { type: 'intent', label: '기획 의도', icon: '◆', group: '개요' },
+    { type: 'terms', label: '용어 정의', icon: '≡', group: '개요' },
+    { type: 'section-divider', label: '섹션 구분', icon: '—', group: '개요' },
+    // 시스템 / 로직
+    { type: 'rules', label: '규칙', icon: '§', group: '시스템' },
+    { type: 'flow', label: '플로우 차트', icon: '⇣', group: '시스템' },
+    { type: 'diagram', label: '다이어그램 (2D)', icon: '◇', group: '시스템' },
+    { type: 'sequence-diagram', label: '시퀀스 다이어그램', icon: '⇄', group: '시스템' },
+    { type: 'class-diagram', label: '클래스 다이어그램', icon: '▤', group: '시스템' },
+    { type: 'state-machine', label: '상태 머신', icon: '◎', group: '시스템' },
+    // 데이터 / 밸런싱
+    { type: 'data-table', label: '데이터 테이블', icon: '▦', group: '데이터' },
+    { type: 'balance-table', label: '수치 밸런싱', icon: '∿', group: '데이터' },
+    // API / 텔레메트리
+    { type: 'api-contract', label: 'API 계약', icon: '⇿', group: 'API' },
+    { type: 'telemetry', label: '텔레메트리', icon: '◉', group: 'API' },
+    // 품질 / 검증
+    { type: 'acceptance-criteria', label: '수락 기준', icon: '✓', group: '품질' },
+    // UI / 리소스
+    { type: 'ui-design', label: 'UI/UX', icon: '▣', group: 'UI' },
+    { type: 'image-embed', label: '참고 이미지', icon: '🖼', group: 'UI' },
+    { type: 'resources', label: '필요 리소스', icon: '◉', group: 'UI' },
+    // 프로젝트 관리
+    { type: 'risk-register', label: '위험 등기부', icon: '⚠', group: '관리' },
+    { type: 'roadmap', label: '로드맵', icon: '►', group: '관리' },
   ];
   return (
     <div className="form-panel-overlay" onClick={onClose}>
@@ -6492,6 +7273,94 @@ function App({ onStateChange }) {
       ]},
       'section-divider': { num: '0?', title: '섹션 제목', subtitle: '섹션 설명', imagePrompt: '' },
       'image-embed': { section: '03', sectionName: '참고 이미지', title: '참고 이미지', caption: '참고 이미지 캡션', imagePrompt: '' },
+      // Phase 1 신규 7종
+      'balance-table': {
+        section: '04', sectionName: '밸런싱', title: '수치 밸런싱',
+        formula: '`damage = base × (1 + str/100) × elem_mod`',
+        vars: [
+          { name: 'base', formula: '카드 등급별 기본값', range: '50~200', defaultValue: '100', sensitivity: '±10% → 평균 매치 시간 ±15초', notes: '' },
+          { name: 'str', formula: '레벨 + 강화 보정', range: '0~500', defaultValue: '0', sensitivity: '레벨 1당 +5', notes: '' },
+          { name: 'elem_mod', formula: '속성 상성표', range: '0.5~2.0', defaultValue: '1.0', sensitivity: '상성 일치 시 1.5', notes: '카운터는 2.0' },
+        ],
+        curve: { x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], y: [100, 220, 380, 580, 820, 1100, 1420, 1780, 2180, 2620], xLabel: '레벨', yLabel: '강화 비용 (재화)' },
+      },
+      'state-machine': {
+        section: '02', sectionName: '상태 머신', title: '상태 머신',
+        states: [
+          { id: 's1', name: 'IDLE', kind: 'initial', onEnter: '`enableInput()`', onExit: '`disableInput()`', invariants: ['`input_locked == false`'] },
+          { id: 's2', name: 'CASTING', kind: 'normal', onEnter: '`playCastAnim()`', onExit: '', invariants: ['`animation_locked == true`'] },
+          { id: 's3', name: 'COOLDOWN', kind: 'normal', onEnter: '`startCooldownTimer()`', onExit: '', invariants: ['`canCast == false`'] },
+          { id: 's4', name: 'DEAD', kind: 'final', onEnter: '`playDeathSeq()`', onExit: '', invariants: ['모든 입력 차단', '카메라 페이드아웃'] },
+        ],
+        transitions: [
+          { from: 's1', to: 's2', event: 'CAST_INPUT', guard: '`mana >= cost`', action: '`consumeMana(cost)`' },
+          { from: 's2', to: 's3', event: 'CAST_COMPLETE', guard: '', action: '`spawnProjectile()`' },
+          { from: 's3', to: 's1', event: 'COOLDOWN_END', guard: '', action: '' },
+          { from: 's1', to: 's4', event: 'HP_ZERO', guard: '`hp <= 0`', action: '`emit(death)`' },
+        ],
+      },
+      'api-contract': {
+        section: '02', sectionName: 'API 계약', title: 'POST /api/match/create',
+        endpoint: '/api/match/create', method: 'POST', auth: 'bearer', slaMs: 200,
+        request: '{\n  "userId": "uuid",\n  "mode": "casual" | "ranked" | "custom",\n  "preferredRegion": "ap-northeast-1"\n}',
+        response: '{\n  "matchId": "uuid",\n  "gameServer": "host:port",\n  "sessionToken": "jwt",\n  "expiresAt": "2026-05-23T12:34:56Z"\n}',
+        errors: [
+          { code: '400', message: 'INVALID_MODE', when: '`mode` 가 enum 외 값' },
+          { code: '401', message: 'TOKEN_EXPIRED', when: 'Bearer 토큰 만료' },
+          { code: '409', message: 'ALREADY_IN_MATCH', when: '동일 userId 가 매치 진행 중' },
+          { code: '503', message: 'NO_SERVERS', when: '리전에 가용 게임 서버 없음 → 큐 대기' },
+        ],
+        idempotencyKey: '`X-Idempotency-Key` 헤더 권장. 동일 키로 24h 내 재요청 시 동일 matchId 반환.',
+        notes: '평균 응답 200ms 이하. 99p 500ms 이하. 큐 진입 시 202 + Location 헤더.',
+      },
+      'acceptance-criteria': {
+        section: '03', sectionName: '수락 기준', title: '매칭 시작 — 수락 기준',
+        userStory: { as: '신규 유저', want: '첫 매치를 빠르게 시작하길', soThat: 'D1 리텐션 60%↑ 유지' },
+        criteria: [
+          { id: 'AC-1', given: '유저가 로그인 직후 메인 로비에 진입했다', when: '`매칭` 버튼을 1회 탭한다', then: '3초 이내에 매칭 진행 모달이 표시되고, 카운트다운이 시작된다', edgeCases: ['네트워크 단절 시 5초 후 재시도 안내', '동시에 두 번 탭하면 두 번째 탭은 무시'] },
+          { id: 'AC-2', given: '매칭 진행 중이다', when: '60초가 지나도 상대를 못 찾는다', then: '`매칭 범위 확대` 알림 + 봇 매치 옵션 제공', edgeCases: ['랭크 매치는 봇 옵션 미노출'] },
+        ],
+      },
+      'telemetry': {
+        section: '04', sectionName: '텔레메트리', title: '매칭 이벤트',
+        events: [
+          { name: 'match_button_tapped', when: '유저가 매칭 버튼 탭', props: [
+            { key: 'mode', type: 'enum', required: true, note: 'casual / ranked / custom' },
+            { key: 'session_id', type: 'uuid', required: true, note: '클라이언트 세션' },
+          ], kpi: '매칭 시도율' },
+          { name: 'match_found', when: '매칭 성공', props: [
+            { key: 'match_id', type: 'uuid', required: true, note: '' },
+            { key: 'wait_time_ms', type: 'number', required: true, note: '매칭 대기 시간' },
+            { key: 'opponent_mmr_delta', type: 'number', required: false, note: '랭크에서만' },
+          ], kpi: '평균 매칭 시간' },
+          { name: 'match_abandoned', when: '매칭 도중 취소', props: [
+            { key: 'reason', type: 'enum', required: true, note: 'user_cancel / timeout / network_error' },
+            { key: 'wait_time_ms', type: 'number', required: true, note: '' },
+          ], kpi: '매칭 이탈율' },
+        ],
+        funnels: [
+          { name: '매칭 펀넬', steps: ['match_button_tapped', 'match_found', 'match_started'], goal: '진입율 95%↑' },
+        ],
+      },
+      'risk-register': {
+        section: '06', sectionName: '위험 등기부', title: '런칭 전 위험',
+        risks: [
+          { id: 'R-1', title: '매칭 서버 부하 (동접 10만 초과 시 큐 지연)', impact: 5, likelihood: 3, mitigation: '오토스케일 + 봇 매치 폴백 + 큐 대기 UX', owner: '서버팀', status: 'open' },
+          { id: 'R-2', title: '결제 모듈 인증 실패 (PG사 API 변경)', impact: 4, likelihood: 2, mitigation: '월 1회 정기 스모크 테스트 + 폴백 PG', owner: 'BM 팀', status: 'mitigated' },
+          { id: 'R-3', title: '리텐션 D1 < 40% 시 마케팅 ROI 미달', impact: 4, likelihood: 3, mitigation: '튜토리얼 A/B + 첫 매치 봇 난이도 보정', owner: 'PM', status: 'open' },
+          { id: 'R-4', title: '저사양 안드로이드 (RAM 2GB) 60fps 미달', impact: 3, likelihood: 4, mitigation: '품질 옵션 자동 다운그레이드 + 디바이스별 QA 매트릭스', owner: '클라팀', status: 'open' },
+        ],
+      },
+      'roadmap': {
+        section: '06', sectionName: '로드맵', title: '런칭 로드맵',
+        phases: [
+          { name: 'MVP', start: '2026.01', end: '2026.03', deliverables: ['코어 매치 + 단일 모드', '4개 캐릭터', '내부 알파'], dependsOn: [] },
+          { name: '알파', start: '2026.03', end: '2026.05', deliverables: ['랭크 모드 추가', '8개 캐릭터', '클로즈드 베타 (500명)'], dependsOn: ['MVP'] },
+          { name: '베타', start: '2026.05', end: '2026.07', deliverables: ['BM 시스템', '시즌 패스', '오픈 베타 (10K명)'], dependsOn: ['알파'] },
+          { name: '소프트런칭', start: '2026.07', end: '2026.09', deliverables: ['1개 지역 출시', '운영 안정화', 'KPI 검증'], dependsOn: ['베타'] },
+          { name: '글로벌 런칭', start: '2026.09', end: '2026.12', deliverables: ['전 지역 출시', '마케팅 캠페인'], dependsOn: ['소프트런칭'] },
+        ],
+      },
     };
     const newSlide = { id: window.uid(), type, data: templates[type] || {} };
     setProject(p => ({ ...p, slides: [...(p.slides || []), newSlide] }));

@@ -522,6 +522,175 @@ async function exportPptx(project) {
           slide.addText(itemBlocks, { x: x + 0.3, y: yCursor, w: catW - 0.6, h: y + catH - yCursor - 0.2, fontSize: 10.5, fontFace: FONT, color: '424A55', paraSpaceAfter: 4, valign: 'top' });
         }
       });
+    } else if (s.type === 'balance-table') {
+      const vars = d.vars || [];
+      if (d.formula) {
+        slide.addText(d.formula.replace(/`/g, ''), { x: PAD_X, y: 1.6, w: W - 2 * PAD_X, h: 0.45, fontSize: 13, fontFace: MONO, color: '1C4D70', fill: { color: 'F0F4F8' }, italic: true, valign: 'middle' });
+      }
+      const tableY = d.formula ? 2.15 : 1.7;
+      const header = [
+        { text: '변수', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: '공식/정의', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: '범위', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: '기본값', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: '민감도', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+      ];
+      const body = vars.map(v => [
+        { text: v.name || '', options: { fontFace: MONO, color: ACCENT, bold: true } },
+        { text: (v.formula || '').replace(/`/g, ''), options: { fontFace: MONO } },
+        { text: v.range || '' },
+        { text: v.defaultValue || '' },
+        { text: (v.sensitivity || v.notes || '').replace(/`/g, '') },
+      ]);
+      slide.addTable([header, ...body], { x: PAD_X, y: tableY, w: W - 2 * PAD_X, fontSize: 10, fontFace: FONT, color: TEXT, border: { type: 'solid', color: 'E3E7EB', pt: 0.5 }, rowH: 0.32 });
+    } else if (s.type === 'state-machine') {
+      const states = d.states || [];
+      const transitions = d.transitions || [];
+      const colW = (W - 2 * PAD_X - 0.3) / 2;
+      // states 좌측
+      slide.addText('STATES', { x: PAD_X, y: 1.6, w: colW, h: 0.3, fontSize: 11, fontFace: MONO, color: '7D8590', charSpacing: 1.6 });
+      let y = 1.95;
+      for (const st of states) {
+        const fill = st.kind === 'initial' ? 'F4FAFF' : st.kind === 'final' ? 'F4FAF6' : st.kind === 'error' ? 'FDF5F5' : 'FFFFFF';
+        const bd = st.kind === 'initial' ? ACCENT : st.kind === 'final' ? '3FB950' : st.kind === 'error' ? 'F85149' : '303A45';
+        const h = 0.55;
+        slide.addShape('roundRect', { x: PAD_X, y, w: colW, h, fill: { color: fill }, line: { color: bd, width: 1.5 }, rectRadius: 0.04 });
+        slide.addText(`${st.id} · ${st.name} (${st.kind})`, { x: PAD_X + 0.15, y, w: colW - 0.3, h, fontSize: 11, bold: true, fontFace: MONO, color: '1C222B', valign: 'middle' });
+        y += h + 0.06;
+        if (y > H - 1.0) break;
+      }
+      // transitions 우측 — 표
+      const trHeader = [
+        { text: 'from', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: 'event', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: 'guard', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: 'to', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+      ];
+      const trBody = transitions.map(t => [
+        { text: t.from || '', options: { fontFace: MONO, color: ACCENT } },
+        { text: t.event || '', options: { fontFace: MONO } },
+        { text: (t.guard || '').replace(/`/g, '') },
+        { text: t.to || '', options: { fontFace: MONO, color: ACCENT } },
+      ]);
+      slide.addText('TRANSITIONS', { x: PAD_X + colW + 0.3, y: 1.6, w: colW, h: 0.3, fontSize: 11, fontFace: MONO, color: '7D8590', charSpacing: 1.6 });
+      slide.addTable([trHeader, ...trBody], { x: PAD_X + colW + 0.3, y: 1.95, w: colW, fontSize: 9, fontFace: FONT, color: TEXT, border: { type: 'solid', color: 'E3E7EB', pt: 0.5 }, rowH: 0.3 });
+    } else if (s.type === 'api-contract') {
+      slide.addShape('rect', { x: PAD_X, y: 1.6, w: W - 2 * PAD_X, h: 0.6, fill: { color: '1C222B' } });
+      slide.addText(`${d.method || 'POST'}  ${d.endpoint || ''}`, { x: PAD_X + 0.2, y: 1.6, w: W - 2 * PAD_X - 2.5, h: 0.6, fontSize: 16, bold: true, fontFace: MONO, color: 'E6EDF3', valign: 'middle' });
+      slide.addText(`auth: ${d.auth || 'bearer'}  ·  SLA ${d.slaMs || 200}ms`, { x: W - PAD_X - 2.3, y: 1.6, w: 2.1, h: 0.6, fontSize: 11, fontFace: MONO, color: ACCENT, align: 'right', valign: 'middle' });
+      const colW = (W - 2 * PAD_X - 0.2) / 2;
+      slide.addText('REQUEST', { x: PAD_X, y: 2.35, w: colW, h: 0.25, fontSize: 10, fontFace: MONO, color: '7D8590', charSpacing: 1.4 });
+      slide.addText(d.request || '{}', { x: PAD_X, y: 2.6, w: colW, h: 1.6, fontSize: 10, fontFace: MONO, color: 'E6EDF3', fill: { color: '1C222B' } });
+      slide.addText('RESPONSE', { x: PAD_X + colW + 0.2, y: 2.35, w: colW, h: 0.25, fontSize: 10, fontFace: MONO, color: '7D8590', charSpacing: 1.4 });
+      slide.addText(d.response || '{}', { x: PAD_X + colW + 0.2, y: 2.6, w: colW, h: 1.6, fontSize: 10, fontFace: MONO, color: 'E6EDF3', fill: { color: '1C222B' } });
+      // errors
+      const errH = [
+        { text: 'code', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: 'message', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: 'when', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+      ];
+      const errB = (d.errors || []).map(e => [
+        { text: e.code || '', options: { fontFace: MONO, color: 'F85149', bold: true } },
+        { text: e.message || '', options: { fontFace: MONO } },
+        { text: e.when || '' },
+      ]);
+      slide.addTable([errH, ...errB], { x: PAD_X, y: 4.35, w: W - 2 * PAD_X, fontSize: 10, fontFace: FONT, color: TEXT, border: { type: 'solid', color: 'E3E7EB', pt: 0.5 }, rowH: 0.3 });
+    } else if (s.type === 'acceptance-criteria') {
+      const story = d.userStory || {};
+      slide.addShape('rect', { x: PAD_X, y: 1.6, w: W - 2 * PAD_X, h: 0.8, fill: { color: 'F8F9FA' }, line: { color: ACCENT, width: 0 } });
+      slide.addShape('rect', { x: PAD_X, y: 1.6, w: 0.05, h: 0.8, fill: { color: ACCENT } });
+      slide.addText(`AS A ${story.as || ''}  ·  I WANT ${story.want || ''}  ·  SO THAT ${story.soThat || ''}`, { x: PAD_X + 0.2, y: 1.6, w: W - 2 * PAD_X - 0.4, h: 0.8, fontSize: 12, fontFace: FONT, color: '1C222B', valign: 'middle' });
+      let y = 2.6;
+      for (const c of (d.criteria || [])) {
+        const h = 1.4;
+        slide.addShape('roundRect', { x: PAD_X, y, w: W - 2 * PAD_X, h, fill: { color: 'FFFFFF' }, line: { color: 'D0D7DE', width: 0.5 }, rectRadius: 0.05 });
+        slide.addText(c.id || '', { x: PAD_X + 0.15, y: y + 0.1, w: 0.8, h: 0.25, fontSize: 11, fontFace: MONO, color: ACCENT, bold: true });
+        slide.addText([
+          { text: 'GIVEN ', options: { bold: true, color: '1C4D70', fontFace: MONO } }, { text: (c.given || '') + '\n', options: {} },
+          { text: 'WHEN ', options: { bold: true, color: '9C6F00', fontFace: MONO } }, { text: (c.when || '').replace(/`/g, '') + '\n', options: {} },
+          { text: 'THEN ', options: { bold: true, color: '166534', fontFace: MONO } }, { text: c.then || '', options: {} },
+        ], { x: PAD_X + 0.15, y: y + 0.4, w: W - 2 * PAD_X - 0.3, h: h - 0.5, fontSize: 10.5, fontFace: FONT, color: '424A55' });
+        y += h + 0.15;
+        if (y > H - 1.0) break;
+      }
+    } else if (s.type === 'telemetry') {
+      let y = 1.7;
+      for (const e of (d.events || [])) {
+        const propsCount = (e.props || []).length;
+        const h = 0.5 + propsCount * 0.22 + 0.2;
+        slide.addShape('roundRect', { x: PAD_X, y, w: W - 2 * PAD_X, h, fill: { color: 'FAFBFC' }, line: { color: 'D0D7DE', width: 0.5 }, rectRadius: 0.04 });
+        slide.addText(e.name || '', { x: PAD_X + 0.15, y: y + 0.06, w: 4, h: 0.3, fontSize: 13, bold: true, fontFace: MONO, color: ACCENT });
+        if (e.kpi) slide.addText(`KPI: ${e.kpi}`, { x: W - PAD_X - 3, y: y + 0.08, w: 2.8, h: 0.25, fontSize: 10, fontFace: MONO, color: '88DFB0', align: 'right' });
+        if (e.when) slide.addText(e.when, { x: PAD_X + 0.15, y: y + 0.35, w: W - 2 * PAD_X - 0.3, h: 0.22, fontSize: 10, fontFace: FONT, italic: true, color: '586A75' });
+        let py = y + 0.6;
+        for (const p of (e.props || [])) {
+          slide.addText(`  ${p.key} : ${p.type}${p.required ? ' *' : ''}${p.note ? ' — ' + p.note : ''}`, { x: PAD_X + 0.15, y: py, w: W - 2 * PAD_X - 0.3, h: 0.2, fontSize: 9.5, fontFace: MONO, color: '424A55' });
+          py += 0.22;
+        }
+        y += h + 0.12;
+        if (y > H - 0.8) break;
+      }
+    } else if (s.type === 'risk-register') {
+      const risks = [...(d.risks || [])].sort((a, b) => ((b.impact || 0) * (b.likelihood || 0)) - ((a.impact || 0) * (a.likelihood || 0)));
+      const header = [
+        { text: 'ID', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: '위험', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: 'I', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: 'L', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: '점수', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: '완화책', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: '담당', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+        { text: '상태', options: { bold: true, color: 'FFFFFF', fill: { color: '1C222B' } } },
+      ];
+      const body = risks.map(r => {
+        const sc = (r.impact || 0) * (r.likelihood || 0);
+        const sevFill = sc >= 16 ? '8B0000' : sc >= 9 ? 'F85149' : sc >= 4 ? 'FFC107' : '3FB950';
+        return [
+          { text: r.id || '', options: { fontFace: MONO, color: 'FFFFFF', fill: { color: sevFill }, bold: true } },
+          { text: r.title || '' },
+          { text: String(r.impact || 0), options: { align: 'center', fontFace: MONO } },
+          { text: String(r.likelihood || 0), options: { align: 'center', fontFace: MONO } },
+          { text: String(sc), options: { bold: true, fontFace: MONO, align: 'center', color: sevFill } },
+          { text: r.mitigation || '' },
+          { text: r.owner || '', options: { fontFace: MONO } },
+          { text: r.status || 'open', options: { fontFace: MONO, fontSize: 9 } },
+        ];
+      });
+      slide.addTable([header, ...body], { x: PAD_X, y: 1.7, w: W - 2 * PAD_X, colW: [0.5, 2.6, 0.4, 0.4, 0.6, 3.0, 0.8, 0.8], fontSize: 9.5, fontFace: FONT, color: TEXT, border: { type: 'solid', color: 'E3E7EB', pt: 0.5 }, rowH: 0.3 });
+    } else if (s.type === 'roadmap') {
+      const phases = d.phases || [];
+      const toMonth = (str) => {
+        const m = /(\d{4})\D+(\d{1,2})/.exec(String(str || ''));
+        return m ? parseInt(m[1], 10) * 12 + parseInt(m[2], 10) : 0;
+      };
+      const allMonths = phases.flatMap(p => [toMonth(p.start), toMonth(p.end)]).filter(n => n > 0);
+      const minM = allMonths.length ? Math.min(...allMonths) : 0;
+      const maxM = allMonths.length ? Math.max(...allMonths) : 0;
+      const range = (maxM - minM) || 1;
+      const trackX = PAD_X + 1.4, trackW = W - 2 * PAD_X - 1.4;
+      // 간트
+      let y = 1.8;
+      for (const p of phases) {
+        const start = toMonth(p.start), end = toMonth(p.end);
+        const left = trackX + ((start - minM) / range) * trackW;
+        const w = Math.max(0.3, ((end - start) / range) * trackW);
+        slide.addText(p.name || '', { x: PAD_X, y: y - 0.05, w: 1.3, h: 0.3, fontSize: 11, fontFace: FONT, bold: true, color: TEXT, align: 'right' });
+        slide.addShape('roundRect', { x: trackX, y, w: trackW, h: 0.25, fill: { color: 'F0F4F8' }, line: { color: 'F0F4F8' }, rectRadius: 0.12 });
+        slide.addShape('roundRect', { x: left, y, w, h: 0.25, fill: { color: ACCENT }, line: { color: ACCENT_2 || '2B88C4' }, rectRadius: 0.12 });
+        slide.addText(`${p.start || ''} – ${p.end || ''}`, { x: left + 0.1, y, w: w - 0.2, h: 0.25, fontSize: 8.5, fontFace: MONO, color: '061018', valign: 'middle', bold: true });
+        y += 0.4;
+        if (y > 4.5) break;
+      }
+      // 산출물 리스트
+      let pY = y + 0.2;
+      for (const p of phases) {
+        if (pY > H - 0.6) break;
+        const text = (p.deliverables || []).map(dl => '▸ ' + dl).join('  ');
+        if (text) {
+          slide.addText(`${p.name}: ${text}`, { x: PAD_X, y: pY, w: W - 2 * PAD_X, h: 0.28, fontSize: 10, fontFace: FONT, color: '424A55' });
+          pY += 0.3;
+        }
+      }
     } else if (s.type === 'image-embed') {
       // 캡션 + 중앙 정렬된 참고 이미지
       const cap = d.caption || '';

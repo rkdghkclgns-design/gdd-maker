@@ -101,6 +101,48 @@
       defaults: { section: '02', sectionName: '플로우 차트', title: '플로우', direction: '', lines: 1, nodes: [] },
       arrays: { nodes: { item: { kind: 'process', label: '단계' } } },
     },
+    /* === Phase 1 신규 슬라이드 7종 — 개발 가능 수준 보장용 === */
+    'balance-table': {
+      required: ['vars'],
+      defaults: { section: '04', sectionName: '밸런싱', title: '수치 밸런싱', formula: '', vars: [], curve: null },
+      arrays: { vars: { item: { name: '변수', formula: '', range: '', defaultValue: '', sensitivity: '', notes: '' } } },
+    },
+    'state-machine': {
+      required: ['states'],
+      defaults: { section: '02', sectionName: '상태 머신', title: '상태 머신', states: [], transitions: [] },
+      arrays: {
+        states: { item: { id: 's1', name: 'IDLE', kind: 'normal', onEnter: '', onExit: '', invariants: [] } },
+        transitions: { item: { from: '', to: '', event: '', guard: '', action: '' } },
+      },
+    },
+    'api-contract': {
+      required: ['endpoint'],
+      defaults: { section: '02', sectionName: 'API 계약', title: 'API 계약', endpoint: '/api/...', method: 'POST', auth: 'bearer', request: '', response: '', errors: [], idempotencyKey: '', slaMs: 200, notes: '' },
+      arrays: { errors: { item: { code: '400', message: '메시지', when: '발생 조건' } } },
+    },
+    'acceptance-criteria': {
+      required: ['criteria'],
+      defaults: { section: '03', sectionName: '수락 기준', title: '수락 기준 (AC)', userStory: { as: '', want: '', soThat: '' }, criteria: [] },
+      arrays: { criteria: { item: { id: 'AC-1', given: '', when: '', then: '', edgeCases: [] } } },
+    },
+    telemetry: {
+      required: ['events'],
+      defaults: { section: '04', sectionName: '텔레메트리', title: '텔레메트리 이벤트', events: [], funnels: [] },
+      arrays: {
+        events: { item: { name: 'event_name', when: '발생 시점', props: [], kpi: '' } },
+        funnels: { item: { name: '펀넬명', steps: [], goal: '' } },
+      },
+    },
+    'risk-register': {
+      required: ['risks'],
+      defaults: { section: '06', sectionName: '위험 등기부', title: '위험 등기부', risks: [] },
+      arrays: { risks: { item: { id: 'R-1', title: '위험명', impact: 3, likelihood: 3, mitigation: '', owner: '', status: 'open' } } },
+    },
+    roadmap: {
+      required: ['phases'],
+      defaults: { section: '06', sectionName: '로드맵', title: '로드맵', phases: [] },
+      arrays: { phases: { item: { name: 'Phase 1', start: '2026.01', end: '2026.03', deliverables: [], dependsOn: [] } } },
+    },
   };
 
   function fillDefaults(obj, defaults) {

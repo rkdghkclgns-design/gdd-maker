@@ -829,12 +829,27 @@ ${contextBlock}
         "spec":"사양 (예: 1080×24, PNG-24, 9-slice. 색상 #FF3030 → #88DFB0 그라데이션)",
         "example":"파일명·참고 (예: ui/hud/hp_bar.png · 레퍼런스: Apex Legends HP 게이지)"
       }]
-    }]} }
+    }]} },
+    { "type": "balance-table", "data": { "section":"04", "sectionName":"밸런싱", "title":"수치 밸런싱 공식", "formula":"\`damage = base × (1 + str/100) × elem_mod\`", "vars":[{"name":"base","formula":"카드 등급별 기본값","range":"50~200","defaultValue":"100","sensitivity":"±10% → 평균 매치 시간 ±15초"}], "curve":{"x":[1,2,3,4,5,6,7,8,9,10],"y":[100,220,380,580,820,1100,1420,1780,2180,2620],"xLabel":"레벨","yLabel":"강화 비용"} } },
+    { "type": "state-machine", "data": { "section":"02", "sectionName":"상태 머신", "title":"플레이어 상태 머신", "states":[{"id":"s1","name":"IDLE","kind":"initial","onEnter":"\`enableInput()\`","onExit":"\`disableInput()\`","invariants":["\`input_locked == false\`"]}], "transitions":[{"from":"s1","to":"s2","event":"CAST_INPUT","guard":"\`mana >= cost\`","action":"\`consumeMana(cost)\`"}] } },
+    { "type": "api-contract", "data": { "section":"02", "sectionName":"API 계약", "title":"POST /api/match/create", "endpoint":"/api/match/create", "method":"POST", "auth":"bearer", "slaMs":200, "request":"{\\n  \\"userId\\": \\"uuid\\",\\n  \\"mode\\": \\"casual|ranked\\"\\n}", "response":"{\\n  \\"matchId\\": \\"uuid\\",\\n  \\"gameServer\\": \\"host:port\\"\\n}", "errors":[{"code":"400","message":"INVALID_MODE","when":"mode 가 enum 외 값"}], "idempotencyKey":"\`X-Idempotency-Key\` 헤더 권장. 24h TTL.", "notes":"" } },
+    { "type": "acceptance-criteria", "data": { "section":"03", "sectionName":"수락 기준", "title":"매칭 시작 수락 기준", "userStory":{"as":"신규 유저","want":"첫 매치를 빠르게 시작","soThat":"D1 리텐션 60% 유지"}, "criteria":[{"id":"AC-1","given":"메인 로비 진입","when":"\`매칭\` 탭","then":"3초 이내 매칭 모달 표시","edgeCases":["네트워크 단절 시 5초 후 재시도"]}] } },
+    { "type": "telemetry", "data": { "section":"04", "sectionName":"텔레메트리", "title":"매칭 이벤트", "events":[{"name":"match_button_tapped","when":"매칭 버튼 탭","props":[{"key":"mode","type":"enum","required":true,"note":"casual/ranked"}],"kpi":"매칭 시도율"}], "funnels":[{"name":"매칭 펀넬","steps":["match_button_tapped","match_found"],"goal":"전환율 95%"}] } },
+    { "type": "risk-register", "data": { "section":"06", "sectionName":"위험 등기부", "title":"런칭 전 위험", "risks":[{"id":"R-1","title":"매칭 서버 부하","impact":5,"likelihood":3,"mitigation":"오토스케일 + 봇 매치 폴백","owner":"서버팀","status":"open"}] } },
+    { "type": "roadmap", "data": { "section":"06", "sectionName":"로드맵", "title":"런칭 로드맵", "phases":[{"name":"MVP","start":"2026.01","end":"2026.03","deliverables":["코어 매치","4개 캐릭터"],"dependsOn":[]}] } }
   ]
 }
 
-# 분량 및 구성 (시니어 표준 — 풍부하게 작성)
-- **슬라이드 총 18~26장**. cover / history / toc / [개요 섹션 divider + intent + terms] / [시스템 상세 섹션 divider + flow + sequence-diagram + diagram + rules 보조] / [UI 섹션 divider + ui-design × 2~3] / [데이터 섹션 divider + data-table × 2~3] / [리소스 섹션 divider + resources] / image-embed 3~5장 (섹션 사이에 분산 배치).
+# 분량 및 구성 (시니어 표준 — 개발 가능 수준)
+- **슬라이드 총 22~32장**. 다음 골격을 반드시 포함:
+  - 표지/이력/목차 (3장)
+  - [개요 섹션] divider + intent + terms (3장)
+  - [시스템 상세 섹션] divider + flow + sequence-diagram + diagram + **state-machine** + class-diagram + rules 보조 (6~8장)
+  - [데이터/밸런싱 섹션] divider + data-table × 2 + **balance-table** (4장)
+  - [API/텔레메트리 섹션] divider + **api-contract** × 2~3 + **telemetry** (4~5장)
+  - [품질 섹션] divider + **acceptance-criteria** × 2 (3장)
+  - [UI 섹션] divider + ui-design × 2 + image-embed × 3 (6장)
+  - [관리 섹션] divider + **risk-register** + **roadmap** + resources (4장)
 - 섹션마다 section-divider로 구분하고, **section-divider 의 imagePrompt 는 모두 채워서 섹션마다 컨셉 아트를 둔다 (해석을 도울 시각적 앵커).**
 - **분량 기준 (각 슬라이드 최소량)**:
   - \`intent.cards\` = **4~6개** (의도별 측정 지표 포함)
@@ -906,6 +921,13 @@ ${contextBlock}
 - **ui-design.callouts**: 각 callout이 트리거 상호작용("탭 시", "롱프레스 시")과 그 결과 상태 변화를 함께 기술. 4~6개 권장. **x, y는 0~100 정수 (이미지 안에서의 퍼센트 위치)**. imagePrompt가 묘사하는 화면 레이아웃과 일치하는 위치를 골라야 한다 (예: 좌상단 미니맵=10,15 / 중앙 크로스헤어=50,50 / 우상단 자원=85,12 / 하단 액션바=50,88). callout 순서는 사용자가 시선을 옮길 자연스러운 순서로.
 - **section-divider.imagePrompt**: 각 섹션의 분위기를 한 컷으로 압축한 영문 컨셉 아트. 배경에 깔리므로 어두운 톤·구도가 단순하면 좋다. 비어 있어도 되지만 가급적 채워라.
 - **image-embed**: 텍스트로만 설명하면 모호한 시각 요소(카드 디자인 무드, 캐릭터 룩, 게임 장면, 아이콘 세트)에 한해 사용. imagePrompt 는 카메라 앵글·조명·재질·스타일 키워드 포함. caption 은 한국어로, "왜 이 이미지를 참조 자료로 두었는지"를 한 줄로 적는다.
+- **balance-table** (Phase 1 — 개발 가능 수준 필수): vars 6~12개. 각 var 에 \`name\` (snake_case), \`formula\` (마크다운 코드로 공식), \`range\` (예: "0~9999"), \`defaultValue\`, \`sensitivity\` ("±10% → 매치 시간 ±15초" 같은 영향 분석). \`curve\` 는 레벨/등급별 수치 곡선이 필요한 경우 x[1..N], y[...] 배열로 채움.
+- **state-machine** (Phase 1 — 필수): states 4~8개. 각 state 에 \`id\` (snake), \`name\` (UPPER_CASE), \`kind\` (initial/normal/final/error 중 1), \`onEnter\`/\`onExit\` 동작, \`invariants\` 배열 (해당 상태에서 항상 참인 조건). transitions 6~12개 — from/event/guard/to/action 모두 명시. **모든 final 상태로 들어오는 transition 1개 이상.**
+- **api-contract** (Phase 1 — 시스템 통신 있는 GDD 필수): 각 슬라이드는 1개 endpoint 만 다룸. \`method\` (HTTP), \`endpoint\`, \`auth\`, \`slaMs\`, \`request\`/\`response\` 는 실제 JSON 스키마 문자열 (필드/타입 명확), \`errors\` 3~6개 (code+message+when), \`idempotencyKey\` 정책. **여러 API 가 있으면 여러 슬라이드로 분리.**
+- **acceptance-criteria** (Phase 1 — 핵심 기능 필수): \`userStory\` (As/I want/So that), \`criteria\` 3~6개. 각 criterion 은 Given/When/Then + \`edgeCases\` 2~4개. **테스트 자동화로 그대로 옮길 수 있는 수준의 구체성.**
+- **telemetry** (Phase 1 — 라이브 운영 필수): \`events\` 5~10개. 각 event 에 \`name\` (snake), \`when\` (정확한 발생 시점), \`props\` (key/type/required/note), \`kpi\` (이 이벤트가 추적하는 KPI). \`funnels\` 1~3개 (이벤트 시퀀스 + 목표 전환율).
+- **risk-register** (Phase 1 — 모든 GDD 필수): \`risks\` 4~8개. 각 risk 에 \`id\`, \`title\`, \`impact\` (1~5), \`likelihood\` (1~5), \`mitigation\` (구체 완화책), \`owner\` (담당자), \`status\` (open/mitigated/accepted/closed). **impact×likelihood ≥ 16 인 risk 는 모두 mitigation 명시.**
+- **roadmap** (Phase 1 — 모든 GDD 필수): \`phases\` 4~6개. 각 phase 에 \`name\`, \`start\`/\`end\` (YYYY.MM 형식), \`deliverables\` 3~6개, \`dependsOn\` (선행 phase 이름 배열). MVP → 알파 → 베타 → 소프트런칭 → 글로벌 같은 단계화 권장.
 - **resources**: 다음 3계층 모두 채워라 — (a) 카테고리 \`guideline\` (해상도·포맷·네이밍·톤앤매너·컬러 가이드 등 카테고리 전체 규칙), (b) 각 item의 \`name\` (에셋명), (c) 각 item의 \`spec\` (정확한 사양: 해상도 / tris / 포맷 / 길이 / 컬러스페이스 등), (d) 각 item의 \`example\` (실제 파일명·참고 작품·레퍼런스 링크). 단순 이름 나열 금지. 예시 (JSON):
   {
     "name": "UI", "count": "x14",

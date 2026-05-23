@@ -1026,18 +1026,32 @@ function ThumbScaler({ slide, index, total }) {
 /* === Add slide menu === */
 function AddSlideMenu({ onAdd, onClose }) {
   const types = [
-    { type: 'intent', label: '기획 의도', icon: '◆' },
-    { type: 'terms', label: '용어 정의', icon: '≡' },
-    { type: 'rules', label: '규칙', icon: '§' },
-    { type: 'data-table', label: '데이터 테이블', icon: '▦' },
-    { type: 'flow', label: '플로우 차트', icon: '⇣' },
-    { type: 'diagram', label: '다이어그램 (2D)', icon: '◇' },
-    { type: 'sequence-diagram', label: '시퀀스 다이어그램', icon: '⇄' },
-    { type: 'class-diagram', label: '클래스 다이어그램', icon: '▤' },
-    { type: 'ui-design', label: 'UI/UX', icon: '▣' },
-    { type: 'resources', label: '필요 리소스', icon: '◉' },
-    { type: 'image-embed', label: '참고 이미지', icon: '🖼' },
-    { type: 'section-divider', label: '섹션 구분', icon: '—' },
+    // 개요/구조
+    { type: 'intent', label: '기획 의도', icon: '◆', group: '개요' },
+    { type: 'terms', label: '용어 정의', icon: '≡', group: '개요' },
+    { type: 'section-divider', label: '섹션 구분', icon: '—', group: '개요' },
+    // 시스템 / 로직
+    { type: 'rules', label: '규칙', icon: '§', group: '시스템' },
+    { type: 'flow', label: '플로우 차트', icon: '⇣', group: '시스템' },
+    { type: 'diagram', label: '다이어그램 (2D)', icon: '◇', group: '시스템' },
+    { type: 'sequence-diagram', label: '시퀀스 다이어그램', icon: '⇄', group: '시스템' },
+    { type: 'class-diagram', label: '클래스 다이어그램', icon: '▤', group: '시스템' },
+    { type: 'state-machine', label: '상태 머신', icon: '◎', group: '시스템' },
+    // 데이터 / 밸런싱
+    { type: 'data-table', label: '데이터 테이블', icon: '▦', group: '데이터' },
+    { type: 'balance-table', label: '수치 밸런싱', icon: '∿', group: '데이터' },
+    // API / 텔레메트리
+    { type: 'api-contract', label: 'API 계약', icon: '⇿', group: 'API' },
+    { type: 'telemetry', label: '텔레메트리', icon: '◉', group: 'API' },
+    // 품질 / 검증
+    { type: 'acceptance-criteria', label: '수락 기준', icon: '✓', group: '품질' },
+    // UI / 리소스
+    { type: 'ui-design', label: 'UI/UX', icon: '▣', group: 'UI' },
+    { type: 'image-embed', label: '참고 이미지', icon: '🖼', group: 'UI' },
+    { type: 'resources', label: '필요 리소스', icon: '◉', group: 'UI' },
+    // 프로젝트 관리
+    { type: 'risk-register', label: '위험 등기부', icon: '⚠', group: '관리' },
+    { type: 'roadmap', label: '로드맵', icon: '►', group: '관리' },
   ];
   return (
     <div className="form-panel-overlay" onClick={onClose}>
@@ -1314,6 +1328,94 @@ function App({ onStateChange }) {
       ]},
       'section-divider': { num: '0?', title: '섹션 제목', subtitle: '섹션 설명', imagePrompt: '' },
       'image-embed': { section: '03', sectionName: '참고 이미지', title: '참고 이미지', caption: '참고 이미지 캡션', imagePrompt: '' },
+      // Phase 1 신규 7종
+      'balance-table': {
+        section: '04', sectionName: '밸런싱', title: '수치 밸런싱',
+        formula: '`damage = base × (1 + str/100) × elem_mod`',
+        vars: [
+          { name: 'base', formula: '카드 등급별 기본값', range: '50~200', defaultValue: '100', sensitivity: '±10% → 평균 매치 시간 ±15초', notes: '' },
+          { name: 'str', formula: '레벨 + 강화 보정', range: '0~500', defaultValue: '0', sensitivity: '레벨 1당 +5', notes: '' },
+          { name: 'elem_mod', formula: '속성 상성표', range: '0.5~2.0', defaultValue: '1.0', sensitivity: '상성 일치 시 1.5', notes: '카운터는 2.0' },
+        ],
+        curve: { x: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], y: [100, 220, 380, 580, 820, 1100, 1420, 1780, 2180, 2620], xLabel: '레벨', yLabel: '강화 비용 (재화)' },
+      },
+      'state-machine': {
+        section: '02', sectionName: '상태 머신', title: '상태 머신',
+        states: [
+          { id: 's1', name: 'IDLE', kind: 'initial', onEnter: '`enableInput()`', onExit: '`disableInput()`', invariants: ['`input_locked == false`'] },
+          { id: 's2', name: 'CASTING', kind: 'normal', onEnter: '`playCastAnim()`', onExit: '', invariants: ['`animation_locked == true`'] },
+          { id: 's3', name: 'COOLDOWN', kind: 'normal', onEnter: '`startCooldownTimer()`', onExit: '', invariants: ['`canCast == false`'] },
+          { id: 's4', name: 'DEAD', kind: 'final', onEnter: '`playDeathSeq()`', onExit: '', invariants: ['모든 입력 차단', '카메라 페이드아웃'] },
+        ],
+        transitions: [
+          { from: 's1', to: 's2', event: 'CAST_INPUT', guard: '`mana >= cost`', action: '`consumeMana(cost)`' },
+          { from: 's2', to: 's3', event: 'CAST_COMPLETE', guard: '', action: '`spawnProjectile()`' },
+          { from: 's3', to: 's1', event: 'COOLDOWN_END', guard: '', action: '' },
+          { from: 's1', to: 's4', event: 'HP_ZERO', guard: '`hp <= 0`', action: '`emit(death)`' },
+        ],
+      },
+      'api-contract': {
+        section: '02', sectionName: 'API 계약', title: 'POST /api/match/create',
+        endpoint: '/api/match/create', method: 'POST', auth: 'bearer', slaMs: 200,
+        request: '{\n  "userId": "uuid",\n  "mode": "casual" | "ranked" | "custom",\n  "preferredRegion": "ap-northeast-1"\n}',
+        response: '{\n  "matchId": "uuid",\n  "gameServer": "host:port",\n  "sessionToken": "jwt",\n  "expiresAt": "2026-05-23T12:34:56Z"\n}',
+        errors: [
+          { code: '400', message: 'INVALID_MODE', when: '`mode` 가 enum 외 값' },
+          { code: '401', message: 'TOKEN_EXPIRED', when: 'Bearer 토큰 만료' },
+          { code: '409', message: 'ALREADY_IN_MATCH', when: '동일 userId 가 매치 진행 중' },
+          { code: '503', message: 'NO_SERVERS', when: '리전에 가용 게임 서버 없음 → 큐 대기' },
+        ],
+        idempotencyKey: '`X-Idempotency-Key` 헤더 권장. 동일 키로 24h 내 재요청 시 동일 matchId 반환.',
+        notes: '평균 응답 200ms 이하. 99p 500ms 이하. 큐 진입 시 202 + Location 헤더.',
+      },
+      'acceptance-criteria': {
+        section: '03', sectionName: '수락 기준', title: '매칭 시작 — 수락 기준',
+        userStory: { as: '신규 유저', want: '첫 매치를 빠르게 시작하길', soThat: 'D1 리텐션 60%↑ 유지' },
+        criteria: [
+          { id: 'AC-1', given: '유저가 로그인 직후 메인 로비에 진입했다', when: '`매칭` 버튼을 1회 탭한다', then: '3초 이내에 매칭 진행 모달이 표시되고, 카운트다운이 시작된다', edgeCases: ['네트워크 단절 시 5초 후 재시도 안내', '동시에 두 번 탭하면 두 번째 탭은 무시'] },
+          { id: 'AC-2', given: '매칭 진행 중이다', when: '60초가 지나도 상대를 못 찾는다', then: '`매칭 범위 확대` 알림 + 봇 매치 옵션 제공', edgeCases: ['랭크 매치는 봇 옵션 미노출'] },
+        ],
+      },
+      'telemetry': {
+        section: '04', sectionName: '텔레메트리', title: '매칭 이벤트',
+        events: [
+          { name: 'match_button_tapped', when: '유저가 매칭 버튼 탭', props: [
+            { key: 'mode', type: 'enum', required: true, note: 'casual / ranked / custom' },
+            { key: 'session_id', type: 'uuid', required: true, note: '클라이언트 세션' },
+          ], kpi: '매칭 시도율' },
+          { name: 'match_found', when: '매칭 성공', props: [
+            { key: 'match_id', type: 'uuid', required: true, note: '' },
+            { key: 'wait_time_ms', type: 'number', required: true, note: '매칭 대기 시간' },
+            { key: 'opponent_mmr_delta', type: 'number', required: false, note: '랭크에서만' },
+          ], kpi: '평균 매칭 시간' },
+          { name: 'match_abandoned', when: '매칭 도중 취소', props: [
+            { key: 'reason', type: 'enum', required: true, note: 'user_cancel / timeout / network_error' },
+            { key: 'wait_time_ms', type: 'number', required: true, note: '' },
+          ], kpi: '매칭 이탈율' },
+        ],
+        funnels: [
+          { name: '매칭 펀넬', steps: ['match_button_tapped', 'match_found', 'match_started'], goal: '진입율 95%↑' },
+        ],
+      },
+      'risk-register': {
+        section: '06', sectionName: '위험 등기부', title: '런칭 전 위험',
+        risks: [
+          { id: 'R-1', title: '매칭 서버 부하 (동접 10만 초과 시 큐 지연)', impact: 5, likelihood: 3, mitigation: '오토스케일 + 봇 매치 폴백 + 큐 대기 UX', owner: '서버팀', status: 'open' },
+          { id: 'R-2', title: '결제 모듈 인증 실패 (PG사 API 변경)', impact: 4, likelihood: 2, mitigation: '월 1회 정기 스모크 테스트 + 폴백 PG', owner: 'BM 팀', status: 'mitigated' },
+          { id: 'R-3', title: '리텐션 D1 < 40% 시 마케팅 ROI 미달', impact: 4, likelihood: 3, mitigation: '튜토리얼 A/B + 첫 매치 봇 난이도 보정', owner: 'PM', status: 'open' },
+          { id: 'R-4', title: '저사양 안드로이드 (RAM 2GB) 60fps 미달', impact: 3, likelihood: 4, mitigation: '품질 옵션 자동 다운그레이드 + 디바이스별 QA 매트릭스', owner: '클라팀', status: 'open' },
+        ],
+      },
+      'roadmap': {
+        section: '06', sectionName: '로드맵', title: '런칭 로드맵',
+        phases: [
+          { name: 'MVP', start: '2026.01', end: '2026.03', deliverables: ['코어 매치 + 단일 모드', '4개 캐릭터', '내부 알파'], dependsOn: [] },
+          { name: '알파', start: '2026.03', end: '2026.05', deliverables: ['랭크 모드 추가', '8개 캐릭터', '클로즈드 베타 (500명)'], dependsOn: ['MVP'] },
+          { name: '베타', start: '2026.05', end: '2026.07', deliverables: ['BM 시스템', '시즌 패스', '오픈 베타 (10K명)'], dependsOn: ['알파'] },
+          { name: '소프트런칭', start: '2026.07', end: '2026.09', deliverables: ['1개 지역 출시', '운영 안정화', 'KPI 검증'], dependsOn: ['베타'] },
+          { name: '글로벌 런칭', start: '2026.09', end: '2026.12', deliverables: ['전 지역 출시', '마케팅 캠페인'], dependsOn: ['소프트런칭'] },
+        ],
+      },
     };
     const newSlide = { id: window.uid(), type, data: templates[type] || {} };
     setProject(p => ({ ...p, slides: [...(p.slides || []), newSlide] }));

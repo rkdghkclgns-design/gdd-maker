@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-23T06:49:52.745Z
+   생성 시각: 2026-05-23T06:55:12.772Z
 */
 
 // ============================================================
@@ -6074,7 +6074,12 @@ function ToastHost({ children }) {
 const useToast = () => React.useContext(ToastCtx);
 
 /* === Top bar === */
-function TopBar({ project, view, setView, onDownload, isDownloading, onRename, tweaks, isConcept, onOpenSettings, hasApiKey, onExport, onImport, onOpenCmdK, onSaveSnapshot, onOpenSnapshots, usageTick }) {
+function TopBar({ project, view, setView, onDownload, isDownloading, onRename, tweaks, isConcept, onOpenSettings, hasApiKey, onExport, onImport, onOpenCmdK, onSaveSnapshot, onOpenSnapshots, onOpenQualityGate, usageTick }) {
+  // 품질 점수 — 슬라이드가 있을 때만 계산
+  const qScore = (!isConcept && project && window.gddQualityGate)
+    ? window.gddQualityGate.scoreProject(project)
+    : null;
+  const qColor = qScore ? (qScore.total >= 80 ? '#3fb950' : qScore.total >= 60 ? '#d29922' : '#f85149') : null;
   // 비용 배지 — 오늘 사용 + 누계
   const stats = window.gddUsage ? window.gddUsage.getStats() : null;
   const fmt = window.gddUsage ? window.gddUsage.formatUSD : (n) => '$' + (n || 0).toFixed(2);
@@ -6159,6 +6164,22 @@ function TopBar({ project, view, setView, onDownload, isDownloading, onRename, t
         </button>
       ) : (
         <>
+          {/* 품질 점수 배지 — 클릭 시 점수표 모달 */}
+          {qScore && (
+            <button
+              className="btn ghost"
+              onClick={onOpenQualityGate}
+              title={`품질 점수: ${qScore.total}/100 (${qScore.grade}). 클릭하여 상세 확인.`}
+              style={{
+                padding: '6px 10px', fontSize: 11,
+                color: qColor, borderColor: qColor,
+                fontFamily: 'JetBrains Mono, monospace',
+              }}
+            >
+              🎯 <strong style={{ color: qColor, fontWeight: 800 }}>{qScore.total}</strong>
+              <span style={{ color: qColor, marginLeft: 4, opacity: 0.8 }}>{qScore.grade}</span>
+            </button>
+          )}
           <button className="btn ghost" onClick={onSaveSnapshot} title="현재 기획서를 스냅샷으로 저장" disabled={!project} style={{ padding: '6px 10px', fontSize: 11 }}>
             📸 스냅샷
           </button>
@@ -6167,11 +6188,104 @@ function TopBar({ project, view, setView, onDownload, isDownloading, onRename, t
               ⌖ {(project.snapshots || []).length}
             </button>
           )}
-          <button className="btn primary" onClick={onDownload} disabled={isDownloading || !project}>
+          <button
+            className="btn primary"
+            onClick={() => {
+              if (qScore && qScore.total < 70 && !confirm(`품질 점수 ${qScore.total}/100 (${qScore.grade}). 보강 권장 항목이 있습니다. 그래도 다운로드할까요?`)) return;
+              onDownload();
+            }}
+            disabled={isDownloading || !project}
+          >
             {isDownloading ? '생성 중…' : <>↓ PPTX 다운로드</>}
           </button>
         </>
       )}
+    </div>
+  );
+}
+
+/* === downloadBlob 헬퍼 — 텍스트/JSON/YAML 등을 즉시 다운로드 === */
+function downloadBlob(content, filename, mime) {
+  const blob = new Blob([content], { type: mime || 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* === Quality Gate Modal — GDD 점수표 + 보강 권장 === */
+function QualityGateModal({ project, onClose, onJump }) {
+  const score = React.useMemo(() => {
+    if (!project || !window.gddQualityGate) return null;
+    return window.gddQualityGate.scoreProject(project);
+  }, [project]);
+  const suggestions = React.useMemo(() => {
+    if (!score) return [];
+    return window.gddQualityGate.suggestImprovements(project, score);
+  }, [project, score]);
+  if (!score) return null;
+  const gradeColor = score.total >= 80 ? '#3fb950' : score.total >= 60 ? '#d29922' : '#f85149';
+  return (
+    <div className="form-panel-overlay" onClick={onClose}>
+      <div className="form-panel" onClick={e => e.stopPropagation()} style={{ maxWidth: 720 }}>
+        <header>
+          <h2>🎯 GDD 품질 점수</h2>
+          <button className="btn ghost icon" onClick={onClose}>✕</button>
+        </header>
+        <div className="body" style={{ maxHeight: '72vh', overflow: 'auto' }}>
+          {/* 전체 점수 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 20, padding: '14px 18px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, marginBottom: 16 }}>
+            <div style={{ width: 90, height: 90, borderRadius: '50%', border: '6px solid ' + gradeColor, display: 'grid', placeItems: 'center', flexDirection: 'column' }}>
+              <div style={{ fontSize: 28, fontWeight: 800, color: gradeColor, fontFamily: 'JetBrains Mono, monospace' }}>{score.total}</div>
+              <div style={{ fontSize: 11, color: gradeColor, marginTop: -4 }}>{score.grade}</div>
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>
+                {score.canDownload ? '✓ 개발 가능 수준 (70+)' : '⚠ 보강이 필요한 상태 (70점 미만)'}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'JetBrains Mono, monospace' }}>{score.summary}</div>
+            </div>
+          </div>
+          {/* 차원별 점수 */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+            {score.dims.map((d, i) => {
+              const pct = d.points / d.max;
+              const c = pct >= 0.7 ? '#3fb950' : pct >= 0.4 ? '#d29922' : '#f85149';
+              return (
+                <div key={i} style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <span style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500 }}>{d.label}</span>
+                    <span style={{ fontSize: 12, color: c, fontFamily: 'JetBrains Mono, monospace', fontWeight: 700 }}>{d.points} / {d.max}</span>
+                  </div>
+                  <div style={{ height: 4, background: 'rgba(255,255,255,0.05)', borderRadius: 2, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${pct * 100}%`, background: c, transition: 'width 0.3s' }}></div>
+                  </div>
+                  {d.note && <div style={{ fontSize: 10.5, color: 'var(--text-4)', marginTop: 4, fontFamily: 'JetBrains Mono, monospace' }}>{d.note}</div>}
+                </div>
+              );
+            })}
+          </div>
+          {/* 보강 권장 */}
+          {suggestions.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'JetBrains Mono, monospace', textTransform: 'uppercase', letterSpacing: 0.06, marginBottom: 8 }}>보강 권장</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {suggestions.map((s, i) => {
+                  const pcolor = s.priority === 'HIGH' ? '#f85149' : s.priority === 'MEDIUM' ? '#d29922' : '#7d8590';
+                  return (
+                    <div key={i} style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 12px', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                      <span style={{ fontSize: 10, color: pcolor, fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, minWidth: 60 }}>{s.priority}</span>
+                      <span style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.5 }}>{s.action}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -7123,6 +7237,7 @@ function App({ onStateChange }) {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showConsistency, setShowConsistency] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const [showQualityGate, setShowQualityGate] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(() => !!(window.gemini?.getApiKey && window.gemini.getApiKey()));
   const [usageTick, setUsageTick] = useState(0); // 토큰/비용 강제 갱신 트리거
 
@@ -8034,6 +8149,7 @@ function App({ onStateChange }) {
         onOpenCmdK={() => setShowCmdK(true)}
         onSaveSnapshot={saveGddSnapshot}
         onOpenSnapshots={() => setShowGddSnapshots(true)}
+        onOpenQualityGate={() => setShowQualityGate(true)}
         onExport={async () => {
           try {
             const json = await window.gddStorage.exportProject();
@@ -8188,6 +8304,12 @@ function App({ onStateChange }) {
           onClose={() => setShowStats(false)}
         />
       )}
+      {showQualityGate && project && (
+        <QualityGateModal
+          project={project}
+          onClose={() => setShowQualityGate(false)}
+        />
+      )}
       {showGddSnapshots && (
         <GddSnapshotsModal
           project={project}
@@ -8315,6 +8437,77 @@ function App({ onStateChange }) {
               setShowConsistency(true);
             }},
             { id: 'stats', title: '📊 작업 통계 대시보드', sub: '활동/도메인/AI 사용량', shortcut: 'CMD', keywords: ['stats', '통계', 'dashboard', '대시보드'], run: () => setShowStats(true) },
+            { id: 'quality-gate', title: '🎯 품질 점수 확인', sub: '7개 차원 점수표 + 보강 권장', shortcut: 'CMD', keywords: ['quality', '품질', 'score', '점수', '게이트'], run: () => {
+              if (!project) { toast('기획서를 선택하세요', 'err'); return; }
+              setShowQualityGate(true);
+            }},
+            { id: 'export-ts', title: '⤓ TypeScript interface 내보내기', sub: 'class-diagram → .ts', shortcut: 'CMD', keywords: ['typescript', 'ts', 'export', 'interface'], run: () => {
+              if (!project) { toast('기획서를 선택하세요', 'err'); return; }
+              try {
+                const out = window.gddExportAdapters.exportTypeScript(project);
+                downloadBlob(out, `${project.title || 'gdd'}.types.ts`, 'text/typescript');
+                toast('types.ts 다운로드 완료', 'ok');
+              } catch (e) { toast('실패: ' + e.message, 'err'); }
+            }},
+            { id: 'export-json-schema', title: '⤓ JSON Schema 내보내기', sub: 'data-table → JSON Schema 2020-12', shortcut: 'CMD', keywords: ['json schema', 'schema', 'export'], run: () => {
+              if (!project) { toast('기획서를 선택하세요', 'err'); return; }
+              try {
+                const out = window.gddExportAdapters.exportJsonSchema(project);
+                downloadBlob(out, `${project.title || 'gdd'}.schemas.json`, 'application/json');
+                toast('schemas.json 다운로드 완료', 'ok');
+              } catch (e) { toast('실패: ' + e.message, 'err'); }
+            }},
+            { id: 'export-zod', title: '⤓ Zod 스키마 내보내기', sub: 'data-table → Zod', shortcut: 'CMD', keywords: ['zod', 'export'], run: () => {
+              if (!project) { toast('기획서를 선택하세요', 'err'); return; }
+              try {
+                const out = window.gddExportAdapters.exportZod(project);
+                downloadBlob(out, `${project.title || 'gdd'}.zod.ts`, 'text/typescript');
+                toast('zod.ts 다운로드 완료', 'ok');
+              } catch (e) { toast('실패: ' + e.message, 'err'); }
+            }},
+            { id: 'export-xstate', title: '⤓ XState 머신 내보내기', sub: 'state-machine → XState v5 JSON', shortcut: 'CMD', keywords: ['xstate', 'state', 'machine'], run: () => {
+              if (!project) { toast('기획서를 선택하세요', 'err'); return; }
+              try {
+                const out = window.gddExportAdapters.exportXState(project);
+                downloadBlob(out, `${project.title || 'gdd'}.machines.json`, 'application/json');
+                toast('machines.json 다운로드 완료', 'ok');
+              } catch (e) { toast('실패: ' + e.message, 'err'); }
+            }},
+            { id: 'export-openapi', title: '⤓ OpenAPI YAML 내보내기', sub: 'api-contract → OpenAPI 3.1', shortcut: 'CMD', keywords: ['openapi', 'swagger', 'yaml'], run: () => {
+              if (!project) { toast('기획서를 선택하세요', 'err'); return; }
+              try {
+                const out = window.gddExportAdapters.exportOpenApi(project);
+                downloadBlob(out, `${project.title || 'gdd'}.openapi.yaml`, 'text/yaml');
+                toast('openapi.yaml 다운로드 완료', 'ok');
+              } catch (e) { toast('실패: ' + e.message, 'err'); }
+            }},
+            { id: 'export-gherkin', title: '⤓ Gherkin feature 내보내기', sub: 'acceptance-criteria → .feature', shortcut: 'CMD', keywords: ['gherkin', 'cucumber', 'feature', 'bdd'], run: () => {
+              if (!project) { toast('기획서를 선택하세요', 'err'); return; }
+              try {
+                const out = window.gddExportAdapters.exportGherkin(project);
+                downloadBlob(out, `${project.title || 'gdd'}.feature`, 'text/plain');
+                toast('feature 파일 다운로드 완료', 'ok');
+              } catch (e) { toast('실패: ' + e.message, 'err'); }
+            }},
+            { id: 'export-balance-csv', title: '⤓ 밸런싱 CSV 내보내기', sub: 'balance-table → .csv (Google Sheets)', shortcut: 'CMD', keywords: ['csv', 'balance', '밸런싱', 'export'], run: () => {
+              if (!project) { toast('기획서를 선택하세요', 'err'); return; }
+              try {
+                const out = window.gddExportAdapters.exportBalanceCsv(project);
+                downloadBlob(out, `${project.title || 'gdd'}.balance.csv`, 'text/csv');
+                toast('balance.csv 다운로드 완료', 'ok');
+              } catch (e) { toast('실패: ' + e.message, 'err'); }
+            }},
+            { id: 'export-all', title: '⤓ 모든 개발 산출물 한꺼번에', sub: 'TS + JSON Schema + Zod + XState + OpenAPI + Gherkin + CSV', shortcut: 'CMD', keywords: ['all', 'export', '모두', '일괄'], run: () => {
+              if (!project) { toast('기획서를 선택하세요', 'err'); return; }
+              try {
+                const all = window.gddExportAdapters.exportAll(project);
+                let n = 0;
+                for (const filename of Object.keys(all)) {
+                  setTimeout(() => downloadBlob(all[filename], `${project.title || 'gdd'}.${filename}`, 'text/plain'), n++ * 200);
+                }
+                toast(`${Object.keys(all).length}개 파일 순차 다운로드`, 'ok');
+              } catch (e) { toast('실패: ' + e.message, 'err'); }
+            }},
           ]}
         />
       )}

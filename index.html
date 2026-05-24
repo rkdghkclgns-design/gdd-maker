@@ -7,31 +7,60 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234cc2ff'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='ui-monospace,monospace' font-weight='800' font-size='20' fill='%23061018'%3EG%3C/text%3E%3C/svg%3E" />
 <script>
 /* 브라우저 확장(번역기/패스워드 매니저/애드블락 등)이 일으키는 노이즈만 정확히 swallow.
-   우리 앱의 진짜 에러는 그대로 콘솔에 노출됨. */
+   우리 앱의 진짜 에러는 그대로 콘솔에 노출됨.
+
+   3중 차단:
+   1) unhandledrejection 이벤트 — Promise 에서 throw 된 확장 오류
+   2) error 이벤트 (capture 단계) — 동기 throw
+   3) console.error / console.warn 패치 — Chrome 이 직접 출력하는 "Unchecked runtime.lastError"
+      메시지는 어떤 이벤트로도 잡히지 않으므로 console 자체를 wrapping
+*/
 (function () {
   var EXT_NOISE_PATTERNS = [
     /listener indicated an asynchronous response/i,
     /message channel closed before a response was received/i,
     /Extension context invalidated/i,
     /The message port closed before a response was received/i,
+    /Unchecked runtime\.lastError/i,
+    /chrome-extension:\/\//i,
+    /moz-extension:\/\//i,
   ];
+  function matchesNoise(text) {
+    if (!text) return false;
+    var str = String(text);
+    return EXT_NOISE_PATTERNS.some(function (re) { return re.test(str); });
+  }
   function isExtensionNoise(reason) {
     if (!reason) return false;
     var msg = '';
     if (typeof reason === 'string') msg = reason;
-    else if (reason.message) msg = String(reason.message);
+    else if (reason && reason.message) msg = String(reason.message);
     else { try { msg = String(reason); } catch (e) { msg = ''; } }
-    return EXT_NOISE_PATTERNS.some(function (re) { return re.test(msg); });
+    if (reason && reason.stack) msg += ' ' + String(reason.stack);
+    return matchesNoise(msg);
   }
   window.addEventListener('unhandledrejection', function (e) {
     if (isExtensionNoise(e.reason)) e.preventDefault();
   });
   window.addEventListener('error', function (e) {
-    if (isExtensionNoise(e.error || e.message)) {
+    if (isExtensionNoise(e.error || e.message) || matchesNoise(e.filename)) {
       e.preventDefault();
       e.stopImmediatePropagation();
     }
   }, true);
+  // console.error / console.warn 패치 — Chrome 내부 메시지("Unchecked runtime.lastError" 등) 차단
+  ['error', 'warn'].forEach(function (level) {
+    var orig = console[level];
+    if (!orig) return;
+    console[level] = function () {
+      try {
+        for (var i = 0; i < arguments.length; i++) {
+          if (matchesNoise(arguments[i])) return; // 확장 노이즈 → 출력 안 함
+        }
+      } catch (_) {}
+      return orig.apply(console, arguments);
+    };
+  });
 })();
 </script>
 <link rel="stylesheet" href="styles.css" />
@@ -51,6 +80,7 @@
 <script src="consistency-check.js"></script>
 <script src="stats.js"></script>
 <script src="gemini-adapter.js"></script>
+<script src="personas.js"></script>
 <script src="data.js"></script>
 <script src="quality-gate.js"></script>
 <script src="export-adapters.js"></script>

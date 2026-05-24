@@ -1236,11 +1236,22 @@ input, textarea, select { font-family: inherit; color: inherit; }
 /* Data table slide */
 .data-wrap { overflow: hidden; }
 .data-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-.data-table th { background: #1c222b; color: #e6edf3; padding: 10px 12px; font-weight: 600; font-size: 12px; text-align: left; border-bottom: 1px solid #2a313c; }
+.data-table th { background: #1c222b; color: #e6edf3; padding: 10px 12px; font-weight: 600; font-size: 12px; text-align: left; border-bottom: 1px solid #2a313c; white-space: nowrap; }
 .data-table th.num, .data-table td.num { text-align: right; font-family: 'JetBrains Mono', monospace; }
-.data-table td { padding: 9px 12px; border-bottom: 1px solid #e3e7eb; color: #424a55; }
+.data-table td { padding: 9px 12px; border-bottom: 1px solid #e3e7eb; color: #424a55; vertical-align: top; }
 .data-table tr:nth-child(even) td { background: #fafbfc; }
 .data-table td.tag { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent); }
+
+/* 컬럼 수에 따른 자동 폰트/패딩 축소 — 잘림 방지. splitter 가 8 컬럼 초과는 추가 분리. */
+.data-table.density-md { font-size: 11.5px; }
+.data-table.density-md th { padding: 8px 8px; font-size: 11px; }
+.data-table.density-md td { padding: 7px 8px; }
+.data-table.density-sm { font-size: 10.5px; }
+.data-table.density-sm th { padding: 6px 6px; font-size: 10px; }
+.data-table.density-sm td { padding: 5px 6px; }
+.data-table.density-xs { font-size: 9.5px; }
+.data-table.density-xs th { padding: 5px 5px; font-size: 9.5px; }
+.data-table.density-xs td { padding: 4px 5px; }
 
 /* Flow slide */
 .flow-wrap {
@@ -1873,7 +1884,9 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .flow-node-controls {
   position: absolute;
   left: 50%;
-  top: -32px;
+  /* 노드 위쪽에 띄우면 .flow-wrap { overflow: hidden } 으로 첫 노드의 컨트롤이 잘림 (CKPT-004 회귀).
+   * 노드 아래로 이동해 동일 패턴의 다른 컨트롤(.diagram-node-controls 등) 과 통일. */
+  bottom: -32px;
   transform: translateX(-50%);
   display: flex; gap: 3px;
   opacity: 0;
@@ -2450,6 +2463,8 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .api-contract-head {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  row-gap: 6px;
   gap: 10px;
   background: #1c222b;
   color: #e6edf3;
@@ -2458,6 +2473,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
   margin-bottom: 12px;
   font-family: 'JetBrains Mono', monospace;
 }
+.api-contract-head .api-endpoint { min-width: 200px; flex: 1 1 200px; }
 .api-method {
   background: var(--accent, #4cc2ff);
   color: #061018;
@@ -2688,6 +2704,8 @@ input, textarea, select { font-family: inherit; color: inherit; }
   padding: 3px 8px;
   border-radius: 3px;
   flex: 1;
+  min-width: 0;
+  word-break: break-all;
 }
 .te-kpi {
   font-size: 11px;
@@ -2961,7 +2979,8 @@ input, textarea, select { font-family: inherit; color: inherit; }
     #fcfdfe;
   border-radius: 10px;
   border: 1px solid #e3e7eb;
-  overflow: auto;
+  /* pan/zoom 이 transform 으로 확대/이동을 처리하므로 native scroll 비활성 */
+  overflow: hidden;
 }
 .seq-svg { display: block; }
 .seq-participant {
@@ -3117,8 +3136,8 @@ input, textarea, select { font-family: inherit; color: inherit; }
     #fcfdfe;
   border-radius: 10px;
   border: 1px solid #e3e7eb;
-  /* seq-canvas 와 일관성 유지 — 클래스 박스가 캔버스를 벗어나면 스크롤 가능 */
-  overflow: auto;
+  /* pan/zoom 으로 캔버스 밖으로 나가도 부모 layout 깨지지 않도록 hidden 으로 통일 */
+  overflow: hidden;
 }
 .cls-svg { position: absolute; inset: 0; pointer-events: none; }
 .cls-box {
@@ -4175,4 +4194,224 @@ input, textarea, select { font-family: inherit; color: inherit; }
 }
 .cb-input:focus { border-color: #88DFB0; }
 .cb-input::placeholder { color: var(--text-4); }
+
+/* ============================================================
+   Elegant TOC + Section Divider — 다크 톤 + 세리프 레이아웃
+   첨부 레퍼런스의 레이아웃·간격·로마숫자·세리프 폰트는 유지하되
+   배경은 베이지 대신 앱 다크 톤과 일관된 색상으로 통일.
+   ============================================================ */
+.slide.elegant-toc,
+.slide.elegant-divider {
+  --paper-bg: #0e1218;          /* 다크 (베이지 제거) */
+  --paper-bg-2: #161b22;
+  --ink-deep: #e6edf3;          /* 밝은 텍스트 */
+  --ink-mid: #b1bac4;
+  --ink-light: #7d8590;
+  --accent-red: #d29922;        /* 따뜻한 골드/앰버 — 우아함 유지하면서 다크에 어울림 */
+  --divider: rgba(230,237,243,0.15);
+  background: var(--paper-bg) !important;
+  color: var(--ink-deep);
+  font-family: 'Cormorant Garamond', 'Playfair Display', 'Noto Serif KR', 'Times New Roman', serif;
+}
+
+/* ---- TOC ---- */
+.slide.elegant-toc {
+  padding: 56px 80px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow: hidden;
+}
+.elegant-toc .toc-elegant-head {
+  display: flex; align-items: baseline; gap: 14px;
+}
+.elegant-toc .toc-num-mark {
+  font-family: 'Cormorant Garamond', 'Playfair Display', 'Times New Roman', serif;
+  font-size: 22px; font-style: italic; font-weight: 500;
+  color: var(--accent-red);
+}
+.elegant-toc .toc-label-en {
+  font-size: 11px; letter-spacing: 0.32em; color: var(--ink-mid);
+  text-transform: uppercase;
+}
+.elegant-toc .toc-h1-ko {
+  font-family: 'Noto Serif KR', 'Nanum Myeongjo', serif !important;
+  font-size: 64px !important; font-weight: 500 !important;
+  color: var(--ink-deep) !important;
+  margin: 0 0 12px 0 !important;
+  letter-spacing: -0.02em;
+  line-height: 1.0;
+}
+.elegant-toc .toc-elegant-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px 60px;
+  align-content: start;
+}
+.elegant-toc .toc-part-block {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  grid-template-rows: auto auto auto;
+  align-items: start;
+  gap: 0 18px;
+}
+.elegant-toc .toc-part-roman {
+  grid-row: 1 / 3;
+  font-family: 'Cormorant Garamond', 'Playfair Display', 'Times New Roman', serif;
+  font-size: 92px; font-weight: 400; color: var(--accent-red);
+  line-height: 0.9;
+  font-style: italic;
+  text-align: center;
+}
+.elegant-toc .toc-part-meta {
+  grid-column: 2;
+  display: flex; flex-direction: column; gap: 6px;
+  padding-top: 18px;
+}
+.elegant-toc .toc-part-sub {
+  font-size: 10.5px; letter-spacing: 0.32em;
+  color: var(--ink-mid);
+  text-transform: uppercase;
+  font-family: 'Cormorant Garamond', 'Times New Roman', serif;
+}
+.elegant-toc .toc-part-label {
+  font-family: 'Noto Serif KR', 'Nanum Myeongjo', serif;
+  font-size: 34px; font-weight: 500;
+  color: var(--ink-deep);
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+.elegant-toc .toc-part-divider {
+  grid-column: 1 / -1;
+  height: 1px; background: var(--divider);
+  margin: 10px 0 4px;
+}
+.elegant-toc .toc-part-entries {
+  grid-column: 1 / -1;
+  display: flex; flex-direction: column;
+}
+.elegant-toc .toc-part-entry {
+  display: flex; align-items: center; gap: 28px;
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(230,237,243,0.06);
+  font-family: 'Noto Serif KR', 'Nanum Myeongjo', serif;
+  font-size: 13.5px; color: var(--ink-deep);
+}
+.elegant-toc .toc-part-entry:last-child { border-bottom: none; }
+.elegant-toc .toc-part-entry .num {
+  color: var(--accent-red);
+  font-family: 'Cormorant Garamond', 'Playfair Display', 'Times New Roman', serif;
+  font-style: italic;
+  font-size: 14px;
+  min-width: 26px;
+}
+.elegant-toc .toc-part-entry .name { flex: 1; }
+
+/* ---- Section divider 간지 ---- */
+.slide.elegant-divider {
+  padding: 56px 88px;
+  display: flex; flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+.slide.elegant-divider .sd-bg-img {
+  position: absolute; inset: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: 0.16;
+  filter: saturate(0.7);
+  z-index: 0;
+}
+.slide.elegant-divider > *:not(.sd-bg-img) { position: relative; z-index: 1; }
+.elegant-divider .sd-elegant-head {
+  font-size: 11px; letter-spacing: 0.34em;
+  color: var(--ink-mid);
+  text-transform: uppercase;
+  font-family: 'Cormorant Garamond', 'Times New Roman', serif;
+}
+.elegant-divider .sd-elegant-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 60px;
+  align-items: center;
+  margin-top: 14px;
+}
+.elegant-divider .sd-roman-big {
+  font-family: 'Cormorant Garamond', 'Playfair Display', 'Times New Roman', serif;
+  font-size: 220px; font-weight: 400; font-style: italic;
+  color: var(--accent-red);
+  line-height: 0.9;
+  text-align: center;
+}
+.elegant-divider .sd-content {
+  display: flex; flex-direction: column; gap: 14px;
+  max-width: 720px;
+}
+.elegant-divider .sd-title-ko {
+  font-family: 'Noto Serif KR', 'Nanum Myeongjo', serif !important;
+  font-size: 88px !important; font-weight: 500 !important;
+  color: var(--ink-deep) !important;
+  letter-spacing: -0.02em;
+  line-height: 1.0;
+  margin: 0 !important;
+}
+.elegant-divider .sd-sub-en {
+  font-family: 'Cormorant Garamond', 'Playfair Display', 'Times New Roman', serif;
+  font-style: italic;
+  font-size: 30px;
+  color: var(--accent-red);
+  margin-top: -4px;
+}
+.elegant-divider .sd-subtitle {
+  font-family: 'Noto Serif KR', 'Nanum Myeongjo', serif;
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--ink-mid);
+  margin-top: 6px;
+  max-width: 640px;
+  white-space: pre-line;
+}
+.elegant-divider .sd-inpart-label {
+  font-size: 10.5px; letter-spacing: 0.34em;
+  color: var(--ink-light);
+  margin-top: 20px;
+  text-transform: uppercase;
+  border-top: 1px solid var(--divider);
+  padding-top: 14px;
+  font-family: 'Cormorant Garamond', 'Times New Roman', serif;
+}
+.elegant-divider .sd-inpart-list {
+  display: flex; flex-direction: column;
+}
+.elegant-divider .sd-inpart-row {
+  display: flex; align-items: baseline; gap: 22px;
+  padding: 9px 0;
+  font-family: 'Noto Serif KR', 'Nanum Myeongjo', serif;
+  font-size: 14px;
+  color: var(--ink-deep);
+  border-bottom: 1px solid rgba(230,237,243,0.05);
+}
+.elegant-divider .sd-inpart-row:last-child { border-bottom: none; }
+.elegant-divider .sd-inpart-row .num {
+  font-family: 'Cormorant Garamond', 'Playfair Display', 'Times New Roman', serif;
+  font-style: italic;
+  font-size: 15px;
+  color: var(--accent-red);
+  min-width: 30px;
+}
+.elegant-divider .sd-inpart-row .name { flex: 1; }
+.elegant-divider .sd-inpart-row .sub {
+  color: var(--ink-light);
+  font-size: 12px;
+}
+
+/* Editable focus 시 elegant 톤과 어울리는 인디케이터 */
+.elegant-toc [contenteditable=true]:focus,
+.elegant-divider [contenteditable=true]:focus {
+  outline: 1.5px solid var(--accent-red);
+  outline-offset: 2px;
+  background: rgba(210,153,34,0.08);
+}
 

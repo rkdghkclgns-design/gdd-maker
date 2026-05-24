@@ -57,14 +57,33 @@ function DocSection({ slide, index, patch }) {
   }
 
   if (slide.type === 'toc') {
+    const hasParts = Array.isArray(d.parts) && d.parts.length > 0;
     return (
       <div className="doc-section">
-        <h2><span className="idx">{String(index).padStart(2, '0')}</span>목차</h2>
-        <ul>
-          {(d.entries || []).map((e, i) => (
-            <li key={i}><strong>{e.num}. {e.name}</strong> <span style={{color:'#7d8590'}}>— {e.sub}</span></li>
-          ))}
-        </ul>
+        <h2><span className="idx">{String(index).padStart(2, '0')}</span>{d.titleKo || '목차'}</h2>
+        {hasParts ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '20px 40px' }}>
+            {d.parts.map((p, i) => (
+              <div key={i}>
+                <div style={{ fontSize: 12, color: 'var(--accent)', fontFamily: 'JetBrains Mono, monospace', letterSpacing: '0.2em', marginBottom: 4 }}>
+                  PART · {String(i + 1).padStart(2, '0')} · {p.sub || ''}
+                </div>
+                <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>{p.roman} · {p.label}</div>
+                <ul style={{ margin: 0, paddingLeft: 18 }}>
+                  {(p.entries || []).map((e, j) => (
+                    <li key={j}><strong>{e.num}</strong> {e.name}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <ul>
+            {(d.entries || []).map((e, i) => (
+              <li key={i}><strong>{e.num}. {e.name}</strong> <span style={{color:'#7d8590'}}>— {e.sub}</span></li>
+            ))}
+          </ul>
+        )}
       </div>
     );
   }
@@ -74,9 +93,9 @@ function DocSection({ slide, index, patch }) {
       <div className="doc-section" style={{ marginTop: 48 }}>
         <h2 style={{ fontSize: 22, borderTop: '3px solid var(--accent)', paddingTop: 16 }}>
           <span className="idx" style={{ fontSize: 18 }}>{d.num}</span>
-          {d.title}
+          {d.title}{d.sub ? <span style={{ fontSize: 14, color: 'var(--accent)', marginLeft: 10, fontStyle: 'italic' }}>— {d.sub}</span> : null}
         </h2>
-        <p style={{ color: '#7d8590' }}>{d.subtitle}</p>
+        <p style={{ color: '#7d8590', whiteSpace: 'pre-line' }}>{d.subtitle}</p>
       </div>
     );
   }
@@ -181,8 +200,23 @@ function DocSection({ slide, index, patch }) {
    Uses PptxGenJS loaded from CDN.
    We render slides as native shapes/text (editable in PowerPoint). */
 
+/** 사용자가 슬라이드에서 한 pan/zoom 상태가 출력물에 그대로 박히지 않도록 export 직전 normalize. */
+function sanitizeProjectForExport(project) {
+  if (!project) return project;
+  return {
+    ...project,
+    slides: (project.slides || []).map(s => {
+      if (!s?.data?._viewTransform) return s;
+      const { _viewTransform, ...restData } = s.data;
+      return { ...s, data: restData };
+    }),
+  };
+}
+
 async function exportPptx(project) {
   if (!window.PptxGenJS) throw new Error('PptxGenJS not loaded');
+  // pan/zoom 상태 제거 — 사용자가 줌-인 한 채로 두면 캡처 결과에 그대로 박힘
+  project = sanitizeProjectForExport(project);
   const pptx = new window.PptxGenJS();
   pptx.layout = 'LAYOUT_WIDE'; // 13.33 x 7.5 inches (16:9)
   pptx.title = project.title;
@@ -310,7 +344,11 @@ async function exportPptx(project) {
         rowH: 0.4,
       });
     } else if (s.type === 'toc') {
-      const entries = d.entries || [];
+      // parts 가 있으면 entries 가 빈 배열이어도 펼쳐서 사용
+      let entries = d.entries || [];
+      if ((!entries || entries.length === 0) && Array.isArray(d.parts)) {
+        entries = d.parts.flatMap(p => (p.entries || []).map(e => ({ ...e, sub: p.label || p.sub || '' })));
+      }
       const colW = (W - 2 * PAD_X - 0.5) / 2;
       entries.forEach((e, idx) => {
         const col = idx % 2;
@@ -477,7 +515,11 @@ async function exportPptx(project) {
       slide.addShape('roundRect', { x: PAD_X, y: 1.6, w: 6.5, h: 4.6, fill: { color: '0A0D12' }, line: { color: '0A0D12' }, rectRadius: 0.1 });
       slide.addText('UI MOCKUP', { x: PAD_X + 1, y: 3.5, w: 4.5, h: 0.4, fontSize: 14, fontFace: MONO, color: ACCENT, align: 'center', charSpacing: 1.6 });
       slide.addText('화면 시안 placeholder', { x: PAD_X + 1, y: 3.9, w: 4.5, h: 0.4, fontSize: 12, fontFace: FONT, color: 'B1BAC4', align: 'center' });
-      const callouts = d.callouts || [];
+      // 화면 표시와 동일하게 (y, x) 시각 읽기 순서로 정렬 — 배지·리스트 번호 일치
+      const callouts = [...(d.callouts || [])]
+        .map((c) => ({ c, x: typeof c.x === 'number' ? c.x : 50, y: typeof c.y === 'number' ? c.y : 50 }))
+        .sort((a, b) => Math.abs(a.y - b.y) > 8 ? a.y - b.y : a.x - b.x)
+        .map(s => s.c);
       const coX = PAD_X + 7.0;
       const coW = W - PAD_X - coX;
       callouts.forEach((c, idx) => {

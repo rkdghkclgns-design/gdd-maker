@@ -225,48 +225,187 @@ function HistorySlide({ data, patch, page, totalPages }) {
   );
 }
 
-/* ------ 3. TOC ------ */
+/* === 안전한 문자열 변환 — AI 응답이 텍스트 필드에 객체/배열을 넣어
+ *    [object Object] 가 화면에 나오는 사고 방지용. validator 가 먼저 손보지만
+ *    렌더 단계에서도 한 번 더 안전화한다. */
+function safeText(v) {
+  if (v == null) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  if (Array.isArray(v)) {
+    return v.map(x => {
+      if (x == null) return '';
+      if (typeof x === 'string') return x;
+      if (typeof x === 'object') return x.name || x.label || x.title || x.text || x.head || x.desc || '';
+      return String(x);
+    }).filter(Boolean).join(' · ');
+  }
+  if (typeof v === 'object') {
+    return v.name || v.label || v.title || v.text || v.head || v.desc || '';
+  }
+  return String(v);
+}
+
+/* === 정수 → 로마숫자 (1~20) === */
+function intToRoman(n) {
+  const m = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII','XIII','XIV','XV','XVI','XVII','XVIII','XIX','XX'];
+  if (n >= 1 && n <= 20) return m[n - 1];
+  return String(n);
+}
+/** num 필드가 "01","02"... 또는 "I","II"... 형태로 와도 정수로 정규화 */
+function partIndexOf(numLike) {
+  if (numLike == null) return 1;
+  const s = String(numLike).trim();
+  if (/^[IVXLCDM]+$/i.test(s)) {
+    const map = { I:1, II:2, III:3, IV:4, V:5, VI:6, VII:7, VIII:8, IX:9, X:10, XI:11, XII:12 };
+    return map[s.toUpperCase()] || 1;
+  }
+  const n = parseInt(s, 10);
+  return isFinite(n) ? n : 1;
+}
+
+/** toc.parts 가 명시되어 있으면 그 구조, 없으면 entries 를 4등분으로 자동 그룹화. */
+function derivePartsFromToc(data) {
+  const DEFAULT_META = [
+    { sub: 'OVERVIEW', label: '개요' },
+    { sub: 'DESIGN', label: '설계' },
+    { sub: 'EXECUTION', label: '실행' },
+    { sub: 'OPERATIONS', label: '운영' },
+  ];
+  if (Array.isArray(data.parts) && data.parts.length > 0) {
+    return data.parts.map((p, i) => ({
+      roman: p.roman || intToRoman(i + 1),
+      label: safeText(p.label || p.name || DEFAULT_META[i % 4].label),
+      sub: safeText(p.sub || p.subEn || DEFAULT_META[i % 4].sub),
+      entries: Array.isArray(p.entries) ? p.entries : [],
+    }));
+  }
+  const entries = Array.isArray(data.entries) ? data.entries : [];
+  if (entries.length === 0) return [];
+  const partCount = Math.min(4, Math.max(1, Math.ceil(entries.length / 3)));
+  const chunkSize = Math.ceil(entries.length / partCount);
+  const out = [];
+  for (let i = 0; i < partCount; i++) {
+    out.push({
+      roman: intToRoman(i + 1),
+      label: DEFAULT_META[i % 4].label,
+      sub: DEFAULT_META[i % 4].sub,
+      entries: entries.slice(i * chunkSize, (i + 1) * chunkSize),
+    });
+  }
+  return out;
+}
+
+/* ------ 3. TOC (Elegant) ------
+ * 첨부 레퍼런스 스타일: 베이지 배경 + 다크 레드 액센트 + 세리프.
+ * parts 배열을 우선 사용하고, 없으면 entries 를 4등분으로 자동 그룹.
+ */
 function TocSlide({ data, patch, page, totalPages }) {
-  const updateEntry = (i, key, val) => {
-    const entries = [...(data.entries || [])];
-    entries[i] = { ...entries[i], [key]: val };
-    patch({ entries });
+  const parts = derivePartsFromToc(data);
+  const updatePart = (pi, field, val) => {
+    const parts2 = parts.map(p => ({ ...p }));
+    parts2[pi] = { ...parts2[pi], [field]: val };
+    patch({ parts: parts2 });
+  };
+  const updatePartEntry = (pi, ei, field, val) => {
+    const parts2 = parts.map(p => ({ ...p, entries: [...(p.entries || [])] }));
+    parts2[pi].entries[ei] = { ...parts2[pi].entries[ei], [field]: val };
+    patch({ parts: parts2 });
   };
   return (
-    <div className="slide toc">
-      <div className="toc-label">— TABLE OF CONTENTS</div>
-      <Editable tag="div" className="toc-heading" value={data.title || 'CONTENTS'} onChange={(v) => patch({ title: v })} />
-      <div className="toc-grid">
-        {(data.entries || []).map((e, i) => (
-          <div className="toc-entry" key={i}>
-            <Editable className="num" value={e.num} onChange={(v) => updateEntry(i, 'num', v)} />
-            <div style={{ flex: 1 }}>
-              <Editable className="name" tag="div" value={e.name} onChange={(v) => updateEntry(i, 'name', v)} />
-              <Editable className="sub" tag="div" value={e.sub} onChange={(v) => updateEntry(i, 'sub', v)} multiline />
+    <div className="slide toc elegant-toc">
+      <div className="toc-elegant-head">
+        <span className="toc-num-mark">00</span>
+        <span className="toc-label-en">CONTENTS</span>
+      </div>
+      <Editable tag="h1" className="toc-h1-ko" value={data.titleKo || data.title || '목차'} onChange={(v) => patch({ titleKo: v })} />
+
+      <div className="toc-elegant-grid">
+        {parts.map((p, pi) => (
+          <div className="toc-part-block" key={pi}>
+            <div className="toc-part-roman">{p.roman}</div>
+            <div className="toc-part-meta">
+              <div className="toc-part-sub">
+                <span>PART · {String(pi + 1).padStart(2, '0')} · </span>
+                <Editable tag="span" value={safeText(p.sub)} onChange={(v) => updatePart(pi, 'sub', v)} />
+              </div>
+              <Editable tag="div" className="toc-part-label" value={safeText(p.label)} onChange={(v) => updatePart(pi, 'label', v)} />
+            </div>
+            <div className="toc-part-divider"></div>
+            <div className="toc-part-entries">
+              {p.entries.map((e, ei) => (
+                <div className="toc-part-entry" key={ei}>
+                  <Editable tag="span" className="num" value={safeText(e.num)} onChange={(v) => updatePartEntry(pi, ei, 'num', v)} />
+                  <Editable tag="span" className="name" value={safeText(e.name)} onChange={(v) => updatePartEntry(pi, ei, 'name', v)} />
+                </div>
+              ))}
             </div>
           </div>
         ))}
       </div>
-      <SlideFooter sectionName="목차" page={page} totalPages={totalPages} />
     </div>
   );
 }
 
-/* ------ 4. Section divider ------ */
-function SectionDividerSlide({ data, patch, page, totalPages }) {
+/* ------ 4. Section divider (Elegant 간지) ------
+ * 첨부 레퍼런스 스타일: 좌측 큰 로마숫자, 우측 한글 제목 + 영문 부제 + 설명 + "IN THIS PART" 목록.
+ * "IN THIS PART" 는 slides + slideIndex prop 으로 같은 part 의 후속 슬라이드를 자동 추출.
+ */
+function SectionDividerSlide({ data, patch, page, totalPages, slides, slideIndex }) {
+  const idx = partIndexOf(data.num);
+  const roman = intToRoman(idx);
+  const totalParts = React.useMemo(() => {
+    if (!Array.isArray(slides)) return 4;
+    const dividers = slides.filter(s => s.type === 'section-divider');
+    return Math.max(4, dividers.length);
+  }, [slides]);
+  const romanTotal = intToRoman(totalParts);
+
+  const inThisPart = React.useMemo(() => {
+    if (!Array.isArray(slides) || typeof slideIndex !== 'number') return [];
+    const out = [];
+    for (let i = slideIndex + 1; i < slides.length; i++) {
+      const s = slides[i];
+      if (!s) continue;
+      if (s.type === 'section-divider') break; // 다음 part 로
+      if (['cover', 'history', 'toc', 'section-divider'].includes(s.type)) continue;
+      const t = s.data || {};
+      const nm = safeText(t.title) || (window.SLIDE_LABELS && window.SLIDE_LABELS[s.type]) || s.type;
+      const sub = safeText(t.sectionName) || '';
+      out.push({ num: String(out.length + 1).padStart(2, '0'), name: nm, sub });
+      if (out.length >= 8) break;
+    }
+    return out;
+  }, [slides, slideIndex]);
+
   return (
-    <div className={'slide section-divider ' + (data.imageSrc ? 'has-bg' : '')}>
+    <div className={'slide section-divider elegant-divider ' + (data.imageSrc ? 'has-bg' : '')}>
       {data.imageSrc && (
         <div className="sd-bg-img" style={{ backgroundImage: `url(${data.imageSrc})` }}></div>
       )}
-      <div className="sd-shade"></div>
-      <div className="sd-num">{data.num}</div>
-      <div className="sd-tag">
-        <span className="bar"></span>
-        <span>CHAPTER {data.num}</span>
+      <div className="sd-elegant-head">PART · {String(idx).padStart(2, '0')} / {romanTotal}</div>
+      <div className="sd-elegant-body">
+        <div className="sd-roman-big">{roman}</div>
+        <div className="sd-content">
+          <Editable tag="h1" className="sd-title-ko" value={data.title} onChange={(v) => patch({ title: v })} />
+          <Editable tag="div" className="sd-sub-en" value={safeText(data.sub || data.subEn || '')} onChange={(v) => patch({ sub: v })} placeholder="DESIGN" />
+          <Editable tag="div" className="sd-subtitle" value={safeText(data.subtitle)} onChange={(v) => patch({ subtitle: v })} multiline />
+          {inThisPart.length > 0 && (
+            <>
+              <div className="sd-inpart-label">IN THIS PART</div>
+              <div className="sd-inpart-list">
+                {inThisPart.map((e, i) => (
+                  <div className="sd-inpart-row" key={i}>
+                    <span className="num">{e.num}</span>
+                    <span className="name">{e.name}</span>
+                    {e.sub && <span className="sub"> — {e.sub}</span>}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       </div>
-      <Editable tag="div" className="sd-title" value={data.title} onChange={(v) => patch({ title: v })} />
-      <Editable tag="div" className="sd-subtitle" value={data.subtitle} onChange={(v) => patch({ subtitle: v })} multiline />
     </div>
   );
 }
@@ -612,21 +751,28 @@ function RulesSlide({ data, patch, replace, page, totalPages }) {
 }
 
 /* ------ 8. Data table ------ */
+/* 컬럼 수가 많으면 자동으로 폰트 축소 + 가로 스크롤. splitter 가 8 컬럼 초과 시 추가 슬라이드로 분리한다. */
 function DataTableSlide({ data, patch, page, totalPages }) {
   const updateCell = (i, key, val) => {
     const rows = [...(data.rows || [])];
     rows[i] = { ...rows[i], [key]: val };
     patch({ rows });
   };
+  const cols = data.columns || [];
+  // 컬럼 수에 따라 폰트 사이즈 / 패딩 자동 축소 — 잘림 방지 (테이블 자체는 splitter 가 추가 분리)
+  let densityClass = '';
+  if (cols.length >= 12) densityClass = ' density-xs';
+  else if (cols.length >= 9) densityClass = ' density-sm';
+  else if (cols.length >= 7) densityClass = ' density-md';
   return (
     <div className="slide">
       <TopTag section={data.section} sectionName={data.sectionName} />
       <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
-      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-        <table className="data-table">
+      <div className="data-wrap" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+        <table className={'data-table' + densityClass}>
           <thead>
             <tr>
-              {(data.columns || []).map((c, i) => (
+              {cols.map((c, i) => (
                 <th key={i} style={c.width ? { width: c.width } : undefined}>{c.label}</th>
               ))}
             </tr>
@@ -634,9 +780,9 @@ function DataTableSlide({ data, patch, page, totalPages }) {
           <tbody>
             {(data.rows || []).map((r, i) => (
               <tr key={i}>
-                {(data.columns || []).map((c, ci) => (
-                  <td key={ci} className={c.key === 'field' || c.key === 'table' ? 'tag' : ''}>
-                    <Editable tag="div" value={r[c.key] || ''} onChange={(v) => updateCell(i, c.key, v)} multiline markdown />
+                {cols.map((c, ci) => (
+                  <td key={ci} className={c.key === 'field' || c.key === 'table' || c.key === 'id' ? 'tag' : ''}>
+                    <Editable tag="div" value={(r[c.key] == null ? '' : (typeof r[c.key] === 'object' ? JSON.stringify(r[c.key]) : String(r[c.key])))} onChange={(v) => updateCell(i, c.key, v)} multiline markdown />
                   </td>
                 ))}
               </tr>
@@ -1083,8 +1229,8 @@ function StateMachineSlide({ data, patch, page, totalPages }) {
                   {(s.invariants || []).map((inv, ii) => (
                     <li key={ii}><Editable tag="div" value={inv} onChange={(v) => updateInvariant(i, ii, v)} multiline markdown placeholder="`input_locked == true`" /></li>
                   ))}
-                  <button className="sc-add inline" onClick={() => addInvariant(i)}>+ 불변 조건</button>
                 </ul>
+                <button className="sc-add inline" onClick={() => addInvariant(i)}>+ 불변 조건</button>
               </div>
             </div>
           ))}
@@ -1246,8 +1392,8 @@ function AcceptanceCriteriaSlide({ data, patch, page, totalPages }) {
                 {(c.edgeCases || []).map((e, ei) => (
                   <li key={ei}><Editable tag="div" value={e} onChange={(v) => updateEdge(i, ei, v)} markdown multiline /></li>
                 ))}
-                <button className="sc-add inline" onClick={() => addEdge(i)}>+</button>
               </ul>
+              <button className="sc-add inline" onClick={() => addEdge(i)}>+ 엣지 케이스</button>
             </div>
           </div>
         ))}
@@ -1477,7 +1623,8 @@ function RoadmapSlide({ data, patch, page, totalPages }) {
             {phases.map((p, i) => {
               const start = toMonth(p.start), end = toMonth(p.end);
               const left = ((start - minM) / range) * 100;
-              const width = Math.max(4, ((end - start) / range) * 100);
+              // start > end 또는 잘못된 month 입력 시 음수/0 가능 → 0..100 으로 clamp
+              const width = Math.max(4, Math.min(100, ((end - start) / range) * 100));
               return (
                 <div className="rm-row" key={i}>
                   <div className="rm-row-label">{p.name}</div>
@@ -1505,8 +1652,8 @@ function RoadmapSlide({ data, patch, page, totalPages }) {
                 {(p.deliverables || []).map((d, di) => (
                   <li key={di}><Editable tag="div" value={d} onChange={(v) => updateDeliverable(i, di, v)} markdown multiline placeholder="산출물 (예: MVP 빌드, 알파 데모)" /></li>
                 ))}
-                <button className="sc-add inline" onClick={() => addDeliverable(i)}>+ 산출물</button>
               </ul>
+              <button className="sc-add inline" onClick={() => addDeliverable(i)}>+ 산출물</button>
             </div>
           ))}
           <button className="sc-add" onClick={addPhase} style={{ marginTop: 8 }}>+ Phase 추가</button>
@@ -1567,10 +1714,11 @@ const SLIDE_LABELS = {
   'roadmap': '로드맵',
 };
 
-function SlideRenderer({ slide, patch, replace, page, totalPages }) {
+function SlideRenderer({ slide, patch, replace, page, totalPages, slides, slideIndex }) {
   const R = SLIDE_RENDERERS[slide.type] || (() => <div className="slide"><div>Unknown type: {slide.type}</div></div>);
   const isPlaceholder = !!(slide.data && slide.data._placeholder);
-  const rendered = <R data={slide.data || {}} patch={patch} replace={replace} page={page} totalPages={totalPages} />;
+  // slides + slideIndex 는 section-divider 가 "IN THIS PART" 목록을 자동 추출하기 위해 필요.
+  const rendered = <R data={slide.data || {}} patch={patch} replace={replace} page={page} totalPages={totalPages} slides={slides} slideIndex={slideIndex} />;
   if (!isPlaceholder) return rendered;
   // placeholder 상태 — 자식 렌더는 유지하되 부모 div에 is-placeholder 클래스를 주입해
   // ::after 오버레이가 표시되도록 한다. React.cloneElement 로 className 합치기.

@@ -1,5 +1,5 @@
 /* === GDD 품질 게이트 ===
- * 생성된 GDD 를 7개 차원으로 채점 + 70점 미만이면 보강 체크리스트 노출.
+ * 생성된 GDD 를 7개 차원으로 채점 + 90점 미만이면 보강 체크리스트 노출.
  *
  * 차원 (가중치):
  *  - 완결성     (25): 필수 슬라이드 타입 누락 여부
@@ -9,9 +9,14 @@
  *  - 이미지 충실도 (10): cover/section-divider/ui-design/image-embed imageSrc 채움 비율
  *  - 위험 관리   (10): risk-register + 모든 위험에 mitigation
  *  - API/스키마 명시 (5): api-contract / data-table 비율
+ *
+ * 다운로드 합격 기준 = 90 점 (PASS_THRESHOLD).
+ * 90 점 미만이면 자동 보강 사이클 / 사용자 경고 / 다운로드 confirm 활성.
  */
 (function () {
   'use strict';
+
+  const PASS_THRESHOLD = 90;
 
   const REQUIRED_TYPES = [
     'cover', 'toc', 'intent', 'terms', 'rules',
@@ -178,17 +183,20 @@
       total,
       grade,
       dims,
-      canDownload: total >= 70,
+      canDownload: total >= PASS_THRESHOLD,
+      passThreshold: PASS_THRESHOLD,
       summary: dims.map(d => `${d.label} ${d.points}/${d.max}`).join(' · '),
     };
   }
 
-  /** 권장 보강 조치 — 점수가 낮은 차원 별 구체 조치 */
+  /** 권장 보강 조치 — 점수가 낮은 차원 별 구체 조치
+   * 합격 기준이 90 점이므로 각 차원도 90% 이상 채워야 한다 — 기준 0.9 미만이면 보강 권장.
+   */
   function suggestImprovements(project, score) {
     const out = [];
     for (const d of score.dims) {
       const pct = d.points / d.max;
-      if (pct >= 0.7) continue;
+      if (pct >= 0.9) continue;
       if (d.dim === 'completeness') {
         if (d.missing.required.length) out.push({ priority: 'HIGH', action: `필수 슬라이드 추가: ${d.missing.required.join(', ')}` });
         if (d.missing.engineer.length) out.push({ priority: 'MEDIUM', action: `엔지니어 슬라이드 추가: ${d.missing.engineer.join(', ')}` });
@@ -215,5 +223,23 @@
     return out;
   }
 
-  window.gddQualityGate = { scoreProject, suggestImprovements, REQUIRED_TYPES, ENGINEER_TYPES };
+  /** 점수가 낮은 차원만 우선순위(HIGH→LOW) + 점수 차(맥스 대비 부족분) 순으로 정렬해서 반환.
+   * 자동 보강 사이클에서 어떤 차원을 먼저 끌어올려야 90점에 도달하는지 결정할 때 사용.
+   */
+  function weakDimensions(score) {
+    if (!score || !Array.isArray(score.dims)) return [];
+    return score.dims
+      .map(d => ({ ...d, deficit: d.max - d.points, pct: d.points / d.max }))
+      .filter(d => d.pct < 0.9)
+      .sort((a, b) => b.deficit - a.deficit);
+  }
+
+  window.gddQualityGate = {
+    scoreProject,
+    suggestImprovements,
+    weakDimensions,
+    REQUIRED_TYPES,
+    ENGINEER_TYPES,
+    PASS_THRESHOLD,
+  };
 })();

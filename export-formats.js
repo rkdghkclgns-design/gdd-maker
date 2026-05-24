@@ -10,6 +10,19 @@
    * 슬라이드 frame을 html2canvas로 캡처 → 가로 A4 페이지에 한 장씩.
    * 호출 측은 슬라이드 요소(.slide-frame 같은) 배열을 넘겨도 되고, 본 함수가 임시 렌더를 통해 만들 수도 있음.
    */
+  /** export 직전 pan/zoom transform 제거 — 사용자가 줌-인 상태로 출력해 콘텐츠 일부만 캡처되는 사고 방지 */
+  function sanitizeProjectForExport(project) {
+    if (!project) return project;
+    return {
+      ...project,
+      slides: (project.slides || []).map(s => {
+        if (!s?.data?._viewTransform) return s;
+        const { _viewTransform, ...restData } = s.data;
+        return { ...s, data: restData };
+      }),
+    };
+  }
+
   async function exportPdf(project) {
     if (!window.jspdf) {
       throw new Error('jsPDF 미로드 — index.html에 jsPDF CDN을 포함해주세요.');
@@ -17,6 +30,7 @@
     if (!window.html2canvas) {
       throw new Error('html2canvas 미로드.');
     }
+    project = sanitizeProjectForExport(project);
     const { jsPDF } = window.jspdf;
 
     // 슬라이드 1280x720 비율을 A4 가로(297x210mm)에 맞춰 렌더
@@ -100,17 +114,27 @@
       return [header(2, d.title || '문서 이력'), '', head, ...rows, ''].join('\n');
     }
     if (T === 'toc') {
-      return [
-        header(2, d.title || 'CONTENTS'),
-        '',
-        ...(d.entries || []).map(e => `- **${e.num || ''} ${e.name || ''}** — ${e.sub || ''}`),
-        '',
-      ].join('\n');
+      const lines = [header(2, d.titleKo || d.title || 'CONTENTS'), ''];
+      if (Array.isArray(d.parts) && d.parts.length > 0) {
+        for (const p of d.parts) {
+          lines.push(`### ${p.roman || ''} · ${p.label || ''} _(${p.sub || ''})_`);
+          for (const e of (p.entries || [])) {
+            lines.push(`- **${e.num || ''}** ${e.name || ''}`);
+          }
+          lines.push('');
+        }
+      } else {
+        for (const e of (d.entries || [])) {
+          lines.push(`- **${e.num || ''} ${e.name || ''}** — ${e.sub || ''}`);
+        }
+        lines.push('');
+      }
+      return lines.join('\n');
     }
     if (T === 'section-divider') {
       return [
         '---',
-        header(2, `${d.num || ''}. ${d.title || ''}`),
+        header(2, `${d.num || ''}. ${d.title || ''}${d.sub ? ' — ' + d.sub : ''}`),
         d.subtitle ? `> ${d.subtitle}` : '',
         d.imageSrc ? `\n![${d.title || 'section'}](${d.imageSrc})\n` : '',
         '',
@@ -271,10 +295,15 @@
       ].join('\n');
     }
     if (T === 'ui-design') {
+      // 화면 표시와 동일하게 시각 읽기 순서로 정렬 (y, x)
+      const sortedCO = [...(d.callouts || [])]
+        .map(c => ({ c, x: typeof c.x === 'number' ? c.x : 50, y: typeof c.y === 'number' ? c.y : 50 }))
+        .sort((a, b) => Math.abs(a.y - b.y) > 8 ? a.y - b.y : a.x - b.x)
+        .map(s => s.c);
       return [
         header(3, `${sectionLabel ? '[' + sectionLabel + '] ' : ''}${d.title || 'UI/UX'}`),
         '',
-        ...((d.callouts || []).map((c, i) => `${i + 1}. **${c.name || ''}** — ${c.desc || ''}`)),
+        ...(sortedCO.map((c, i) => `${i + 1}. **${c.name || ''}** — ${c.desc || ''}`)),
         '',
       ].join('\n');
     }
@@ -422,6 +451,7 @@
   }
 
   function exportMarkdown(project) {
+    project = sanitizeProjectForExport(project);
     if (!project) throw new Error('내보낼 기획서가 없습니다.');
     const slides = project.slides || [];
     const md = [

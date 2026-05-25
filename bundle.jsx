@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-24T02:34:20.488Z
+   생성 시각: 2026-05-25T23:21:15.613Z
 */
 
 // ============================================================
@@ -2454,13 +2454,9 @@ function computeDiagramLayout(nodes, viewW, viewH, padX = 24, padY = 16) {
   return nodes.map(n => {
     const col = Math.min(cols - 1, Math.max(0, n.col ?? 0));
     const row = Math.min(rows - 1, Math.max(0, n.row ?? 0));
-    // 사용자가 드래그로 옮긴 노드는 _pos 가 있다 — 그러면 grid 위치 무시
-    const x = (n._pos && typeof n._pos.x === 'number') ? n._pos.x : padX + col * (w + 36);
-    const y = (n._pos && typeof n._pos.y === 'number') ? n._pos.y : padY + row * ySpace;
-    // 사용자가 리사이즈한 노드는 _size 가 있다
-    const nodeW = (n._size && typeof n._size.w === 'number') ? Math.max(80, n._size.w) : w;
-    const nodeH = (n._size && typeof n._size.h === 'number') ? Math.max(40, n._size.h) : h;
-    return { ...n, _x: x, _y: y, _w: nodeW, _h: nodeH };
+    const x = padX + col * (w + 36);
+    const y = padY + row * ySpace;
+    return { ...n, _x: x, _y: y, _w: w, _h: h };
   });
 }
 
@@ -2494,54 +2490,27 @@ function DiagramSlide({ data, patch, page, totalPages }) {
   /* Edge path: simple step-routing.
      If same column: vertical line.
      Otherwise: out from bottom of A → horizontal → into top of B (or side). */
-  /* === Edge 렌더 ===
-   * - 노드 가장자리(중앙 → 가장자리)에서 시작/도착해서 노드 위에 그어지지 않음
-   * - 라벨은 흰색 paint-order stroke 로 글자 외곽선을 둘러 가독성 확보
-   * - 가로형이면 라벨을 line 위 8px, 세로형이면 line 오른쪽 14px (textAnchor='start')
-   */
   const renderEdge = (e, i) => {
     const a = nodesById[e.from];
     const b = nodesById[e.to];
     if (!a || !b) return null;
-    const aCx = a._x + a._w / 2;
-    const aCy = a._y + a._h / 2;
-    const bCx = b._x + b._w / 2;
-    const bCy = b._y + b._h / 2;
-    // 같은 컬럼이면 세로, 아니면 가로
-    const isVertical = Math.abs(aCx - bCx) < 4;
-    const ax = aCx, ay = (bCy > aCy ? a._y + a._h : a._y);
-    const bx = bCx, by = (bCy > aCy ? b._y - 6 : b._y + b._h + 6);
+    const ax = a._x + a._w / 2, ay = a._y + a._h;
+    const bx = b._x + b._w / 2, by = b._y;
     let d;
     let labelX, labelY;
-    let labelAnchor = 'middle';
-    if (isVertical) {
-      d = `M ${ax} ${ay} L ${bx} ${by}`;
-      labelX = ax + 14;
-      labelY = (ay + by) / 2;
-      labelAnchor = 'start';
+    if (Math.abs(ax - bx) < 4) {
+      d = `M ${ax} ${ay} L ${bx} ${by - 6}`;
+      labelX = ax + 8; labelY = (ay + by) / 2;
     } else {
       const midY = (ay + by) / 2;
-      d = `M ${ax} ${ay} L ${ax} ${midY} L ${bx} ${midY} L ${bx} ${by}`;
-      labelX = (ax + bx) / 2;
-      labelY = midY - 8;
-      labelAnchor = 'middle';
+      d = `M ${ax} ${ay} L ${ax} ${midY} L ${bx} ${midY} L ${bx} ${by - 6}`;
+      labelX = (ax + bx) / 2; labelY = midY - 6;
     }
     const cls = 'diagram-edge ' + (e.kind === 'dashed' ? 'dashed' : e.kind === 'thin' ? 'thin' : '');
     return (
       <g key={i}>
-        <path d={d} className={cls} markerEnd="url(#arrow)" fill="none" />
-        {e.label && (
-          <text
-            x={labelX}
-            y={labelY}
-            className="diagram-edge-label"
-            textAnchor={labelAnchor}
-            dominantBaseline="middle"
-            style={{ paintOrder: 'stroke', stroke: '#f7f8fa', strokeWidth: 3.5, strokeLinejoin: 'round' }}
-          >
-            {e.label}
-          </text>
-        )}
+        <path d={d} className={cls} markerEnd="url(#arrow)" />
+        {e.label && <text x={labelX} y={labelY} className="diagram-edge-label" textAnchor="middle">{e.label}</text>}
       </g>
     );
   };
@@ -2549,11 +2518,6 @@ function DiagramSlide({ data, patch, page, totalPages }) {
   const updateNode = (idx, field, value) => {
     const nodes = [...(data.nodes || [])];
     nodes[idx] = { ...nodes[idx], [field]: value };
-    patch({ nodes });
-  };
-  const updateNodeMulti = (idx, fields) => {
-    const nodes = [...(data.nodes || [])];
-    nodes[idx] = { ...nodes[idx], ...fields };
     patch({ nodes });
   };
   const deleteNode = (id) => {
@@ -2571,84 +2535,6 @@ function DiagramSlide({ data, patch, page, totalPages }) {
     const maxRow = Math.max(0, ...(data.nodes || []).map(n => n.row ?? 0)) + 1;
     const newNode = { id: 'n' + uid().slice(0, 4), label: '새 노드', kind: 'process', col: 1, row: maxRow };
     patch({ nodes: [...(data.nodes || []), newNode] });
-  };
-
-  /* === 노드 드래그 — 사용자가 자유롭게 위치 이동 ===
-   * pz.transform.scale 을 반영해서 stage 좌표계에서 정확히 움직이도록.
-   * 드래그 중에는 로컬 상태로 즉시 반영, 끝날 때 patch.
-   */
-  const draggingRef = React.useRef(null);
-  const [, forceTick] = React.useState(0);
-  const onNodeMouseDown = (idx, n) => (e) => {
-    if (e.button !== 0) return;
-    // Editable / button 위에서는 드래그 금지
-    if (e.target.closest('button, [contenteditable=true], input, textarea, .resize-handle')) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const scale = pz.transform?.scale || 1;
-    const startX = e.clientX, startY = e.clientY;
-    const start = { x: n._x, y: n._y };
-    draggingRef.current = { idx, start, sx: startX, sy: startY, moved: false, lastPos: { ...start } };
-    const onMove = (ev) => {
-      const dx = (ev.clientX - startX) / scale;
-      const dy = (ev.clientY - startY) / scale;
-      const nx = start.x + dx;
-      const ny = start.y + dy;
-      draggingRef.current.lastPos = { x: nx, y: ny };
-      draggingRef.current.moved = Math.abs(dx) + Math.abs(dy) > 3;
-      // 드래그 중 즉시 시각 피드백
-      const nodes = [...(data.nodes || [])];
-      if (nodes[idx]) {
-        nodes[idx] = { ...nodes[idx], _pos: { x: nx, y: ny } };
-        patch({ nodes });
-      }
-    };
-    const onUp = () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      draggingRef.current = null;
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  };
-
-  /* === 노드 리사이즈 — 우하단 핸들 ===
-   * scale 보정 + 최소 (80 × 40) 보장.
-   */
-  const onResizeMouseDown = (idx, n) => (e) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const scale = pz.transform?.scale || 1;
-    const startX = e.clientX, startY = e.clientY;
-    const startW = n._w, startH = n._h;
-    const onMove = (ev) => {
-      const dx = (ev.clientX - startX) / scale;
-      const dy = (ev.clientY - startY) / scale;
-      const nw = Math.max(80, startW + dx);
-      const nh = Math.max(40, startH + dy);
-      const nodes = [...(data.nodes || [])];
-      if (nodes[idx]) {
-        nodes[idx] = { ...nodes[idx], _size: { w: nw, h: nh } };
-        patch({ nodes });
-      }
-    };
-    const onUp = () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  };
-
-  const resetNodePos = (idx) => {
-    const nodes = [...(data.nodes || [])];
-    if (!nodes[idx]) return;
-    const next = { ...nodes[idx] };
-    delete next._pos;
-    delete next._size;
-    nodes[idx] = next;
-    patch({ nodes });
   };
 
   const runAi = async (prompt) => {
@@ -2684,10 +2570,8 @@ function DiagramSlide({ data, patch, page, totalPages }) {
           {laidOut.map((n, idx) => (
             <div
               key={n.id}
-              className={'diagram-node ' + (n.kind || 'process') + ((n._pos || n._size) ? ' free-pos' : '')}
-              style={{ left: n._x, top: n._y, width: n._w, height: n._h, cursor: 'move' }}
-              onMouseDown={onNodeMouseDown(idx, n)}
-              title="드래그하여 위치 이동, 우하단 모서리 드래그로 크기 조절"
+              className={'diagram-node ' + (n.kind || 'process')}
+              style={{ left: n._x, top: n._y, width: n._w, height: n._h }}
             >
               <div style={{ width: '100%' }}>
                 <Editable
@@ -2706,28 +2590,13 @@ function DiagramSlide({ data, patch, page, totalPages }) {
                 )}
               </div>
               <div className="diagram-node-controls">
-                <button title="유형 변경" onClick={(e) => { e.stopPropagation(); cycleKind(idx); }}>⇄</button>
-                <button title="왼쪽" disabled={(n.col ?? 0) <= 0} onClick={(e) => { e.stopPropagation(); updateNode(idx, 'col', Math.max(0, (n.col ?? 0) - 1)); }}>◀</button>
-                <button title="오른쪽" disabled={(n.col ?? 0) >= 3} onClick={(e) => { e.stopPropagation(); updateNode(idx, 'col', Math.min(3, (n.col ?? 0) + 1)); }}>▶</button>
-                <button title="위로" disabled={(n.row ?? 0) <= 0} onClick={(e) => { e.stopPropagation(); updateNode(idx, 'row', Math.max(0, (n.row ?? 0) - 1)); }}>▲</button>
-                <button title="아래로" onClick={(e) => { e.stopPropagation(); updateNode(idx, 'row', (n.row ?? 0) + 1); }}>▼</button>
-                {(n._pos || n._size) && (
-                  <button title="자동 배치로 복귀" onClick={(e) => { e.stopPropagation(); resetNodePos(idx); }}>⟲</button>
-                )}
-                <button title="삭제" className="del" onClick={(e) => { e.stopPropagation(); deleteNode(n.id); }}>✕</button>
+                <button title="유형 변경" onClick={() => cycleKind(idx)}>⇄</button>
+                <button title="왼쪽" disabled={(n.col ?? 0) <= 0} onClick={() => updateNode(idx, 'col', Math.max(0, (n.col ?? 0) - 1))}>◀</button>
+                <button title="오른쪽" disabled={(n.col ?? 0) >= 3} onClick={() => updateNode(idx, 'col', Math.min(3, (n.col ?? 0) + 1))}>▶</button>
+                <button title="위로" disabled={(n.row ?? 0) <= 0} onClick={() => updateNode(idx, 'row', Math.max(0, (n.row ?? 0) - 1))}>▲</button>
+                <button title="아래로" onClick={() => updateNode(idx, 'row', (n.row ?? 0) + 1)}>▼</button>
+                <button title="삭제" className="del" onClick={() => deleteNode(n.id)}>✕</button>
               </div>
-              {/* 우하단 리사이즈 핸들 */}
-              <div
-                className="resize-handle"
-                onMouseDown={onResizeMouseDown(idx, n)}
-                title="드래그하여 크기 조절"
-                style={{
-                  position: 'absolute', right: 0, bottom: 0, width: 12, height: 12,
-                  cursor: 'nwse-resize', background: 'rgba(255,255,255,0.15)',
-                  borderTop: '1px solid rgba(255,255,255,0.25)',
-                  borderLeft: '1px solid rgba(255,255,255,0.25)',
-                }}
-              ></div>
             </div>
           ))}
         </div>
@@ -3703,8 +3572,8 @@ function fileToDataUrl(file) {
   });
 }
 
-/* Brief Composer modal — 기본 생성 모드는 'deep' (품질점수 90+ 합격 목표) */
-function BriefComposer({ onClose, onSubmit, isGenerating, initialMode = 'deep', mode = 'gdd', prefill }) {
+/* Brief Composer modal */
+function BriefComposer({ onClose, onSubmit, isGenerating, initialMode = 'ai', mode = 'gdd', prefill }) {
   const [title, setTitle] = React.useState(prefill?.title || '');
   const [brief, setBrief] = React.useState(prefill?.brief || '');
   const [attachments, setAttachments] = React.useState([]);
@@ -3854,18 +3723,8 @@ function BriefComposer({ onClose, onSubmit, isGenerating, initialMode = 'deep', 
 
         <footer>
           <div className="mode-tabs">
-            <button
-              className={submissionMode === 'ai' ? 'active' : ''}
-              onClick={() => setSubmissionMode('ai')}
-              title="단일 호출 — 빠르고 저렴 (~$0.05). 90점 미달 시 자동 보강."
-            >표준 생성</button>
-            <button
-              className={submissionMode === 'deep' ? 'active' : ''}
-              onClick={() => setSubmissionMode('deep')}
-              title="Outline → Flesh-out → 자체 비평 → 자동 품질 보강 (4단계). 슬라이드당 3~5배 깊이, 품질점수 90+ 합격 목표. 비용 ~$0.15."
-              style={submissionMode === 'deep' ? { borderColor: '#88dfb0', color: '#88dfb0' } : null}
-            >심층 생성</button>
-            <button className={submissionMode === 'demo' ? 'active' : ''} onClick={() => setSubmissionMode('demo')} title="AI 호출 없이 템플릿 채움 (무료, 즉시)">빠른 생성</button>
+            <button className={submissionMode === 'ai' ? 'active' : ''} onClick={() => setSubmissionMode('ai')}>AI 생성</button>
+            <button className={submissionMode === 'demo' ? 'active' : ''} onClick={() => setSubmissionMode('demo')}>빠른 데모</button>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn ghost" onClick={onClose}>취소</button>
@@ -4705,11 +4564,8 @@ Object.assign(window, {
   aiPartialRegen,
 });
 
-/* ===== ConceptBrief modal (1PGDD-style initial form) =====
- * 컨셉 생성은 단일 호출만 동작 — generationMode 가 'deep' 으로 들어와도 'ai' 로 폴백.
- */
+/* ===== ConceptBrief modal (1PGDD-style initial form) ===== */
 function ConceptBrief({ onClose, onSubmit, isGenerating, initialMode = 'ai' }) {
-  const normalizedInitialMode = initialMode === 'deep' ? 'ai' : initialMode;
   const [idea, setIdea] = React.useState('');
   const [team, setTeam] = React.useState('');
   const [author, setAuthor] = React.useState('');
@@ -4720,7 +4576,7 @@ function ConceptBrief({ onClose, onSubmit, isGenerating, initialMode = 'ai' }) {
   const [colorSub, setColorSub] = React.useState('#CCFFDA');
   const [colorAccent, setColorAccent] = React.useState('#F5D94F');
   const [attachments, setAttachments] = React.useState([]);
-  const [submissionMode, setSubmissionMode] = React.useState(normalizedInitialMode);
+  const [submissionMode, setSubmissionMode] = React.useState(initialMode);
   const [dragging, setDragging] = React.useState(false);
   const dragCounterRef = React.useRef(0);
 
@@ -4887,8 +4743,8 @@ function ConceptBrief({ onClose, onSubmit, isGenerating, initialMode = 'ai' }) {
 
         <footer>
           <div className="mode-tabs">
-            <button className={submissionMode === 'ai' ? 'active' : ''} onClick={() => setSubmissionMode('ai')} title="단일 호출로 컨셉 생성">표준 생성</button>
-            <button className={submissionMode === 'demo' ? 'active' : ''} onClick={() => setSubmissionMode('demo')} title="AI 호출 없이 템플릿 채움 (무료, 즉시)">빠른 생성</button>
+            <button className={submissionMode === 'ai' ? 'active' : ''} onClick={() => setSubmissionMode('ai')}>AI 생성</button>
+            <button className={submissionMode === 'demo' ? 'active' : ''} onClick={() => setSubmissionMode('demo')}>빠른 데모</button>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn ghost" onClick={onClose}>취소</button>
@@ -5109,25 +4965,25 @@ function ChatTab({ project, isConcept, onSendCommand, isGenerating, generationMo
             className={'chip ' + (generationMode === 'ai' ? 'active' : '')}
             style={generationMode === 'ai' ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : null}
             onClick={() => setGenerationMode('ai')}
-            title="단일 호출 — 빠르고 저렴 (~$0.05). 90점 미달 시 자동 보강."
+            title="단일 호출 — 빠르고 저렴 (~$0.05)"
           >
-            표준 생성
+            <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)' }}>AI</span> 표준 생성
           </button>
           <button
             className={'chip ' + (generationMode === 'deep' ? 'active' : '')}
             style={generationMode === 'deep' ? { borderColor: '#88dfb0', color: '#88dfb0' } : null}
             onClick={() => setGenerationMode('deep')}
-            title="Outline → Flesh-out → 자체 비평 → 자동 품질 보강 (4단계). 슬라이드당 3~5배 깊이, 품질점수 90+ 합격 목표. 비용 ~$0.15."
+            title="Outline → Flesh-out → Self-critique 3단계. 슬라이드당 3~5배 깊이. 비용 ~$0.15."
           >
-            심층 생성
+            <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)' }}>DEEP</span> 심층 생성
           </button>
           <button
             className={'chip ' + (generationMode === 'demo' ? 'active' : '')}
             style={generationMode === 'demo' ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : null}
             onClick={() => setGenerationMode('demo')}
-            title="AI 호출 없이 템플릿 채움 (무료, 즉시)"
+            title="AI 호출 없이 템플릿 채움 (무료)"
           >
-            빠른 생성
+            <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)' }}>FAST</span> 데모
           </button>
         </div>
         <div className="wrap">
@@ -6576,12 +6432,11 @@ const useToast = () => React.useContext(ToastCtx);
 
 /* === Top bar === */
 function TopBar({ project, view, setView, onDownload, isDownloading, onRename, tweaks, isConcept, onOpenSettings, hasApiKey, onExport, onImport, onOpenCmdK, onSaveSnapshot, onOpenSnapshots, onOpenQualityGate, usageTick }) {
-  // 품질 점수 — 슬라이드가 있을 때만 계산. 합격 기준 = 90 점.
+  // 품질 점수 — 슬라이드가 있을 때만 계산
   const qScore = (!isConcept && project && window.gddQualityGate)
     ? window.gddQualityGate.scoreProject(project)
     : null;
-  const qPass = qScore?.passThreshold ?? 90;
-  const qColor = qScore ? (qScore.total >= qPass ? '#3fb950' : qScore.total >= 70 ? '#d29922' : '#f85149') : null;
+  const qColor = qScore ? (qScore.total >= 80 ? '#3fb950' : qScore.total >= 60 ? '#d29922' : '#f85149') : null;
   // 비용 배지 — 오늘 사용 + 누계
   const stats = window.gddUsage ? window.gddUsage.getStats() : null;
   const fmt = window.gddUsage ? window.gddUsage.formatUSD : (n) => '$' + (n || 0).toFixed(2);
@@ -6700,7 +6555,7 @@ function TopBar({ project, view, setView, onDownload, isDownloading, onRename, t
           <button
             className="btn primary"
             onClick={() => {
-              if (qScore && qScore.total < qPass && !confirm(`품질 점수 ${qScore.total}/100 (${qScore.grade}) — 합격 기준 ${qPass}점 미달. 보강 권장 항목이 있습니다. 그래도 다운로드할까요?`)) return;
+              if (qScore && qScore.total < 70 && !confirm(`품질 점수 ${qScore.total}/100 (${qScore.grade}). 보강 권장 항목이 있습니다. 그래도 다운로드할까요?`)) return;
               onDownload();
             }}
             disabled={isDownloading || !project}
@@ -6761,8 +6616,7 @@ function QualityGateModal({ project, onClose, onJump }) {
     return window.gddQualityGate.suggestImprovements(project, score);
   }, [project, score]);
   if (!score) return null;
-  const pass = score.passThreshold ?? 90;
-  const gradeColor = score.total >= pass ? '#3fb950' : score.total >= 70 ? '#d29922' : '#f85149';
+  const gradeColor = score.total >= 80 ? '#3fb950' : score.total >= 60 ? '#d29922' : '#f85149';
   return (
     <div className="form-panel-overlay" onClick={onClose}>
       <div className="form-panel" onClick={e => e.stopPropagation()} style={{ maxWidth: 720 }}>
@@ -6779,16 +6633,16 @@ function QualityGateModal({ project, onClose, onJump }) {
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>
-                {score.canDownload ? `✓ 개발 가능 수준 (${pass}+)` : `⚠ 보강이 필요한 상태 (${pass}점 미만 — 합격 기준 ${pass}점)`}
+                {score.canDownload ? '✓ 개발 가능 수준 (70+)' : '⚠ 보강이 필요한 상태 (70점 미만)'}
               </div>
               <div style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'JetBrains Mono, monospace' }}>{score.summary}</div>
             </div>
           </div>
-          {/* 차원별 점수 — 합격 기준 90점에 맞춰 차원별 임계값도 0.9 / 0.6 으로 조정 */}
+          {/* 차원별 점수 */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
             {score.dims.map((d, i) => {
               const pct = d.points / d.max;
-              const c = pct >= 0.9 ? '#3fb950' : pct >= 0.6 ? '#d29922' : '#f85149';
+              const c = pct >= 0.7 ? '#3fb950' : pct >= 0.4 ? '#d29922' : '#f85149';
               return (
                 <div key={i} style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 12px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
@@ -7517,8 +7371,6 @@ function SlideStage({ project, patchSlide, replaceSlide, scale, setScale, curren
             replace={(newSlide) => replaceSlide && replaceSlide(slide.id, newSlide)}
             page={currentIdx + 1}
             totalPages={slides.length}
-            slides={slides}
-            slideIndex={currentIdx}
           />
           {shouldSplit && onSplitSlide && (
             <div className="slide-overflow-banner">
@@ -7594,7 +7446,7 @@ function Thumbs({ slides, currentIdx, setCurrentIdx, onAddSlide, onDeleteSlide, 
               )}
             </div>
             <div className="thumb-canvas">
-              <ThumbScaler slide={s} index={i} total={slides.length} allSlides={slides} />
+              <ThumbScaler slide={s} index={i} total={slides.length} />
             </div>
           </div>
         );
@@ -7605,7 +7457,7 @@ function Thumbs({ slides, currentIdx, setCurrentIdx, onAddSlide, onDeleteSlide, 
 }
 
 /* 썸네일은 16:9 컨테이너 폭에 맞춰 1280px 슬라이드를 자동 비율로 축소 */
-function ThumbScaler({ slide, index, total, allSlides }) {
+function ThumbScaler({ slide, index, total }) {
   const ref = useRef(null);
   const [scale, setScale] = useState(124 / 1280);
   useEffect(() => {
@@ -7623,7 +7475,7 @@ function ThumbScaler({ slide, index, total, allSlides }) {
   return (
     <div ref={ref} className="thumb-scaler-host">
       <div className="scaler" style={{ transform: `scale(${scale})` }}>
-        <SlideRenderer slide={slide} patch={() => {}} page={index + 1} totalPages={total} slides={allSlides} slideIndex={index} />
+        <SlideRenderer slide={slide} patch={() => {}} page={index + 1} totalPages={total} />
       </div>
     </div>
   );
@@ -7776,9 +7628,7 @@ function App({ onStateChange }) {
   const [scale, setScale] = useState(0.6);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
-  // 기본 생성 모드 = 'deep' (Outline → Flesh-out → Self-critique → 자동 품질 보강 ≥90점 목표).
-  // BriefComposer / ChatTab 양쪽에서 같은 state 를 공유한다.
-  const [generationMode, setGenerationMode] = useState('deep');
+  const [generationMode, setGenerationMode] = useState('ai');
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [showBrief, setShowBrief] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -8296,12 +8146,10 @@ function App({ onStateChange }) {
           setCurrentIdx(0);
         } else {
           // streaming 모드 — 이미 등록된 project 의 history/attachments 만 추가
-          // 자동 분할(Stage 7) 결과로 슬라이드 수가 늘었을 수 있으므로 result.slides 로 일괄 동기화.
           setState(s => ({
             ...s,
             projects: s.projects.map(p => p.id === result.id ? {
               ...p,
-              slides: result.slides,
               history: [historyEntry],
               attachments: attachments?.length ? attachments : (p.attachments || []),
             } : p),
@@ -9497,161 +9345,9 @@ async function aiGenerateGddTwoStage(command, existingTitles, attachments, conte
     } catch (e) { /* swallow */ }
   }
 
-  /* ---- Stage 6: 자동 품질 보강 사이클 — 점수 90 미달 시 약한 차원의 슬라이드만 정조준 재생성 ---- */
-  if (opts.autoBoost !== false) {
-    await applyQualityBoostCycle(placeholderSlides, projectMeta, {
-      onProgress,
-      onChunk,
-      parsedRoot: outline,
-      maxRounds: typeof opts.maxBoostRounds === 'number' ? opts.maxBoostRounds : 2,
-      progressMeta: { done: doneCount, total: totalSlides },
-      slidesById,
-    });
-  }
-
-  /* ---- Stage 7: 슬라이드 영역 초과 자동 분할 — splitter 가 너무 큰 슬라이드를 N장으로 나눔 ---- */
-  if (opts.autoSplit !== false && window.gddSlideSplitter) {
-    const splat = window.gddSlideSplitter.splitAllOverflowing(placeholderSlides);
-    if (splat.length !== placeholderSlides.length) {
-      onProgress({ stage: 'split', message: `오버플로 슬라이드 자동 분할: ${placeholderSlides.length} → ${splat.length}장` });
-      placeholderSlides.length = 0;
-      placeholderSlides.push(...splat);
-      if (onChunk) onChunk({ kind: 'replace-all', slides: [...placeholderSlides] });
-    }
-  }
-
   if (onChunk) onChunk({ kind: 'done', project: { ...projectMeta, slides: placeholderSlides } });
 
   return { ...projectMeta, slides: placeholderSlides };
-}
-
-/* === 자동 품질 보강 헬퍼 ===
- * 점수 < passThreshold (기본 90) 인 경우 약한 차원에 해당하는 슬라이드들만 핀포인트 재생성.
- * slides 배열을 in-place 로 갱신 (CKPT-014 함수형 updater 환경에서도 호출 위치에서 setProject 로 전달해 사용).
- * 라운드 사이에 점수를 다시 매겨 합격 시 조기 종료.
- */
-async function applyQualityBoostCycle(slides, projectMeta, opts) {
-  opts = opts || {};
-  const maxRounds = typeof opts.maxRounds === 'number' ? opts.maxRounds : 2;
-  const onProgress = opts.onProgress || (() => {});
-  const onChunk = typeof opts.onChunk === 'function' ? opts.onChunk : null;
-  const parsedRoot = opts.parsedRoot || {};
-  const progressMeta = opts.progressMeta || {};
-  const slidesById = opts.slidesById || null;
-
-  if (!window.gddQualityGate || !window.buildQualityBoostPrompt || !window.gemini) return slides;
-  if (!Array.isArray(slides) || slides.length === 0) return slides;
-
-  for (let round = 0; round < maxRounds; round++) {
-    const preview = { ...(projectMeta || {}), slides };
-    const score = window.gddQualityGate.scoreProject(preview);
-    const pass = score.passThreshold || 90;
-    if (score.total >= pass) {
-      onProgress({ stage: 'boost', message: `품질 점수 ${score.total}/100 — 합격 (${pass}+)` });
-      break;
-    }
-    const weakDims = window.gddQualityGate.weakDimensions(score);
-    const targets = findWeakSlidesForBoost(slides, weakDims).slice(0, 8);
-    if (targets.length === 0) {
-      onProgress({ stage: 'boost', message: `품질 점수 ${score.total}/100 — 보강 가능한 슬라이드 없음` });
-      break;
-    }
-    onProgress({ stage: 'boost', message: `품질 점수 ${score.total}/100 → 라운드 ${round + 1}: ${targets.length}장 보강 중…` });
-
-    for (const target of targets) {
-      try {
-        const boostPrompt = window.buildQualityBoostPrompt(preview, target, weakDims);
-        const boostRaw = await window.gemini.complete(boostPrompt);
-        const boosted = window.parseAiJson(boostRaw);
-        if (!boosted || !boosted.data) continue;
-        const merged = { id: target.id, type: boosted.type || target.type, data: { ...boosted.data, _placeholder: false } };
-        const validated = window.validateSlide ? window.validateSlide(merged) : { slide: merged };
-        const idx = slides.findIndex(s => s.id === target.id);
-        if (idx >= 0) {
-          slides[idx] = validated.slide;
-          if (slidesById) slidesById.set(target.id, validated.slide);
-          if (onChunk) onChunk({ kind: 'batch', updates: [validated.slide], progress: { ...progressMeta, boost: true } });
-        }
-      } catch (eBoost) { /* swallow per-slide */ }
-    }
-
-    /* 보강 후 imagePrompt 가 새로 채워진 이미지 슬라이드는 즉시 이미지 재생성 */
-    const newImageJobs = [];
-    for (const t of targets) {
-      const idx = slides.findIndex(s => s.id === t.id);
-      if (idx < 0) continue;
-      const s = slides[idx];
-      if (!['cover', 'ui-design', 'section-divider', 'image-embed'].includes(s.type)) continue;
-      if (s.data?.imageSrc) continue;
-      const p = s.data?.imagePrompt || synthesizeImagePrompt(s, parsedRoot);
-      if (!p) continue;
-      newImageJobs.push({ id: s.id, prompt: p, syntheticPrompt: !s.data?.imagePrompt });
-    }
-    if (newImageJobs.length > 0) {
-      onProgress({ stage: 'boost', message: `보강된 ${newImageJobs.length}장 이미지 재생성 중…` });
-      await Promise.all(newImageJobs.map(async (t) => {
-        try {
-          const src = await window.gemini.generateImage(t.prompt);
-          const idx = slides.findIndex(s => s.id === t.id);
-          if (idx >= 0) {
-            const cur = slides[idx];
-            const next = { ...cur, data: { ...cur.data, imageSrc: src, ...(t.syntheticPrompt ? { imagePrompt: t.prompt } : {}) } };
-            slides[idx] = next;
-            if (slidesById) slidesById.set(t.id, next);
-            if (onChunk) onChunk({ kind: 'image', slideId: t.id, imageSrc: src, imagePrompt: t.syntheticPrompt ? t.prompt : undefined });
-          }
-        } catch (eImg) { /* swallow per-image */ }
-      }));
-    }
-  }
-  return slides;
-}
-
-/* === 약한 차원에 매칭되는 슬라이드들을 후보로 추출 (Stage 6 자동 보강에서 사용) ===
- * - vagueness: 모호어 포함 슬라이드
- * - images: imagePrompt 빈 cover/section-divider/ui-design/image-embed
- * - api: request/response 빈 api-contract, rows<4 인 data-table
- * - risk: mitigation 빈 risk 가진 risk-register
- * - testability: given/when/then 누락된 acceptance-criteria
- * - consistency: terms 가 있다면 terms 외 슬라이드 전체 (간접) — 보강 부담이 커서 제외
- * - completeness: 슬라이드 자체가 없는 케이스 — Stage 6 는 기존 슬라이드 정조준만, 누락 추가는 사용자 명령에 위임
- */
-const VAGUE_PATTERNS_FOR_BOOST = [
-  /\bTBD\b/i, /\bTODO\b/i, /\bN\/A\b/i,
-  /추후[\s]*정의/, /추후[\s]*결정/, /협의[\s]*필요/, /미정/,
-  /적절(한|히)/, /충분(한|히)/, /적당(한|히)/, /원활(한|히)/,
-  /\b향후\b/, /\b추후\b/,
-  /재미있게/, /자연스럽게/,
-];
-function findWeakSlidesForBoost(slides, weakDims) {
-  const dimSet = new Set((weakDims || []).map(d => d.dim));
-  const picked = new Map(); // id -> slide
-  for (const s of slides) {
-    const d = s.data || {};
-    if (dimSet.has('vagueness')) {
-      let text;
-      try { text = JSON.stringify(d); } catch { text = ''; }
-      if (VAGUE_PATTERNS_FOR_BOOST.some(re => re.test(text))) picked.set(s.id, s);
-    }
-    if (dimSet.has('images') && ['cover', 'section-divider', 'ui-design', 'image-embed'].includes(s.type)) {
-      if (!d.imagePrompt || !String(d.imagePrompt).trim()) picked.set(s.id, s);
-    }
-    if (dimSet.has('api')) {
-      if (s.type === 'api-contract' && (!(d.request || '').toString().trim() || !(d.response || '').toString().trim())) {
-        picked.set(s.id, s);
-      }
-      if (s.type === 'data-table' && (d.rows || []).length < 4) picked.set(s.id, s);
-    }
-    if (dimSet.has('risk') && s.type === 'risk-register') {
-      const missing = (d.risks || []).some(r => !(r.mitigation || '').toString().trim());
-      if (missing || (d.risks || []).length < 4) picked.set(s.id, s);
-    }
-    if (dimSet.has('testability') && s.type === 'acceptance-criteria') {
-      const missing = (d.criteria || []).some(c => !c.given || !c.when || !c.then);
-      if (missing || (d.criteria || []).length < 3) picked.set(s.id, s);
-    }
-  }
-  return Array.from(picked.values());
 }
 
 /* === 이미지 프롬프트 폴백 합성 ===
@@ -9772,7 +9468,7 @@ async function aiGenerateGdd(command, existingTitles, attachments, context) {
     await Promise.allSettled(imageJobs);
   }
 
-  const projectMeta = {
+  return {
     id: 'gdd-' + window.uid(),
     title: parsed.title || '제목 없음',
     subtitle: parsed.subtitle || '',
@@ -9782,40 +9478,10 @@ async function aiGenerateGdd(command, existingTitles, attachments, context) {
     updatedAt: new Date().toISOString().slice(0, 10),
     command,
     badge: parsed.badge || 'AI',
+    slides: slides.length ? slides : window.generateDemoGdd(command).slides,
     history: [],
     comments: [],
   };
-  let finalSlides = slides.length ? slides : window.generateDemoGdd(command).slides;
-
-  // 자동 품질 보강 — 점수 90 미달 시 약한 차원의 슬라이드만 정조준 재생성
-  if (slides.length > 0) {
-    try {
-      await applyQualityBoostCycle(finalSlides, projectMeta, {
-        parsedRoot: parsed,
-        maxRounds: 2,
-        onProgress: ({ message }) => {
-          if (window.gddToast && message) {
-            try { window.gddToast(message, ''); } catch {}
-          }
-        },
-      });
-    } catch (eBoost) { /* swallow — 보강 실패해도 원본 GDD 는 정상 반환 */ }
-  }
-
-  // 슬라이드 영역 초과 자동 분할 — splitter 가 너무 큰 슬라이드를 N장으로 나눔
-  if (window.gddSlideSplitter && finalSlides.length > 0) {
-    try {
-      const splat = window.gddSlideSplitter.splitAllOverflowing(finalSlides);
-      if (splat.length !== finalSlides.length) {
-        if (window.gddToast) {
-          try { window.gddToast(`오버플로 슬라이드 자동 분할: ${finalSlides.length} → ${splat.length}장`, ''); } catch {}
-        }
-        finalSlides = splat;
-      }
-    } catch (eSplit) { /* swallow */ }
-  }
-
-  return { ...projectMeta, slides: finalSlides };
 }
 
 /* === AI 기획서 수정 (operations 기반) ===

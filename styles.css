@@ -3868,7 +3868,9 @@ input, textarea, select { font-family: inherit; color: inherit; }
   border-radius: 14px;
   margin-bottom: 16px;
   position: relative;
-  overflow: hidden;
+  /* overflow: hidden 제거 — sticky 자식(.sc-head)이 부모 boundary 안에서 sticky 동작하려면 visible 필요.
+   * 부모가 overflow:hidden 이면 sticky 가 부모 안에 갇혀 효과 없음. */
+  overflow: visible;
 }
 .section-card.locked { opacity: 0.78; background: rgba(20, 40, 32, 0.25); }
 .section-card.locked::before {

@@ -35,6 +35,7 @@ const OUT = path.join(ROOT, 'bundle.jsx');
 const INDEX = path.join(ROOT, 'index.html');
 
 // cache-busting 대상 — index.html에서 ?v=... 가 자동 갱신됨
+// 파일이 없으면 자동 skip (404 안전)
 const CACHE_BUST_FILES = [
   'styles.css',
   'bundle.jsx',
@@ -45,8 +46,34 @@ const CACHE_BUST_FILES = [
   'consistency-check.js',
   'stats.js',
   'gemini-adapter.js',
+  'personas.js',         // 사용자가 추가한 파일 — 없으면 skip
   'data.js',
+  'quality-gate.js',     // 사용자가 추가한 파일
+  'export-adapters.js',  // 사용자가 추가한 파일
+  'genres.js',           // 사용자가 추가한 파일
+  'slide-splitter.js',   // 사용자가 추가한 파일
 ];
+
+// index.html이 참조하는데 실제 파일이 없으면 참조 제거 (404 방지)
+function removeBrokenRefs(html) {
+  let result = html;
+  let removed = [];
+  const scriptRe = /<script src="([^"?]+\.js)(?:\?v=[a-zA-Z0-9]+)?"><\/script>\n?/g;
+  result = result.replace(scriptRe, (match, file) => {
+    // 외부 URL은 그대로 유지
+    if (file.startsWith('http')) return match;
+    const filePath = path.join(ROOT, file);
+    if (!fs.existsSync(filePath)) {
+      removed.push(file);
+      return ''; // 참조 제거
+    }
+    return match;
+  });
+  if (removed.length) {
+    console.log(`✓ index.html에서 없는 파일 참조 제거: ${removed.join(', ')}`);
+  }
+  return result;
+}
 
 function hashFile(filePath) {
   if (!fs.existsSync(filePath)) return null;
@@ -72,15 +99,18 @@ function build() {
   const kb = (out.length / 1024).toFixed(1);
   console.log(`✓ bundle.jsx 생성: ${ORDER.length}개 파일, ${kb} KB`);
 
-  // 2) index.html cache-busting 갱신
+  // 2) index.html — 없는 파일 참조 제거 + cache-busting 갱신
   if (fs.existsSync(INDEX)) {
     let html = fs.readFileSync(INDEX, 'utf-8');
+
+    // 2a) 없는 파일의 <script> 참조 제거 (404 방지)
+    html = removeBrokenRefs(html);
+
+    // 2b) cache-busting query string 갱신
     let count = 0;
     for (const f of CACHE_BUST_FILES) {
       const hash = hashFile(path.join(ROOT, f));
-      if (!hash) continue;
-      // src="<file>" 또는 src="<file>?v=..." 또는 href="<file>" 모두 매치하여 ?v=<hash>로 교체
-      // 정규식: 경로(파일명)에 뒤따르는 (?v=...)? 형태를 모두 잡음
+      if (!hash) continue; // 파일 없으면 skip
       const escaped = f.replace(/[.+*?^$()|[\]\\]/g, '\\$&');
       const re = new RegExp(`((?:src|href)=["'])${escaped}(?:\\?v=[a-zA-Z0-9]+)?(["'])`, 'g');
       const before = html;

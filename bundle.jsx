@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-26T00:53:28.402Z
+   생성 시각: 2026-05-26T01:01:13.169Z
 */
 
 // ============================================================
@@ -3858,6 +3858,7 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, isG
   const [busySection, setBusySection] = React.useState(null);
   const [exporting, setExporting] = React.useState(false);
   const [showSnapshotMenu, setShowSnapshotMenu] = React.useState(false);
+  const [applyingKo, setApplyingKo] = React.useState(false);
 
   if (!concept) {
     return (
@@ -3972,6 +3973,58 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, isG
     }
   };
 
+  /* 한국어 프롬프트 → 영문 프롬프트 반영
+   * - 사용자가 직접 편집한 한국어 본문을 Gemini text 모델로 영문 번역
+   * - 이미지 모델에 최적화된 형식 (영문, 60단어 이내, 조명/구도/스타일 포함) 으로 가공
+   * - 결과를 visual.prompt 에 덮어쓰기 (이미지는 자동 재생성하지 않음 — 비용 보호)
+   */
+  const applyKoreanToEnglish = async () => {
+    const ko = (concept.visual?.promptKo || '').trim();
+    if (!ko) {
+      toast?.('한국어 프롬프트가 비어있습니다.', 'err');
+      return;
+    }
+    if (!window.gemini || !window.gemini.complete) {
+      toast?.('Gemini API 키를 먼저 설정하세요.', 'err');
+      return;
+    }
+    setApplyingKo(true);
+    try {
+      const translationPrompt = [
+        'You are a prompt engineer for an AI image model (Gemini nano-banana).',
+        'Convert the following Korean visual description into an OPTIMIZED ENGLISH image-generation prompt.',
+        '',
+        'CONSTRAINTS:',
+        '- Output ONLY the English prompt, no quotes, no preamble, no explanation.',
+        '- Keep it under 60 words.',
+        '- Include lighting, composition, art style, and key visual elements.',
+        '- Preserve the original mood and intent.',
+        '- Use concrete visual nouns and adjectives (avoid abstract terms).',
+        '',
+        'KOREAN INPUT:',
+        ko,
+        '',
+        'ENGLISH PROMPT (output only, plain text):',
+      ].join('\n');
+      const raw = await window.gemini.complete(translationPrompt);
+      const en = String(raw || '').trim()
+        .replace(/^["'`]+|["'`]+$/g, '')
+        .replace(/^ENGLISH PROMPT:?\s*/i, '')
+        .trim();
+      if (!en) {
+        toast?.('영문 번역이 비어있습니다. 다시 시도하세요.', 'err');
+        return;
+      }
+      patchPath('visual.prompt', en);
+      toast?.('한국어 → 영문 프롬프트 반영 완료', 'ok');
+    } catch (e) {
+      console.error(e);
+      toast?.('번역 실패: ' + (e.message || e), 'err');
+    } finally {
+      setApplyingKo(false);
+    }
+  };
+
   /* Snapshot save */
   const saveSnapshot = () => {
     const name = prompt('스냅샷 이름:', `${concept.title} - ${new Date().toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`);
@@ -4001,18 +4054,34 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, isG
     toast?.('스냅샷 복원 완료', 'ok');
   };
 
-  /* PNG export */
+  /* PNG export — exporting 클래스를 일시적으로 부여:
+   * - CSS 가 sticky/position 등을 static 으로 강제하여 html2canvas 가 정상 캡처
+   * - "필요 기획서" 섹션은 컨셉 PNG 에서 제외
+   * - 캡처 직후 클래스 제거 → UI 복원
+   */
   const exportPng = async () => {
     if (!window.html2canvas) {
       toast?.('html2canvas 로드 실패', 'err');
       return;
     }
     setExporting(true);
+    const pageEl = pageRef.current;
+    if (!pageEl) {
+      setExporting(false);
+      toast?.('페이지 ref 누락', 'err');
+      return;
+    }
+    pageEl.classList.add('exporting');
+    // 강제 reflow — 클래스 적용 직후 html2canvas 가 안정적으로 새 스타일을 읽도록
+    void pageEl.offsetHeight;
     try {
-      const canvas = await window.html2canvas(pageRef.current, {
+      const canvas = await window.html2canvas(pageEl, {
         backgroundColor: '#0a0d12',
         scale: 2,
         useCORS: true,
+        // sticky/fixed 요소가 화면 밖에 있어도 정상 캡처
+        windowWidth: pageEl.scrollWidth,
+        windowHeight: pageEl.scrollHeight,
       });
       const link = document.createElement('a');
       link.download = `${concept.title || 'concept'}.png`;
@@ -4023,6 +4092,7 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, isG
       console.error(e);
       toast?.('PNG 생성 실패: ' + e.message, 'err');
     } finally {
+      pageEl.classList.remove('exporting');
       setExporting(false);
     }
   };
@@ -4221,11 +4291,22 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, isG
                 />
               </div>
               <div className="sc-inline-field">
-                <label>
-                  한국어 프롬프트
-                  <span style={{ marginLeft: 6, color: 'var(--text-4)', fontSize: 10, textTransform: 'none', letterSpacing: 0 }}>
-                    참고용 · 이미지 생성에는 사용되지 않음
+                <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <span>
+                    한국어 프롬프트
+                    <span style={{ marginLeft: 6, color: 'var(--text-4)', fontSize: 10, textTransform: 'none', letterSpacing: 0 }}>
+                      편집 후 ↗ 버튼으로 영문에 반영 가능
+                    </span>
                   </span>
+                  <button
+                    type="button"
+                    className="visual-ko-apply-btn"
+                    onClick={applyKoreanToEnglish}
+                    disabled={applyingKo || !(concept.visual?.promptKo || '').trim() || isLocked('visual')}
+                    title="한국어 프롬프트를 AI 가 영문으로 번역 → 영문 프롬프트에 반영"
+                  >
+                    {applyingKo ? '번역 중…' : '↗ 영문에 반영'}
+                  </button>
                 </label>
                 <Editable
                   tag="div" className="sc-input sc-textarea sc-textarea-ko"

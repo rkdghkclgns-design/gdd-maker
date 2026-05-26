@@ -4082,6 +4082,60 @@ input, textarea, select { font-family: inherit; color: inherit; }
 }
 .visual-genimg-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* 한국어 → 영문 반영 버튼 — 한국어 프롬프트 label 우측에 배치 */
+.visual-ko-apply-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(136, 223, 176, 0.4);
+  background: rgba(136, 223, 176, 0.08);
+  color: #88DFB0;
+  transition: background 0.12s, border-color 0.12s, transform 0.08s;
+  white-space: nowrap;
+}
+.visual-ko-apply-btn:hover:not(:disabled) {
+  background: rgba(136, 223, 176, 0.2);
+  border-color: #88DFB0;
+  transform: translateY(-1px);
+}
+.visual-ko-apply-btn:active:not(:disabled) { transform: translateY(0); }
+.visual-ko-apply-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: transparent;
+}
+
+/* ===== PNG export 모드 =====
+   .concept-page.exporting 클래스 부여 시 html2canvas 가 깨끗하게 캡처되도록:
+   - sticky/fixed/absolute 등 positioning 강제 정리
+   - 필요 기획서 섹션은 컨셉 PNG 에서 노출되지 않도록 숨김
+   - 인터랙티브 컨트롤(편집 인디케이터, 버튼 hover 등) 정리
+*/
+.concept-page.exporting .concept-recs { display: none !important; }
+.concept-page.exporting .sc-head {
+  position: static !important;
+  top: auto !important;
+  box-shadow: none !important;
+}
+.concept-page.exporting .section-card { overflow: visible !important; }
+.concept-page.exporting [contenteditable='true'] { outline: none !important; box-shadow: none !important; }
+/* 편집 영역 hover/focus 표시 제거 */
+.concept-page.exporting [contenteditable='true']:hover,
+.concept-page.exporting [contenteditable='true']:focus { box-shadow: none !important; background: transparent !important; }
+/* AI 생성/잠금 버튼 — 캡처 시 숨김 (UI 인터랙션이 PNG 에 보일 필요 없음) */
+.concept-page.exporting .sc-btn { visibility: hidden !important; }
+.concept-page.exporting .visual-genimg-btn { visibility: hidden !important; }
+.concept-page.exporting .visual-ko-apply-btn { visibility: hidden !important; }
+.concept-page.exporting .sc-del { visibility: hidden !important; }
+.concept-page.exporting .sc-add { visibility: hidden !important; }
+.concept-page.exporting .coreloop-del,
+.concept-page.exporting .coreloop-add { visibility: hidden !important; }
+/* 팔레트 chip wrap 의 hover transform 무력화 (캡처 시 위치 어긋남 방지) */
+.concept-page.exporting .palette-chip-wrap { transform: none !important; }
+
 /* color picker swatch (override) — legacy .chip 패턴 (호환) */
 .concept-palette .swatch .chip {
   width: 100%; height: 36px;

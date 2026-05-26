@@ -6,8 +6,8 @@ const CONCEPT_SUPERBUMPERS = {
   id: 'concept-superbumpers',
   title: '슈퍼범퍼즈',
   subtitle: '속력은 곧 힘이다 — 캐주얼 차량 충돌 배틀',
-  badge: 'TEAM',
-  author: '작성자',
+  badge: '',
+  author: '김기획',
   updatedAt: '2026-02-15',
   visual: {
     src: null,
@@ -61,8 +61,8 @@ const CONCEPT_BLANK = () => ({
   id: 'concept-' + uid(),
   title: '새 게임 컨셉',
   subtitle: '한 줄로 표현되는 게임의 핵심',
-  badge: 'TEAM_?',
-  author: '작성자',
+  badge: '',
+  author: '김기획',
   updatedAt: new Date().toISOString().slice(0, 10),
   visual: { src: null, prompt: '', promptKo: '', placeholder: '컨셉 아트 placeholder' },
   palette: [
@@ -469,22 +469,38 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, isG
               <div className="concept-palette">
                 {(concept.palette || []).map((p, i) => (
                   <div className="swatch" key={i}>
-                    <input
-                      type="color"
-                      className="chip"
-                      value={p.hex}
-                      onChange={(e) => {
-                        const palette = [...concept.palette];
-                        palette[i] = { ...palette[i], hex: e.target.value };
-                        patchField('palette', palette);
-                      }}
-                    />
+                    {/* color-dot 패턴: 가시 swatch + 절대 위치한 투명 input.
+                        Webkit/Gecko 양쪽에서 일관적으로 OS 컬러피커가 열리도록.
+                        input[type=color]를 직접 보이게 두면 일부 환경에서 클릭 영역이 좁아져
+                        실제로는 변경되지 않는 것처럼 느껴짐. */}
+                    <label
+                      className="palette-chip-wrap"
+                      style={{ background: p.hex }}
+                      title="클릭해서 색상 변경"
+                    >
+                      <input
+                        type="color"
+                        className="palette-chip-input"
+                        value={p.hex || '#000000'}
+                        onChange={(e) => {
+                          const palette = [...(concept.palette || [])];
+                          palette[i] = { ...palette[i], hex: e.target.value };
+                          patchField('palette', palette);
+                        }}
+                        onInput={(e) => {
+                          // input 이벤트도 트리거 — 실시간 미리보기
+                          const palette = [...(concept.palette || [])];
+                          palette[i] = { ...palette[i], hex: e.target.value };
+                          patchField('palette', palette);
+                        }}
+                      />
+                    </label>
                     <Editable tag="div" className="name" value={p.name} onChange={(v) => {
-                      const palette = [...concept.palette];
+                      const palette = [...(concept.palette || [])];
                       palette[i] = { ...palette[i], name: v };
                       patchField('palette', palette);
                     }} />
-                    <div className="hex">{p.hex.toUpperCase()}</div>
+                    <div className="hex">{(p.hex || '').toUpperCase()}</div>
                   </div>
                 ))}
               </div>
@@ -679,8 +695,8 @@ ${imageNote}
 {
   "title": "게임 제목 (영문/한글 무관, 외우기 쉬운 3~10자)",
   "subtitle": "한 줄 로그라인 (장르 + 핵심 동사 + 차별점, 30자 내외)",
-  "badge": "TEAM_? 형식의 짧은 팀/스튜디오 태그",
-  "author": "작성자",
+  "badge": "짧은 팀/스튜디오 태그 (예: KGA, INDIE 등 — 비워두면 자동 빈 값)",
+  "author": "김기획",
   "palette": [
     { "name": "주색상", "hex": "#RRGGBB" },
     { "name": "보조 1", "hex": "#RRGGBB" },
@@ -767,8 +783,8 @@ async function aiGenerateConcept(command, attachments) {
     id: 'concept-' + uid(),
     title: parsed.title || '새 컨셉',
     subtitle: parsed.subtitle || '',
-    badge: parsed.badge || 'TEAM',
-    author: parsed.author || '작성자',
+    badge: parsed.badge || '',
+    author: parsed.author || '김기획',
     updatedAt: new Date().toISOString().slice(0, 10),
     visual: { src: imageSrc, prompt: visualPrompt, promptKo: visualPromptKo, placeholder: '컨셉 아트 placeholder' },
     palette: parsed.palette || CONCEPT_BLANK().palette,

@@ -8,6 +8,40 @@ const { useState, useEffect, useRef, useCallback } = React;
  */
 const LEGACY_STORAGE_KEY = 'gdd-maker-state-v2';
 
+/**
+ * 레거시 값 마이그레이션.
+ * 이전 시드 데이터에 박혀있던 "TEAM" / "TEAM_7" / "TEAM_?" 같은 placeholder badge 와
+ * "작성자" placeholder author 를 새 디폴트("" / "김기획")로 일괄 교체.
+ *
+ * 불변성 유지: 원본 state 는 건드리지 않고 새 객체를 반환.
+ * 안전성: state 또는 하위 배열이 없어도 비-throw.
+ */
+function migrateLegacyValues(state) {
+  if (!state || typeof state !== 'object') return state;
+  const STALE_BADGES = new Set(['TEAM', 'TEAM_7', 'TEAM_?', 'AI', 'MVP']);
+  const STALE_AUTHORS = new Set(['작성자', 'Author', 'AUTHOR', '']);
+  const cleanBadge = (b) => (STALE_BADGES.has(String(b || '').trim()) ? '' : b);
+  const cleanAuthor = (a) => (STALE_AUTHORS.has(String(a || '').trim()) ? '김기획' : a);
+
+  const next = { ...state };
+
+  if (Array.isArray(state.concepts)) {
+    next.concepts = state.concepts.map((c) => {
+      if (!c || typeof c !== 'object') return c;
+      return { ...c, badge: cleanBadge(c.badge), author: cleanAuthor(c.author) };
+    });
+  }
+
+  if (Array.isArray(state.projects)) {
+    next.projects = state.projects.map((p) => {
+      if (!p || typeof p !== 'object') return p;
+      return { ...p, team: cleanBadge(p.team), author: cleanAuthor(p.author) };
+    });
+  }
+
+  return next;
+}
+
 async function loadStateAsync() {
   // 1) emergency 슬롯 — 비정상 종료 시 보존된 상태
   if (window.gddStorage) {
@@ -18,18 +52,19 @@ async function loadStateAsync() {
         if (recover) {
           const em = await window.gddStorage.loadEmergency();
           await window.gddStorage.clearEmergency();
-          if (em) return em;
+          if (em) return migrateLegacyValues(em);
         } else {
           await window.gddStorage.clearEmergency();
         }
       }
       // 2) main 슬롯 (IndexedDB)
       const main = await window.gddStorage.loadState('main');
-      if (main && main.projects) return main;
+      if (main && main.projects) return migrateLegacyValues(main);
       // 3) legacy localStorage 마이그레이션 (한 번만)
       const migrated = await window.gddStorage.migrateFromLocalStorage();
       if (migrated) {
-        return await window.gddStorage.loadState('main');
+        const loaded = await window.gddStorage.loadState('main');
+        return migrateLegacyValues(loaded);
       }
     } catch (e) {
       console.error('IndexedDB 로드 실패, localStorage 폴백', e);
@@ -40,7 +75,7 @@ async function loadStateAsync() {
     const raw = localStorage.getItem(LEGACY_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && parsed.projects) return parsed;
+      if (parsed && parsed.projects) return migrateLegacyValues(parsed);
     }
   } catch (e) {}
   return null;
@@ -268,8 +303,8 @@ function TopBar({ project, view, setView, onDownload, isDownloading, onRename, t
 
 /* === 장르 템플릿용 — 슬라이드 type 별 최소 시드 (사용자가 AI 로 채우기 전 placeholder) === */
 const SLIDE_TEMPLATES_FOR_GENRE = {
-  'cover': { product: '신규 게임', title: '게임 제목', subtitle: '한 줄 부제', team: 'TEAM', author: '작성자', date: '26.05.23' },
-  'history': { title: '문서 이력', rows: [{ ver: 'Ver00', date: '26.05.23', page: '-', content: '최초 작성', author: '작성자' }] },
+  'cover': { product: '신규 게임', title: '게임 제목', subtitle: '한 줄 부제', team: '', author: '김기획', date: '26.05.23' },
+  'history': { title: '문서 이력', rows: [{ ver: 'Ver00', date: '26.05.23', page: '-', content: '최초 작성', author: '김기획' }] },
   'toc': { title: 'CONTENTS', entries: [{ num: '01', name: '개요', sub: '게임 컨셉 및 용어' }] },
   'section-divider': { num: '01', title: '섹션', subtitle: '설명', imagePrompt: '' },
   'intent': { section: '01', sectionName: '개요', title: '기획 의도', tagline: '', cards: [] },
@@ -2767,8 +2802,8 @@ function App({ onStateChange }) {
                   id: 'gdd-' + window.uid(),
                   title: `${g.name} — 새 기획서`,
                   subtitle: g.description,
-                  team: 'TEAM',
-                  author: '작성자',
+                  team: '',
+                  author: '김기획',
                   badge: g.badge,
                   version: 'Ver00',
                   updatedAt: new Date().toISOString().slice(0, 10),
@@ -2895,8 +2930,8 @@ async function aiGenerateGddTwoStage(command, existingTitles, attachments, conte
     id: projectId,
     title: outline.title || '제목 없음',
     subtitle: outline.subtitle || '',
-    team: outline.team || 'TEAM',
-    author: outline.author || '작성자',
+    team: outline.team || '',
+    author: outline.author || '김기획',
     version: 'Ver00',
     updatedAt: new Date().toISOString().slice(0, 10),
     command,
@@ -3170,8 +3205,8 @@ async function aiGenerateGdd(command, existingTitles, attachments, context) {
     id: 'gdd-' + window.uid(),
     title: parsed.title || '제목 없음',
     subtitle: parsed.subtitle || '',
-    team: parsed.team || 'TEAM',
-    author: parsed.author || '작성자',
+    team: parsed.team || '',
+    author: parsed.author || '김기획',
     version: 'Ver00',
     updatedAt: new Date().toISOString().slice(0, 10),
     command,

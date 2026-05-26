@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-26T00:02:55.004Z
+   생성 시각: 2026-05-26T00:22:00.073Z
 */
 
 // ============================================================
@@ -3770,8 +3770,8 @@ const CONCEPT_SUPERBUMPERS = {
   id: 'concept-superbumpers',
   title: '슈퍼범퍼즈',
   subtitle: '속력은 곧 힘이다 — 캐주얼 차량 충돌 배틀',
-  badge: 'TEAM',
-  author: '작성자',
+  badge: '',
+  author: '김기획',
   updatedAt: '2026-02-15',
   visual: {
     src: null,
@@ -3825,8 +3825,8 @@ const CONCEPT_BLANK = () => ({
   id: 'concept-' + uid(),
   title: '새 게임 컨셉',
   subtitle: '한 줄로 표현되는 게임의 핵심',
-  badge: 'TEAM_?',
-  author: '작성자',
+  badge: '',
+  author: '김기획',
   updatedAt: new Date().toISOString().slice(0, 10),
   visual: { src: null, prompt: '', promptKo: '', placeholder: '컨셉 아트 placeholder' },
   palette: [
@@ -4233,22 +4233,38 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, isG
               <div className="concept-palette">
                 {(concept.palette || []).map((p, i) => (
                   <div className="swatch" key={i}>
-                    <input
-                      type="color"
-                      className="chip"
-                      value={p.hex}
-                      onChange={(e) => {
-                        const palette = [...concept.palette];
-                        palette[i] = { ...palette[i], hex: e.target.value };
-                        patchField('palette', palette);
-                      }}
-                    />
+                    {/* color-dot 패턴: 가시 swatch + 절대 위치한 투명 input.
+                        Webkit/Gecko 양쪽에서 일관적으로 OS 컬러피커가 열리도록.
+                        input[type=color]를 직접 보이게 두면 일부 환경에서 클릭 영역이 좁아져
+                        실제로는 변경되지 않는 것처럼 느껴짐. */}
+                    <label
+                      className="palette-chip-wrap"
+                      style={{ background: p.hex }}
+                      title="클릭해서 색상 변경"
+                    >
+                      <input
+                        type="color"
+                        className="palette-chip-input"
+                        value={p.hex || '#000000'}
+                        onChange={(e) => {
+                          const palette = [...(concept.palette || [])];
+                          palette[i] = { ...palette[i], hex: e.target.value };
+                          patchField('palette', palette);
+                        }}
+                        onInput={(e) => {
+                          // input 이벤트도 트리거 — 실시간 미리보기
+                          const palette = [...(concept.palette || [])];
+                          palette[i] = { ...palette[i], hex: e.target.value };
+                          patchField('palette', palette);
+                        }}
+                      />
+                    </label>
                     <Editable tag="div" className="name" value={p.name} onChange={(v) => {
-                      const palette = [...concept.palette];
+                      const palette = [...(concept.palette || [])];
                       palette[i] = { ...palette[i], name: v };
                       patchField('palette', palette);
                     }} />
-                    <div className="hex">{p.hex.toUpperCase()}</div>
+                    <div className="hex">{(p.hex || '').toUpperCase()}</div>
                   </div>
                 ))}
               </div>
@@ -4443,8 +4459,8 @@ ${imageNote}
 {
   "title": "게임 제목 (영문/한글 무관, 외우기 쉬운 3~10자)",
   "subtitle": "한 줄 로그라인 (장르 + 핵심 동사 + 차별점, 30자 내외)",
-  "badge": "TEAM_? 형식의 짧은 팀/스튜디오 태그",
-  "author": "작성자",
+  "badge": "짧은 팀/스튜디오 태그 (예: KGA, INDIE 등 — 비워두면 자동 빈 값)",
+  "author": "김기획",
   "palette": [
     { "name": "주색상", "hex": "#RRGGBB" },
     { "name": "보조 1", "hex": "#RRGGBB" },
@@ -4531,8 +4547,8 @@ async function aiGenerateConcept(command, attachments) {
     id: 'concept-' + uid(),
     title: parsed.title || '새 컨셉',
     subtitle: parsed.subtitle || '',
-    badge: parsed.badge || 'TEAM',
-    author: parsed.author || '작성자',
+    badge: parsed.badge || '',
+    author: parsed.author || '김기획',
     updatedAt: new Date().toISOString().slice(0, 10),
     visual: { src: imageSrc, prompt: visualPrompt, promptKo: visualPromptKo, placeholder: '컨셉 아트 placeholder' },
     palette: parsed.palette || CONCEPT_BLANK().palette,
@@ -6310,6 +6326,40 @@ const { useState, useEffect, useRef, useCallback } = React;
  */
 const LEGACY_STORAGE_KEY = 'gdd-maker-state-v2';
 
+/**
+ * 레거시 값 마이그레이션.
+ * 이전 시드 데이터에 박혀있던 "TEAM" / "TEAM_7" / "TEAM_?" 같은 placeholder badge 와
+ * "작성자" placeholder author 를 새 디폴트("" / "김기획")로 일괄 교체.
+ *
+ * 불변성 유지: 원본 state 는 건드리지 않고 새 객체를 반환.
+ * 안전성: state 또는 하위 배열이 없어도 비-throw.
+ */
+function migrateLegacyValues(state) {
+  if (!state || typeof state !== 'object') return state;
+  const STALE_BADGES = new Set(['TEAM', 'TEAM_7', 'TEAM_?', 'AI', 'MVP']);
+  const STALE_AUTHORS = new Set(['작성자', 'Author', 'AUTHOR', '']);
+  const cleanBadge = (b) => (STALE_BADGES.has(String(b || '').trim()) ? '' : b);
+  const cleanAuthor = (a) => (STALE_AUTHORS.has(String(a || '').trim()) ? '김기획' : a);
+
+  const next = { ...state };
+
+  if (Array.isArray(state.concepts)) {
+    next.concepts = state.concepts.map((c) => {
+      if (!c || typeof c !== 'object') return c;
+      return { ...c, badge: cleanBadge(c.badge), author: cleanAuthor(c.author) };
+    });
+  }
+
+  if (Array.isArray(state.projects)) {
+    next.projects = state.projects.map((p) => {
+      if (!p || typeof p !== 'object') return p;
+      return { ...p, team: cleanBadge(p.team), author: cleanAuthor(p.author) };
+    });
+  }
+
+  return next;
+}
+
 async function loadStateAsync() {
   // 1) emergency 슬롯 — 비정상 종료 시 보존된 상태
   if (window.gddStorage) {
@@ -6320,18 +6370,19 @@ async function loadStateAsync() {
         if (recover) {
           const em = await window.gddStorage.loadEmergency();
           await window.gddStorage.clearEmergency();
-          if (em) return em;
+          if (em) return migrateLegacyValues(em);
         } else {
           await window.gddStorage.clearEmergency();
         }
       }
       // 2) main 슬롯 (IndexedDB)
       const main = await window.gddStorage.loadState('main');
-      if (main && main.projects) return main;
+      if (main && main.projects) return migrateLegacyValues(main);
       // 3) legacy localStorage 마이그레이션 (한 번만)
       const migrated = await window.gddStorage.migrateFromLocalStorage();
       if (migrated) {
-        return await window.gddStorage.loadState('main');
+        const loaded = await window.gddStorage.loadState('main');
+        return migrateLegacyValues(loaded);
       }
     } catch (e) {
       console.error('IndexedDB 로드 실패, localStorage 폴백', e);
@@ -6342,7 +6393,7 @@ async function loadStateAsync() {
     const raw = localStorage.getItem(LEGACY_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && parsed.projects) return parsed;
+      if (parsed && parsed.projects) return migrateLegacyValues(parsed);
     }
   } catch (e) {}
   return null;
@@ -6570,8 +6621,8 @@ function TopBar({ project, view, setView, onDownload, isDownloading, onRename, t
 
 /* === 장르 템플릿용 — 슬라이드 type 별 최소 시드 (사용자가 AI 로 채우기 전 placeholder) === */
 const SLIDE_TEMPLATES_FOR_GENRE = {
-  'cover': { product: '신규 게임', title: '게임 제목', subtitle: '한 줄 부제', team: 'TEAM', author: '작성자', date: '26.05.23' },
-  'history': { title: '문서 이력', rows: [{ ver: 'Ver00', date: '26.05.23', page: '-', content: '최초 작성', author: '작성자' }] },
+  'cover': { product: '신규 게임', title: '게임 제목', subtitle: '한 줄 부제', team: '', author: '김기획', date: '26.05.23' },
+  'history': { title: '문서 이력', rows: [{ ver: 'Ver00', date: '26.05.23', page: '-', content: '최초 작성', author: '김기획' }] },
   'toc': { title: 'CONTENTS', entries: [{ num: '01', name: '개요', sub: '게임 컨셉 및 용어' }] },
   'section-divider': { num: '01', title: '섹션', subtitle: '설명', imagePrompt: '' },
   'intent': { section: '01', sectionName: '개요', title: '기획 의도', tagline: '', cards: [] },
@@ -9069,8 +9120,8 @@ function App({ onStateChange }) {
                   id: 'gdd-' + window.uid(),
                   title: `${g.name} — 새 기획서`,
                   subtitle: g.description,
-                  team: 'TEAM',
-                  author: '작성자',
+                  team: '',
+                  author: '김기획',
                   badge: g.badge,
                   version: 'Ver00',
                   updatedAt: new Date().toISOString().slice(0, 10),
@@ -9197,8 +9248,8 @@ async function aiGenerateGddTwoStage(command, existingTitles, attachments, conte
     id: projectId,
     title: outline.title || '제목 없음',
     subtitle: outline.subtitle || '',
-    team: outline.team || 'TEAM',
-    author: outline.author || '작성자',
+    team: outline.team || '',
+    author: outline.author || '김기획',
     version: 'Ver00',
     updatedAt: new Date().toISOString().slice(0, 10),
     command,
@@ -9472,8 +9523,8 @@ async function aiGenerateGdd(command, existingTitles, attachments, context) {
     id: 'gdd-' + window.uid(),
     title: parsed.title || '제목 없음',
     subtitle: parsed.subtitle || '',
-    team: parsed.team || 'TEAM',
-    author: parsed.author || '작성자',
+    team: parsed.team || '',
+    author: parsed.author || '김기획',
     version: 'Ver00',
     updatedAt: new Date().toISOString().slice(0, 10),
     command,

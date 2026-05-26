@@ -14,12 +14,12 @@
   const SLIDE_SCHEMAS = {
     cover: {
       required: ['title'],
-      defaults: { product: '', title: '제목 없음', subtitle: '', team: 'TEAM', author: '작성자', date: '' },
+      defaults: { product: '', title: '제목 없음', subtitle: '', team: '', author: '김기획', date: '' },
     },
     history: {
       required: ['rows'],
       defaults: { title: '문서 이력', rows: [] },
-      arrays: { rows: { item: { ver: 'Ver00', date: '', page: '-', content: '', author: '작성자' } } },
+      arrays: { rows: { item: { ver: 'Ver00', date: '', page: '-', content: '', author: '김기획' } } },
     },
     toc: {
       required: ['entries'],
@@ -162,7 +162,7 @@
   function validateSlide(slide, fixes) {
     if (!isObj(slide)) {
       fixes.push('잘못된 슬라이드 객체 — 빈 cover로 대체');
-      return { id: 'fix-' + Math.random().toString(36).slice(2, 8), type: 'cover', data: { title: '제목 없음', subtitle: '', team: 'TEAM', author: '작성자', date: '' } };
+      return { id: 'fix-' + Math.random().toString(36).slice(2, 8), type: 'cover', data: { title: '제목 없음', subtitle: '', team: '', author: '김기획', date: '' } };
     }
     const type = slide.type;
     const schema = SLIDE_SCHEMAS[type];
@@ -207,8 +207,8 @@
       ...gdd,
       title: gdd.title || '제목 없음',
       subtitle: gdd.subtitle || '',
-      team: gdd.team || 'TEAM',
-      author: gdd.author || '작성자',
+      team: gdd.team || '',
+      author: gdd.author || '김기획',
       version: gdd.version || 'Ver00',
       badge: gdd.badge || 'AI',
       slides,
@@ -230,8 +230,8 @@
     const defaults = {
       title: '새 컨셉',
       subtitle: '',
-      badge: 'TEAM',
-      author: '작성자',
+      badge: '',
+      author: '김기획',
       visual: { src: null, prompt: '', promptKo: '' },
       palette: [],
       theme: { bg: '#0a1411', main: '#88DFB0', accent: '#F5D94F' },

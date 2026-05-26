@@ -3789,27 +3789,24 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .concept-page [contenteditable=true]:hover { box-shadow: 0 0 0 1px rgba(136, 223, 176, 0.4); }
 .concept-page [contenteditable=true]:focus { box-shadow: 0 0 0 2px #88DFB0, 0 0 0 4px rgba(136, 223, 176, 0.2); background: rgba(136, 223, 176, 0.05); }
 
-/* ===== Concept toolbar (above the page) ===== */
+/* ===== Concept toolbar — 컨셉 캔버스 최상단에 항상 고정 ===== */
 .concept-toolbar {
   position: sticky;
   top: 0;
-  z-index: 50;
+  z-index: 100;            /* sc-head(20) + 다른 sticky 보다 확실히 위 */
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 18px;
-  margin: -32px -40px 24px;
-  /* 완전 불투명 배경 — backdrop blur·반투명 그라데이션 제거 */
-  background: #0a0d12;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  padding: 10px 18px;
+  /* 컨셉 캔버스 padding(32px 40px)을 음수 마진으로 깨고 캔버스 끝까지 닿게 */
+  margin: -32px -40px 20px;
+  background: #0a0d12;     /* 완전 불투명 — 뒤 콘텐츠 절대 안 비침 */
   border-bottom: 1px solid var(--border-strong, #3a414d);
   box-shadow:
-    0 6px 14px rgba(0, 0, 0, 0.45),
+    0 4px 16px rgba(0, 0, 0, 0.55),
     0 1px 0 rgba(255, 255, 255, 0.03) inset;
 }
-/* 페이드 오버레이도 비활성 — 툴바 영역이 완전 불투명을 유지 */
 .concept-toolbar::before { display: none; }
 .concept-toolbar .ct-left {
   display: flex; align-items: center; gap: 8px;
@@ -3885,14 +3882,17 @@ input, textarea, select { font-family: inherit; color: inherit; }
   justify-content: space-between;
   padding: 14px 20px;
   border-bottom: 1px solid rgba(136, 223, 176, 0.18);
-  /* 완전 불투명 배경 + 섹션 내 스크롤 고정 — 카드가 화면에 보이는 동안 sc-head 가 상단에 붙음
-   * top 은 concept-toolbar 의 실제 높이(padding 12px*2 + 컨텐츠 ~24px = ~48px) 와 정확히 맞춰 갭 제거.
-   */
+  /* 완전 불투명 배경 + 섹션 내 스크롤 고정.
+   * top 은 concept-toolbar 의 실제 높이 + 섹션 카드 사이 갭(16px).
+   * border-radius 는 카드와 정확히 일치(13px = 카드 14px - 1px border)하여 모서리 삐져나옴 방지. */
   position: sticky;
   top: 48px;
   z-index: 20;
   background: #142822;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+  border-radius: 13px 13px 0 0;
+  /* 카드 위쪽 1px border 안쪽으로 헤더가 정확히 들어가도록 */
+  margin: 0;
+  box-shadow: 0 6px 12px -4px rgba(0, 0, 0, 0.4);
 }
 .section-card.locked .sc-head {
   background: #131e1a;
@@ -4023,7 +4023,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
 }
 .visual-genimg-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* color picker swatch (override) */
+/* color picker swatch (override) — legacy .chip 패턴 (호환) */
 .concept-palette .swatch .chip {
   width: 100%; height: 36px;
   border-radius: 6px;
@@ -4035,6 +4035,46 @@ input, textarea, select { font-family: inherit; color: inherit; }
 }
 .concept-palette .swatch .chip::-webkit-color-swatch-wrapper { padding: 0; }
 .concept-palette .swatch .chip::-webkit-color-swatch { border: 0; border-radius: 6px; }
+
+/* 새 palette 패턴 — label 래퍼 + 투명 input.
+   label로 input을 감싸면 어디를 클릭해도 input 클릭과 동등 → OS 컬러피커가 열림.
+   pointer-events: auto 명시로 부모의 영향 차단. */
+.concept-palette .swatch .palette-chip-wrap {
+  display: block;
+  width: 100%;
+  height: 38px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+}
+.concept-palette .swatch .palette-chip-wrap:hover {
+  border-color: rgba(255, 255, 255, 0.32);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
+}
+.concept-palette .swatch .palette-chip-wrap:active {
+  transform: translateY(0);
+}
+.concept-palette .swatch .palette-chip-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  pointer-events: auto;
+}
 
 /* USP row with delete */
 .sc-usp-row { display: flex; gap: 8px; align-items: stretch; }

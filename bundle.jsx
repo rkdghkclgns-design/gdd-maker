@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-26T00:45:17.966Z
+   생성 시각: 2026-05-26T00:53:28.402Z
 */
 
 // ============================================================
@@ -1084,7 +1084,8 @@ function ImageEmbedSlide({ data, patch, page, totalPages }) {
     }
     setGenerating(true);
     try {
-      const src = await window.gemini.generateImage(p);
+      // 현재 활성 팔레트(부모 컨셉 색상)를 자동 적용
+      const src = await window.gemini.generateImage(p, { palette: window.gddCurrentPalette });
       patch({ imageSrc: src, imagePrompt: p });
       setPromptDraft('');
       if (window.gddToast) window.gddToast('🍌 참고 이미지 생성 완료', 'ok');
@@ -1445,7 +1446,8 @@ function UiDesignSlide({ data, patch, page, totalPages }) {
     }
     setGenerating(true);
     try {
-      const src = await window.gemini.generateImage(p);
+      // 현재 활성 팔레트(부모 컨셉 색상)를 자동 적용
+      const src = await window.gemini.generateImage(p, { palette: window.gddCurrentPalette });
       patch({ imageSrc: src, imagePrompt: p });
       setPromptDraft('');
       if (window.gddToast) window.gddToast('🍌 UI 목업 생성 완료', 'ok');
@@ -3910,7 +3912,8 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, isG
         if (section === 'visual' && result.visual?.prompt) {
           try {
             // 이미지 생성은 영문 prompt만 사용 (한국어 promptKo는 사용자 참고용)
-            const src = await window.gemini.generateImage(result.visual.prompt);
+            // 팔레트도 함께 전달 → 이미지가 컨셉 색상에 맞춰 생성됨
+            const src = await window.gemini.generateImage(result.visual.prompt, { palette: concept.palette });
             merged = {
               ...merged,
               visual: {
@@ -3953,7 +3956,8 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, isG
     }
     setBusySection('visual-image');
     try {
-      const src = await window.gemini.generateImage(p);
+      // 팔레트 전달 → 이미지가 컨셉 색상에 맞춰 생성됨
+      const src = await window.gemini.generateImage(p, { palette: concept.palette });
       patch({
         ...concept,
         visual: { ...(concept.visual || {}), src, prompt: p },
@@ -4535,10 +4539,13 @@ async function aiGenerateConcept(command, attachments) {
 
   const visualPrompt = parsed.visual?.prompt || '';
   const visualPromptKo = parsed.visual?.promptKo || '';
+  // AI가 생성한 팔레트 (없으면 디폴트). 이미지 생성에 전달.
+  const visualPalette = parsed.palette || (CONCEPT_BLANK().palette);
   let imageSrc = null;
   if (visualPrompt) {
     try {
-      imageSrc = await window.gemini.generateImage(visualPrompt);
+      // 팔레트 전달 → 이미지가 컨셉 색상에 맞춰 생성됨
+      imageSrc = await window.gemini.generateImage(visualPrompt, { palette: visualPalette });
     } catch (imgErr) {
       // 이미지 생성 실패는 컨셉 생성 자체를 막지 않음 — 사용자가 수동으로 재시도 가능
       imageSrc = null;
@@ -7730,6 +7737,19 @@ function App({ onStateChange }) {
   const project = selection.type === 'gdd' ? state.projects.find(p => p.id === selection.id) : null;
   const concept = selection.type === 'concept' ? state.concepts.find(c => c.id === selection.id) : null;
 
+  // 현재 활성 팔레트를 window 에 노출 — slides.jsx 등 컴포넌트에서 prop 없이 접근 가능.
+  // 컨셉 선택 시 그 컨셉의 팔레트, GDD 선택 시 부모 컨셉의 팔레트.
+  useEffect(() => {
+    let activePalette = null;
+    if (concept) {
+      activePalette = concept.palette;
+    } else if (project) {
+      const parent = state.concepts?.find(c => c.id === project.conceptId);
+      activePalette = parent?.palette;
+    }
+    window.gddCurrentPalette = activePalette || null;
+  }, [concept, project, state.concepts]);
+
   const setProject = (updater) => {
     if (selection.type !== 'gdd') return;
     setState(s => ({
@@ -7962,7 +7982,9 @@ function App({ onStateChange }) {
       commitNow('AI 기획서 수정');
       setIsGenerating(true);
       try {
-        const { project: updated, summary, opsCount } = await aiEditGdd(project, text, attachments);
+        // 부모 컨셉 팔레트 추출 → aiEditGdd 의 이미지 생성에 전달
+        const _parent = state.concepts?.find(c => c.id === project.conceptId);
+        const { project: updated, summary, opsCount } = await aiEditGdd(project, text, attachments, _parent?.palette);
         setProject(_ => updated);
         toast(`수정 완료 (${opsCount}개 변경) — ${summary}`, 'ok');
       } catch (e) {
@@ -8990,7 +9012,9 @@ function App({ onStateChange }) {
                 // aiEditGdd 의 add op 와 동일한 흐름이지만 메타에 parentRef 를 명시
                 const parentRef = { slideId: cur.id, slideTitle: cur.data?.title || '', anchor: ask };
                 const editPrompt = `현재 슬라이드 (${cur.type} "${cur.data?.title || ''}") 의 다음 부분을 더 상세한 1~2개의 새 슬라이드로 확장하라:\n\n"${ask}"\n\n새 슬라이드를 add op 로 현재 슬라이드 바로 뒤에 삽입. 각 슬라이드의 data._parent 필드에 ${JSON.stringify(parentRef)} 그대로 포함.`;
-                const { project: updated, summary } = await aiEditGdd(project, editPrompt, []);
+                // 부모 컨셉 팔레트 → 이미지 생성에 반영
+                const _drillParent = state.concepts?.find(c => c.id === project.conceptId);
+                const { project: updated, summary } = await aiEditGdd(project, editPrompt, [], _drillParent?.palette);
                 setProject(_ => updated);
                 toast(`드릴다운 — ${summary}`, 'ok');
               } catch (e) {
@@ -9009,6 +9033,9 @@ function App({ onStateChange }) {
               commitNow(`누락 이미지 ${targets.length}개 일괄 생성`);
               setIsGenerating(true);
               let ok = 0, fail = 0;
+              // 프로젝트의 부모 컨셉 팔레트 추출 (있으면 이미지 생성에 반영)
+              const parentConcept = state.concepts?.find(c => c.id === project.conceptId);
+              const projectPalette = parentConcept?.palette;
               try {
                 for (const { s, idx } of targets) {
                   let p = s.data?.imagePrompt;
@@ -9017,7 +9044,7 @@ function App({ onStateChange }) {
                   }
                   if (!p) { fail++; continue; }
                   try {
-                    const src = await window.gemini.generateImage(p);
+                    const src = await window.gemini.generateImage(p, { palette: projectPalette });
                     // 각 이미지 생성 직후 setProject 로 즉시 반영 — 진행률 시각화
                     setProject(pr => ({
                       ...pr,
@@ -9347,9 +9374,11 @@ async function aiGenerateGddTwoStage(command, existingTitles, attachments, conte
   if (imageTargets.length > 0) {
     onProgress({ stage: 'images', message: `이미지 ${imageTargets.length}장 생성 중…` });
     let imgDone = 0;
+    // 컨텍스트에 부모 컨셉이 있으면 팔레트를 추출하여 모든 이미지 생성에 적용
+    const ctxPalette = context?.concept?.palette;
     await Promise.all(imageTargets.map(async (t) => {
       try {
-        const src = await window.gemini.generateImage(t.prompt);
+        const src = await window.gemini.generateImage(t.prompt, { palette: ctxPalette });
         // placeholderSlides 동기화
         const idx = placeholderSlides.findIndex(s => s.id === t.id);
         if (idx >= 0) {
@@ -9487,13 +9516,15 @@ async function aiGenerateGdd(command, existingTitles, attachments, context) {
   // imagePrompt 가 비어있으면 slide.title/caption/subtitle 로부터 폴백 프롬프트 합성
   // 실패해도 GDD 생성은 정상 완료(이미지만 비어있음)
   const imageJobs = [];
+  // 컨텍스트(부모 컨셉)에서 팔레트 추출 — 모든 이미지 생성에 적용
+  const ctxPalette = context?.concept?.palette;
   const coverIdx = slides.findIndex(s => s.type === 'cover');
   if (coverIdx >= 0) {
     const coverPrompt = parsed.coverImagePrompt || synthesizeImagePrompt(slides[coverIdx], parsed);
     if (coverPrompt) {
       imageJobs.push((async () => {
         try {
-          const src = await window.gemini.generateImage(coverPrompt);
+          const src = await window.gemini.generateImage(coverPrompt, { palette: ctxPalette });
           slides[coverIdx].data = { ...slides[coverIdx].data, imageSrc: src, imagePrompt: coverPrompt };
         } catch (e) { /* swallow */ }
       })());
@@ -9512,7 +9543,7 @@ async function aiGenerateGdd(command, existingTitles, attachments, context) {
     }
     imageJobs.push((async () => {
       try {
-        const src = await window.gemini.generateImage(p);
+        const src = await window.gemini.generateImage(p, { palette: ctxPalette });
         slides[idx].data = { ...slides[idx].data, imageSrc: src };
       } catch (e) { /* swallow */ }
     })());
@@ -9541,7 +9572,7 @@ async function aiGenerateGdd(command, existingTitles, attachments, context) {
  * 현재 GDD + 사용자 명령을 받아 add/replace/patch/delete/move/meta 작업을 적용.
  * 반환값: { project: 갱신된 project, summary }
  */
-async function aiEditGdd(currentProject, command, attachments) {
+async function aiEditGdd(currentProject, command, attachments, palette) {
   const prompt = window.buildAiEditPrompt(currentProject, command, attachments);
   let raw;
   try {
@@ -9673,7 +9704,8 @@ async function aiEditGdd(currentProject, command, attachments) {
     })
     .filter(Boolean);
   if (imageTargets.length > 0) {
-    const results = await Promise.allSettled(imageTargets.map(t => window.gemini.generateImage(t.prompt)));
+    // 부모 컨셉 팔레트가 있으면 모든 이미지 생성에 적용 (수정 시에도 컨셉 색상 유지)
+    const results = await Promise.allSettled(imageTargets.map(t => window.gemini.generateImage(t.prompt, { palette })));
     const idToUpdate = {};
     results.forEach((r, i) => {
       if (r.status === 'fulfilled' && typeof r.value === 'string') {

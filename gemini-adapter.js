@@ -180,8 +180,47 @@
   /** Generate an image with Gemini "nano-banana" (gemini-2.5-flash-image).
    * Returns a data: URL string ready to use in <img src=...>.
    * Throws on failure — caller decides whether to surface a toast or fall back.
+   *
+   * options:
+   *   - palette: [{name, hex}] — 색상 팔레트. 프롬프트에 자동으로 색상 힌트 주입.
+   *   - generationConfig: 추가 generation config
    */
   const IMAGE_MODEL = 'gemini-2.5-flash-image';
+
+  /** 팔레트를 영문 프롬프트 힌트로 변환.
+   * - 각 색상의 hex + 역할(role)을 명시
+   * - 모델이 "이 색상을 dominant tone 으로 사용" 하도록 강하게 지시 */
+  function buildPaletteHint(palette) {
+    if (!Array.isArray(palette) || palette.length === 0) return '';
+    const items = palette
+      .map(p => {
+        const hex = (p && (p.hex || p.color || '')).toString().trim();
+        if (!/^#?[0-9a-fA-F]{6}$/.test(hex.replace(/^#/, ''))) return null;
+        const normalized = hex.startsWith('#') ? hex.toUpperCase() : ('#' + hex.toUpperCase());
+        const role = (p.name || '').toString().trim();
+        // 한국어 role 을 영문 의미로 매핑 (모델 이해도 ↑)
+        const roleMap = {
+          '주색상': 'primary', '메인': 'primary', '메인 컬러': 'primary',
+          '보조 1': 'secondary 1', '보조1': 'secondary 1', '보조 컬러': 'secondary',
+          '보조 2': 'secondary 2', '보조2': 'secondary 2',
+          '강조': 'accent', '강조 컬러': 'accent', '포인트': 'accent',
+          '배경': 'background', '배경 컬러': 'background',
+        };
+        const roleEn = roleMap[role] || role || '';
+        return roleEn ? `${normalized} (${roleEn})` : normalized;
+      })
+      .filter(Boolean);
+    if (items.length === 0) return '';
+    return [
+      '',
+      'STRICT COLOR PALETTE — use ONLY these colors as the dominant tones in the image.',
+      'Match the lighting, gradients, and shading to harmonize with these exact hex values:',
+      items.join(', ') + '.',
+      'Background must use the listed background color. Primary subjects/highlights must use primary/accent colors.',
+      'Do NOT introduce colors outside this palette except for neutral whites/blacks if absolutely necessary.',
+    ].join('\n');
+  }
+
   async function generateImage(prompt, options = {}) {
     let key = getApiKey();
     if (!key) {
@@ -189,8 +228,13 @@
       if (!key) throw new Error('Gemini API 키가 설정되지 않았습니다.');
     }
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:generateContent?key=${encodeURIComponent(key)}`;
+
+    // 팔레트 힌트 자동 주입 (옵션이 있을 때만)
+    const paletteHint = buildPaletteHint(options.palette);
+    const finalPrompt = paletteHint ? (prompt + '\n' + paletteHint) : prompt;
+
     const body = {
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      contents: [{ role: 'user', parts: [{ text: finalPrompt }] }],
       generationConfig: {
         responseModalities: ['IMAGE'],
         ...(options.generationConfig || {}),
@@ -270,6 +314,7 @@
   window.gemini = {
     complete,
     generateImage,
+    buildPaletteHint,
     setApiKey,
     resetApiKey,
     getApiKey,

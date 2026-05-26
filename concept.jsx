@@ -146,7 +146,8 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, isG
         if (section === 'visual' && result.visual?.prompt) {
           try {
             // 이미지 생성은 영문 prompt만 사용 (한국어 promptKo는 사용자 참고용)
-            const src = await window.gemini.generateImage(result.visual.prompt);
+            // 팔레트도 함께 전달 → 이미지가 컨셉 색상에 맞춰 생성됨
+            const src = await window.gemini.generateImage(result.visual.prompt, { palette: concept.palette });
             merged = {
               ...merged,
               visual: {
@@ -189,7 +190,8 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, isG
     }
     setBusySection('visual-image');
     try {
-      const src = await window.gemini.generateImage(p);
+      // 팔레트 전달 → 이미지가 컨셉 색상에 맞춰 생성됨
+      const src = await window.gemini.generateImage(p, { palette: concept.palette });
       patch({
         ...concept,
         visual: { ...(concept.visual || {}), src, prompt: p },
@@ -771,10 +773,13 @@ async function aiGenerateConcept(command, attachments) {
 
   const visualPrompt = parsed.visual?.prompt || '';
   const visualPromptKo = parsed.visual?.promptKo || '';
+  // AI가 생성한 팔레트 (없으면 디폴트). 이미지 생성에 전달.
+  const visualPalette = parsed.palette || (CONCEPT_BLANK().palette);
   let imageSrc = null;
   if (visualPrompt) {
     try {
-      imageSrc = await window.gemini.generateImage(visualPrompt);
+      // 팔레트 전달 → 이미지가 컨셉 색상에 맞춰 생성됨
+      imageSrc = await window.gemini.generateImage(visualPrompt, { palette: visualPalette });
     } catch (imgErr) {
       // 이미지 생성 실패는 컨셉 생성 자체를 막지 않음 — 사용자가 수동으로 재시도 가능
       imageSrc = null;

@@ -502,7 +502,8 @@ function ImageEmbedSlide({ data, patch, page, totalPages }) {
     }
     setGenerating(true);
     try {
-      const src = await window.gemini.generateImage(p);
+      // 현재 활성 팔레트(부모 컨셉 색상)를 자동 적용
+      const src = await window.gemini.generateImage(p, { palette: window.gddCurrentPalette });
       patch({ imageSrc: src, imagePrompt: p });
       setPromptDraft('');
       if (window.gddToast) window.gddToast('🍌 참고 이미지 생성 완료', 'ok');
@@ -863,7 +864,8 @@ function UiDesignSlide({ data, patch, page, totalPages }) {
     }
     setGenerating(true);
     try {
-      const src = await window.gemini.generateImage(p);
+      // 현재 활성 팔레트(부모 컨셉 색상)를 자동 적용
+      const src = await window.gemini.generateImage(p, { palette: window.gddCurrentPalette });
       patch({ imageSrc: src, imagePrompt: p });
       setPromptDraft('');
       if (window.gddToast) window.gddToast('🍌 UI 목업 생성 완료', 'ok');

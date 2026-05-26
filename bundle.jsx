@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-26T23:18:30.212Z
+   생성 시각: 2026-05-26T23:29:06.935Z
 */
 
 // ============================================================
@@ -4928,7 +4928,19 @@ ${imageNote}
 - **overview**: 4개 필드 모두 "?" 금지. 합리적 디폴트로 채운다.
 - **keyUsp**: 3~5개. 경쟁작 대비 차별점을 명확히. 단순 기능 나열 금지, "X가 가능하다 → 그래서 Y한 체감을 준다" 구조.
 - **palette**: 5색 모두 게임 무드와 정합. 5색이 함께 놓였을 때 충돌 없이 어울리도록 (보색 무분별 사용 X).
-- **recommendedPlans**: **10~16개**. 장르에 맞게 가감하되, 시니어라면 다음을 의식적으로 포함한다 — 코어 시스템(전투/이동/성장), 메타 시스템(로비/매칭/소셜), 진행(튜토리얼/온보딩), 콘텐츠(모드/이벤트/시즌), 경제·BM(재화/상점/패스권/광고), 라이브 운영(공지/CS/리포트), 기술·인프라(서버 구조/네트워크/데이터), 아트/UX/사운드. **description은 30~80자**, 무엇을 다루는지 + 의존성 1개 명시.
+- **recommendedPlans**: **장르·플랫폼·BM 모델에 따라 필요한 모든 기획서를 빠짐없이 나열한다. 상한 없음 (보통 20~40개, 대형 LiveOps 게임은 50개 이상도 허용).** 의식적으로 포함해야 할 영역:
+  1) **코어 게임플레이**: 메인 루프, 전투/이동/조작, 카메라/입력, 성장/레벨, 진행/스테이지, 난이도/밸런스
+  2) **메타 시스템**: 로비/매칭/매치메이커, 친구/길드/소셜, 채팅, 리더보드/랭킹, 시즌/패스
+  3) **온보딩·튜토리얼**: 첫 플레이 플로우, 단계별 가이드, 신규 유저 리텐션 후크, FTUE
+  4) **콘텐츠·라이브**: 모드(예: 듀얼, 팀, 솔로), 이벤트, 시즌 콘텐츠, 한정 보상, 패치 노트
+  5) **경제·BM**: 재화 체계(소프트/하드/프리미엄), 상점 구조, 인앱결제 SKU, 광고 통합, 패스권/구독, 환율/가격 전략, 인플레이션 관리
+  6) **운영·CS**: 공지 시스템, CS 도구, 환불/보상 정책, 신고/제재, GM 권한
+  7) **기술·인프라**: 서버 아키텍처, 네트워크 프로토콜, DB 스키마, 안티치트, 빌드/배포, 모니터링/로그, 데이터 분석 파이프라인
+  8) **UX·아트·사운드**: UI 와이어/시안, 디자인 시스템, 아트 가이드, 캐릭터/배경 아트, 모션/이펙트, BGM/SFX, 보이스
+  9) **품질·QA**: 테스트 플랜, 자동화, 출시 체크리스트, 인증 대응 (스토어 정책/등급)
+  10) **마케팅·런칭**: 키비주얼, 트레일러 가이드, 스토어 페이지, 사전등록, 인플루언서 운영
+
+  **누락 금지** — 위 영역 중 게임 특성상 명백히 불필요한 것만 제외. 동일 도메인이라도 시스템이 크면 잘게 쪼개 별도 기획서로 (예: "상점 시스템"과 "상점 UI/UX"는 분리). **description은 30~80자**, 무엇을 다루는지 + 의존성 1개 명시.
 - **visual.prompt**: 반드시 영문. 추상어 금지, 명사·형용사·동사 모두 구체적으로.
 
 # 출력 규칙
@@ -7488,7 +7500,7 @@ function ToastHost({ children }) {
 const useToast = () => React.useContext(ToastCtx);
 
 /* === Top bar === */
-function TopBar({ project, view, setView, onDownload, isDownloading, onRename, tweaks, isConcept, onOpenSettings, hasApiKey, onExport, onImport, onOpenCmdK, onSaveSnapshot, onOpenSnapshots, onOpenQualityGate, usageTick }) {
+function TopBar({ project, view, setView, onDownload, isDownloading, onRename, tweaks, isConcept, onOpenSettings, hasApiKey, onExport, onImport, onOpenCmdK, onOpenTutorial, onSaveSnapshot, onOpenSnapshots, onOpenQualityGate, usageTick }) {
   // 품질 점수 — 슬라이드가 있을 때만 계산
   const qScore = (!isConcept && project && window.gddQualityGate)
     ? window.gddQualityGate.scoreProject(project)
@@ -7531,6 +7543,18 @@ function TopBar({ project, view, setView, onDownload, isDownloading, onRename, t
       >
         ⌕ <span style={{ marginLeft: 4, opacity: 0.7 }}>⌘K</span>
       </button>
+
+      {/* 가이드(튜토리얼) 다시 보기 */}
+      {onOpenTutorial && (
+        <button
+          className="btn ghost"
+          onClick={onOpenTutorial}
+          title="시작 가이드 다시 보기"
+          style={{ padding: '6px 10px', fontSize: 11 }}
+        >
+          📖 가이드
+        </button>
+      )}
 
       {/* 비용 배지 */}
       {stats && (
@@ -8004,6 +8028,139 @@ function ShortcutsModal({ onClose }) {
           </table>
           <div style={{ marginTop: 12, fontSize: 11, color: 'var(--text-3)' }}>
             💡 텍스트 편집 중에는 브라우저 기본 Undo/Redo가 사용됩니다.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* === Tutorial Modal (신규/기존 사용자 모두) ===
+ *
+ * 첫 방문자에게 자동으로 열림 (localStorage 'gdd-tutorial-seen' 미설정 시)
+ * '다시 보지 않기' 체크박스 → localStorage 에 영구 기록.
+ * 명령 팔레트 / TopBar 의 '도움말' 버튼에서 언제든 다시 열 수 있음.
+ */
+const TUTORIAL_SEEN_KEY = 'gdd-tutorial-seen-v1';
+function getTutorialSeen() {
+  try { return localStorage.getItem(TUTORIAL_SEEN_KEY) === '1'; } catch (_) { return false; }
+}
+function setTutorialSeen(v) {
+  try {
+    if (v) localStorage.setItem(TUTORIAL_SEEN_KEY, '1');
+    else localStorage.removeItem(TUTORIAL_SEEN_KEY);
+  } catch (_) {}
+}
+
+const TUTORIAL_STEPS = [
+  {
+    icon: '✦',
+    title: 'GDD 메이커에 오신 것을 환영합니다',
+    body: 'AI 기반 게임 기획서(GDD) 작성 도구입니다. 한 줄 명령으로 1-Page 컨셉부터 50장 이상의 상세 기획서까지 자동 생성합니다.',
+    tip: '먼저 사이드바 우상단 ⚙ 설정에서 Gemini API 키를 등록해야 합니다 (Google AI Studio에서 무료 발급).',
+  },
+  {
+    icon: '①',
+    title: '컨셉부터 시작하세요',
+    body: '"새 컨셉 만들기" 버튼을 누르고 한 줄로 게임 아이디어를 입력하면, AI 가 1-Page GDD 와 함께 필요한 기획서 목록을 추천합니다.',
+    tip: '예시: "차량 충돌 PvP, 캐주얼한 분위기, 모바일 우선" → 컨셉 + 권장 기획서 20~40개가 자동 생성됩니다.',
+  },
+  {
+    icon: '②',
+    title: '권장 기획서를 일괄 생성',
+    body: '컨셉 화면 우측 "필요 기획서" 섹션에서 "전체 일괄 AI 생성" 버튼을 누르면, 모든 권장 기획서가 차례로 작성됩니다.',
+    tip: '컨셉의 용어·데이터 스키마·시스템 식별자가 자동으로 후속 기획서에 컨텍스트로 전달되어 정합성이 유지됩니다.',
+  },
+  {
+    icon: '③',
+    title: '기획서를 다듬고 검증',
+    body: '각 기획서는 슬라이드 단위로 편집 가능하며, AI 채팅 (우측 패널) 에서 자연어로 수정 명령을 내릴 수 있습니다. 일관성 점검 / 품질 점수도 자동 산출됩니다.',
+    tip: 'Cmd+K 로 명령 팔레트를 열어 모든 기능에 빠르게 접근하세요. ? 키로 단축키 목록을 봅니다.',
+  },
+  {
+    icon: '④',
+    title: '내보내기 & 백업',
+    body: 'PPTX / PDF / Markdown / 이미지 등 다양한 형식으로 내보낼 수 있습니다. 사이드바 ↓ 메뉴에서 단일 또는 일괄(ZIP) 다운로드를 선택하세요.',
+    tip: '주요 마일스톤마다 "스냅샷 저장" 으로 시점을 기록해 두면 안전합니다. Cmd+Z / Cmd+⇧+Z 도 지원합니다.',
+  },
+];
+
+function TutorialModal({ onClose }) {
+  const [step, setStep] = useState(0);
+  const [dontShow, setDontShow] = useState(getTutorialSeen());
+  const total = TUTORIAL_STEPS.length;
+  const cur = TUTORIAL_STEPS[step];
+
+  const finish = (markSeen) => {
+    setTutorialSeen(!!(markSeen != null ? markSeen : dontShow));
+    onClose();
+  };
+  // 키보드 네비게이션
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'ArrowRight') { e.preventDefault(); setStep(s => Math.min(total - 1, s + 1)); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); setStep(s => Math.max(0, s - 1)); }
+      else if (e.key === 'Enter' && step === total - 1) { e.preventDefault(); finish(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [step, total, dontShow]);
+
+  return (
+    <div className="form-panel-overlay" onClick={() => finish()}>
+      <div className="form-panel tutorial-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 560 }}>
+        <header>
+          <h2>가이드 ({step + 1}/{total})</h2>
+          <button className="btn ghost icon" onClick={() => finish()}>✕</button>
+        </header>
+        <div className="body">
+          <div style={{ textAlign: 'center', padding: '12px 0 20px' }}>
+            <div style={{ fontSize: 48, marginBottom: 12, color: 'var(--accent)', fontWeight: 700 }}>{cur.icon}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 10 }}>{cur.title}</div>
+            <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6, maxWidth: 460, margin: '0 auto' }}>{cur.body}</div>
+            {cur.tip && (
+              <div style={{
+                marginTop: 16,
+                background: 'var(--surface-2)', border: '1px solid var(--border)',
+                borderRadius: 6, padding: '10px 14px',
+                fontSize: 12, color: 'var(--text-2)', fontStyle: 'italic',
+                textAlign: 'left',
+              }}>
+                💡 {cur.tip}
+              </div>
+            )}
+          </div>
+          {/* 단계 인디케이터 */}
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 6, padding: '4px 0 12px' }}>
+            {TUTORIAL_STEPS.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setStep(i)}
+                aria-label={`Step ${i + 1}`}
+                style={{
+                  width: i === step ? 22 : 8, height: 8, borderRadius: 4,
+                  background: i === step ? 'var(--accent)' : 'var(--border)',
+                  border: 'none', cursor: 'pointer', transition: 'all .15s',
+                }}
+              />
+            ))}
+          </div>
+          {/* 네비게이션 */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-2)', cursor: 'pointer', userSelect: 'none' }}>
+              <input type="checkbox" checked={dontShow} onChange={e => setDontShow(e.target.checked)} />
+              다시 보지 않기
+            </label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {step > 0 && (
+                <button className="btn ghost" onClick={() => setStep(s => Math.max(0, s - 1))}>← 이전</button>
+              )}
+              {step < total - 1 ? (
+                <button className="btn" onClick={() => setStep(s => Math.min(total - 1, s + 1))}>다음 →</button>
+              ) : (
+                <button className="btn primary" onClick={() => finish()}>시작하기</button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -8753,6 +8910,8 @@ function App({ onStateChange }) {
   const [showSettings, setShowSettings] = useState(false);
   const [showCmdK, setShowCmdK] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  // 튜토리얼: 첫 방문 시 자동 오픈. localStorage 에 '다시 보지 않기' 플래그가 있으면 skip.
+  const [showTutorial, setShowTutorial] = useState(() => !getTutorialSeen());
   const [showConsistency, setShowConsistency] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showQualityGate, setShowQualityGate] = useState(false);
@@ -9579,7 +9738,7 @@ function App({ onStateChange }) {
       return !!(sel && !sel.isCollapsed && (sel.toString() || '').length > 0);
     };
     const anyModalOpen = () => (
-      showAddMenu || showBrief || showSettings || showCmdK || showShortcuts || showGddSnapshots || showStats || showConsistency
+      showAddMenu || showBrief || showSettings || showCmdK || showShortcuts || showTutorial || showGddSnapshots || showStats || showConsistency
     );
     const inSlideContext = () => (selection.type === 'gdd' && view === 'slide' && !!project);
 
@@ -9697,6 +9856,7 @@ function App({ onStateChange }) {
         return;
       }
       if (e.key === 'Escape') {
+        if (showTutorial) { setShowTutorial(false); return; }
         if (showShortcuts) { setShowShortcuts(false); return; }
         if (showCmdK) { setShowCmdK(false); return; }
         if (showStats) { setShowStats(false); return; }
@@ -9745,7 +9905,7 @@ function App({ onStateChange }) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [showAddMenu, showBrief, showSettings, showCmdK, showShortcuts, showGddSnapshots, showStats, showConsistency, selection.type, view, project, currentIdx]);
+  }, [showAddMenu, showBrief, showSettings, showCmdK, showShortcuts, showTutorial, showGddSnapshots, showStats, showConsistency, selection.type, view, project, currentIdx]);
 
   const addComment = (c) => {
     if (selection.type !== 'gdd') return;
@@ -9870,6 +10030,7 @@ function App({ onStateChange }) {
         hasApiKey={hasApiKey}
         usageTick={usageTick}
         onOpenCmdK={() => setShowCmdK(true)}
+        onOpenTutorial={() => { setTutorialSeen(false); setShowTutorial(true); }}
         onSaveSnapshot={saveGddSnapshot}
         onOpenSnapshots={() => setShowGddSnapshots(true)}
         onOpenQualityGate={() => setShowQualityGate(true)}
@@ -10055,6 +10216,7 @@ function App({ onStateChange }) {
       />
 
       {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} />}
+      {showTutorial && <TutorialModal onClose={() => setShowTutorial(false)} />}
       {showConsistency && concept && (
         <ConsistencyModal
           concept={concept}
@@ -10236,6 +10398,7 @@ function App({ onStateChange }) {
               }
             }},
             { id: 'shortcuts', title: '⌨ 단축키 도움말', sub: '?', shortcut: 'CMD', keywords: ['shortcut', '단축키', 'help', '도움말'], run: () => setShowShortcuts(true) },
+            { id: 'tutorial', title: '📖 시작 가이드 다시 보기', sub: '5단계 튜토리얼', shortcut: 'CMD', keywords: ['tutorial', '튜토리얼', '가이드', 'guide', '도움', '시작', 'help'], run: () => { setTutorialSeen(false); setShowTutorial(true); } },
             { id: 'undo', title: '↶ 실행 취소', sub: `${navigator.platform.match(/Mac/) ? '⌘' : 'Ctrl'}+Z`, shortcut: 'CMD', keywords: ['undo', '취소', 'revert'], run: () => { if (!undo()) toast('취소할 항목 없음', ''); } },
             { id: 'redo', title: '↷ 다시 실행', sub: `${navigator.platform.match(/Mac/) ? '⌘' : 'Ctrl'}+⇧+Z`, shortcut: 'CMD', keywords: ['redo', '다시'], run: () => { if (!redo()) toast('재실행할 항목 없음', ''); } },
             { id: 'save-snapshot', title: '📸 기획서 스냅샷 저장', sub: '현재 기획서를 시점 저장', shortcut: 'CMD', keywords: ['snapshot', '스냅샷', 'save'], run: saveGddSnapshot },

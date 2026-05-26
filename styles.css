@@ -2,6 +2,58 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
+/* ===== 커스텀 커서 =====
+   첨부 이미지의 빨간 화살표를 SVG 데이터 URL로 인라인.
+   추가 파일/호스팅 의존 X. CSS 의 모든 cursor:pointer 보다 우선하려면 !important 가 필요.
+
+   설계:
+   - default : 어두운 빨강 화살표 (일반 위치)
+   - pointer : 밝은 빨강 화살표 + 노란 점 (클릭 가능 강조)
+   - text   : 시스템 I-beam (편집 가독성)
+   - disabled : 시스템 not-allowed
+*/
+:root {
+  --cursor-default: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cpath d='M5 3 L5 25 L11 19 L15 28 L19 26 L15 18 L23 18 Z' fill='%23d62a3a' stroke='%23200' stroke-width='1.5' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E") 5 3;
+  --cursor-pointer: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cpath d='M5 3 L5 25 L11 19 L15 28 L19 26 L15 18 L23 18 Z' fill='%23ff3a4a' stroke='%23200' stroke-width='1.5' stroke-linejoin='round' stroke-linecap='round'/%3E%3Ccircle cx='22' cy='8' r='3' fill='%23ffd400' stroke='%23200' stroke-width='1'/%3E%3C/svg%3E") 5 3;
+}
+/* 1) 기본 — 모든 요소에 빨간 화살표 강제 (기존 cursor 규칙 우선순위 무력화) */
+*, *::before, *::after {
+  cursor: var(--cursor-default), default !important;
+}
+/* 2) 클릭 가능 요소 — 밝은 빨강 + 노란 점 변형 */
+a, a *, button:not(:disabled), button:not(:disabled) *,
+label, summary, [role='button'], [role='button'] *,
+input[type='button']:not(:disabled), input[type='submit']:not(:disabled),
+input[type='reset']:not(:disabled), input[type='checkbox']:not(:disabled),
+input[type='radio']:not(:disabled), input[type='color']:not(:disabled),
+input[type='range']:not(:disabled), input[type='file']:not(:disabled),
+.btn:not(:disabled), .sc-btn:not(:disabled), .chip,
+.swatch, .palette-chip-wrap, .palette-chip-input,
+.color-dot, .color-dot input,
+.snapshot-item, .sc-add, .sc-del,
+.cmdk-item, .concept-recs-card,
+.pz-host {
+  cursor: var(--cursor-pointer), pointer !important;
+}
+/* 3) 텍스트 입력 — 시스템 I-beam (편집 가독성) */
+input[type='text'], input[type='search'], input[type='email'], input[type='number'],
+input[type='url'], input[type='password'], input[type='tel'],
+input:not([type]):not([type='checkbox']):not([type='radio']),
+textarea,
+[contenteditable='true'], [contenteditable='true'] *,
+.editable, .editable * {
+  cursor: text !important;
+}
+/* 4) 비활성 — not-allowed */
+button:disabled, input:disabled, [aria-disabled='true'],
+.btn:disabled, .sc-btn:disabled, .visual-genimg-btn:disabled {
+  cursor: not-allowed !important;
+}
+/* 5) 드래그 가능 영역 — grab/grabbing 유지 */
+.pz-host.panning, .image-embed-wrap.has-image.dragging {
+  cursor: grabbing !important;
+}
+
 /* === Command Palette (Cmd+K) === */
 .cmdk-overlay {
   position: fixed;

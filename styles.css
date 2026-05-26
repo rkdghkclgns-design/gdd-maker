@@ -3520,7 +3520,17 @@ input, textarea, select { font-family: inherit; color: inherit; }
   font-weight: 600;
   font-size: 14px;
   font-family: 'JetBrains Mono', monospace;
+  min-width: 100px;
+  text-align: center;
 }
+/* 비어있을 때 placeholder 표시 — "스튜디오 이름 입력" 가이드 */
+.concept-badge:empty::before {
+  content: attr(data-placeholder);
+  color: rgba(136, 223, 176, 0.45);
+  font-weight: 500;
+  font-style: normal;
+}
+.concept-badge:focus:empty::before { color: rgba(136, 223, 176, 0.25); }
 .concept-author {
   font-size: 12px;
   color: #7d8590;

@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-26T01:50:22.956Z
+   생성 시각: 2026-05-26T01:56:59.110Z
 */
 
 // ============================================================
@@ -4238,6 +4238,7 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, isG
               tag="div" className="concept-badge"
               value={concept.badge}
               onChange={(v) => patchField('badge', v)}
+              placeholder="스튜디오 이름 입력"
               style={{ borderColor: theme.main, color: theme.main }}
             />
             <div className="concept-author">

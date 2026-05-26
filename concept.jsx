@@ -472,6 +472,7 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, isG
               tag="div" className="concept-badge"
               value={concept.badge}
               onChange={(v) => patchField('badge', v)}
+              placeholder="스튜디오 이름 입력"
               style={{ borderColor: theme.main, color: theme.main }}
             />
             <div className="concept-author">

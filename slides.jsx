@@ -264,7 +264,27 @@ function partIndexOf(numLike) {
   return isFinite(n) ? n : 1;
 }
 
-/** toc.parts 가 명시되어 있으면 그 구조, 없으면 entries 를 4등분으로 자동 그룹화. */
+/** TOC entry 가 front-matter (표지 자체) 인지 판정.
+ * 표지 슬라이드는 TOC 본문에 나열할 필요가 없음 — 사용자 요청.
+ * - name 이 정확히 "표지" 또는 "표지"로 시작 + 공백 변형
+ * - num 이 정확히 "0" 또는 빈 값은 자동 제외 안 함 (의미 있는 0번 챕터 가능성)
+ */
+function isCoverTocEntry(entry) {
+  if (!entry) return false;
+  const name = String(entry.name || '').trim().toLowerCase();
+  if (!name) return false;
+  // 한국어 / 영어 / 일반 변형 모두 매칭
+  return /^(표지|cover|front\s*page|title\s*page)$/i.test(name);
+}
+
+/** TOC entries 배열에서 표지 항목 제거 */
+function filterCoverFromEntries(entries) {
+  if (!Array.isArray(entries)) return entries;
+  return entries.filter(e => !isCoverTocEntry(e));
+}
+
+/** toc.parts 가 명시되어 있으면 그 구조, 없으면 entries 를 4등분으로 자동 그룹화.
+ * 어느 경우든 "표지" 항목은 TOC 표시에서 제외. */
 function derivePartsFromToc(data) {
   const DEFAULT_META = [
     { sub: 'OVERVIEW', label: '개요' },
@@ -277,10 +297,10 @@ function derivePartsFromToc(data) {
       roman: p.roman || intToRoman(i + 1),
       label: safeText(p.label || p.name || DEFAULT_META[i % 4].label),
       sub: safeText(p.sub || p.subEn || DEFAULT_META[i % 4].sub),
-      entries: Array.isArray(p.entries) ? p.entries : [],
+      entries: filterCoverFromEntries(Array.isArray(p.entries) ? p.entries : []),
     }));
   }
-  const entries = Array.isArray(data.entries) ? data.entries : [];
+  const entries = filterCoverFromEntries(Array.isArray(data.entries) ? data.entries : []);
   if (entries.length === 0) return [];
   const partCount = Math.min(4, Math.max(1, Math.ceil(entries.length / 3)));
   const chunkSize = Math.ceil(entries.length / partCount);
@@ -294,6 +314,11 @@ function derivePartsFromToc(data) {
     });
   }
   return out;
+}
+
+// 다른 파일(doc-export.jsx, slide-splitter)에서 TOC 정리에 재사용
+if (typeof window !== 'undefined') {
+  window.gddTocFilters = { isCoverTocEntry, filterCoverFromEntries };
 }
 
 /* ------ 3. TOC (Elegant) ------

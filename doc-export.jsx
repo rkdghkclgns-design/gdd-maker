@@ -57,6 +57,14 @@ function DocSection({ slide, index, patch }) {
   }
 
   if (slide.type === 'toc') {
+    /* TOC 본문에서 "표지" 항목 제거 — 사용자 요청.
+       slides.jsx 의 gddTocFilters 가 로드되어 있으면 그것을 사용, 없으면 인라인 fallback */
+    const isCoverEntry = (e) => {
+      const fn = window.gddTocFilters && window.gddTocFilters.isCoverTocEntry;
+      if (fn) return fn(e);
+      const n = String((e && e.name) || '').trim().toLowerCase();
+      return /^(표지|cover|front\s*page|title\s*page)$/i.test(n);
+    };
     const hasParts = Array.isArray(d.parts) && d.parts.length > 0;
     return (
       <div className="doc-section">
@@ -70,7 +78,7 @@ function DocSection({ slide, index, patch }) {
                 </div>
                 <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>{p.roman} · {p.label}</div>
                 <ul style={{ margin: 0, paddingLeft: 18 }}>
-                  {(p.entries || []).map((e, j) => (
+                  {(p.entries || []).filter(e => !isCoverEntry(e)).map((e, j) => (
                     <li key={j}><strong>{e.num}</strong> {e.name}</li>
                   ))}
                 </ul>
@@ -79,7 +87,7 @@ function DocSection({ slide, index, patch }) {
           </div>
         ) : (
           <ul>
-            {(d.entries || []).map((e, i) => (
+            {(d.entries || []).filter(e => !isCoverEntry(e)).map((e, i) => (
               <li key={i}><strong>{e.num}. {e.name}</strong> <span style={{color:'#7d8590'}}>— {e.sub}</span></li>
             ))}
           </ul>

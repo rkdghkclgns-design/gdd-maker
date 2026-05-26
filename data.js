@@ -808,7 +808,7 @@ ${contextBlock}
   "slides": [
     { "type": "cover", "data": { "product": "...", "title": "...", "subtitle": "...", "team": "...", "author": "김기획", "date": "YY.MM.DD" } },
     { "type": "history", "data": { "title": "문서 이력", "rows": [{"ver":"Ver00","date":"...","page":"-","content":"최초 작성","author":"김기획"}] } },
-    { "type": "toc", "data": { "title": "CONTENTS", "entries": [{"num":"01","name":"개요","sub":"섹션 요약"}] } },
+    { "type": "toc", "data": { "title": "CONTENTS", "entries": [{"num":"01","name":"개요","sub":"섹션 요약"}] } },  // ⚠ TOC entries 에 "표지"/"문서 이력"/"목차" 등 front-matter 슬라이드는 절대 포함하지 말 것. 본문 섹션부터 나열.
     { "type": "section-divider", "data": { "num": "01", "title": "섹션 제목", "subtitle": "섹션의 핵심 메시지 1-2문장", "imagePrompt": "<영문, 섹션을 시각화하는 컨셉 아트 한 컷. 분위기·소재·구도 포함. 빈 문자열도 가능하나 가급적 채울 것>" } },
     { "type": "image-embed", "data": { "section":"03", "sectionName":"참고 이미지", "title":"이미지 제목", "caption":"이 이미지가 보여주는 핵심 요소·참조 의도 한 줄", "imagePrompt":"<영문, 핵심 시각 요소를 묘사하는 참고 이미지 프롬프트. 카드/캐릭터/장면/UI 무드보드 등>" } },
     { "type": "intent", "data": { "section":"01", "sectionName":"개요", "title":"기획 의도", "tagline":"기획 전체를 관통하는 한 줄. 측정 가능하거나 검증 가능한 형태로", "cards":[{"idx":"01","head":"카드 제목(8자 내)","desc":"의도 + 구체적 결과 지표 1개 (예: 신규 유저 D1 리텐션 +5%p)"}] } },

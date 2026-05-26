@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-26T22:53:35.941Z
+   생성 시각: 2026-05-26T22:57:35.259Z
 */
 
 // ============================================================
@@ -846,7 +846,27 @@ function partIndexOf(numLike) {
   return isFinite(n) ? n : 1;
 }
 
-/** toc.parts 가 명시되어 있으면 그 구조, 없으면 entries 를 4등분으로 자동 그룹화. */
+/** TOC entry 가 front-matter (표지 자체) 인지 판정.
+ * 표지 슬라이드는 TOC 본문에 나열할 필요가 없음 — 사용자 요청.
+ * - name 이 정확히 "표지" 또는 "표지"로 시작 + 공백 변형
+ * - num 이 정확히 "0" 또는 빈 값은 자동 제외 안 함 (의미 있는 0번 챕터 가능성)
+ */
+function isCoverTocEntry(entry) {
+  if (!entry) return false;
+  const name = String(entry.name || '').trim().toLowerCase();
+  if (!name) return false;
+  // 한국어 / 영어 / 일반 변형 모두 매칭
+  return /^(표지|cover|front\s*page|title\s*page)$/i.test(name);
+}
+
+/** TOC entries 배열에서 표지 항목 제거 */
+function filterCoverFromEntries(entries) {
+  if (!Array.isArray(entries)) return entries;
+  return entries.filter(e => !isCoverTocEntry(e));
+}
+
+/** toc.parts 가 명시되어 있으면 그 구조, 없으면 entries 를 4등분으로 자동 그룹화.
+ * 어느 경우든 "표지" 항목은 TOC 표시에서 제외. */
 function derivePartsFromToc(data) {
   const DEFAULT_META = [
     { sub: 'OVERVIEW', label: '개요' },
@@ -859,10 +879,10 @@ function derivePartsFromToc(data) {
       roman: p.roman || intToRoman(i + 1),
       label: safeText(p.label || p.name || DEFAULT_META[i % 4].label),
       sub: safeText(p.sub || p.subEn || DEFAULT_META[i % 4].sub),
-      entries: Array.isArray(p.entries) ? p.entries : [],
+      entries: filterCoverFromEntries(Array.isArray(p.entries) ? p.entries : []),
     }));
   }
-  const entries = Array.isArray(data.entries) ? data.entries : [];
+  const entries = filterCoverFromEntries(Array.isArray(data.entries) ? data.entries : []);
   if (entries.length === 0) return [];
   const partCount = Math.min(4, Math.max(1, Math.ceil(entries.length / 3)));
   const chunkSize = Math.ceil(entries.length / partCount);
@@ -876,6 +896,11 @@ function derivePartsFromToc(data) {
     });
   }
   return out;
+}
+
+// 다른 파일(doc-export.jsx, slide-splitter)에서 TOC 정리에 재사용
+if (typeof window !== 'undefined') {
+  window.gddTocFilters = { isCoverTocEntry, filterCoverFromEntries };
 }
 
 /* ------ 3. TOC (Elegant) ------
@@ -5650,6 +5675,14 @@ function DocSection({ slide, index, patch }) {
   }
 
   if (slide.type === 'toc') {
+    /* TOC 본문에서 "표지" 항목 제거 — 사용자 요청.
+       slides.jsx 의 gddTocFilters 가 로드되어 있으면 그것을 사용, 없으면 인라인 fallback */
+    const isCoverEntry = (e) => {
+      const fn = window.gddTocFilters && window.gddTocFilters.isCoverTocEntry;
+      if (fn) return fn(e);
+      const n = String((e && e.name) || '').trim().toLowerCase();
+      return /^(표지|cover|front\s*page|title\s*page)$/i.test(n);
+    };
     const hasParts = Array.isArray(d.parts) && d.parts.length > 0;
     return (
       <div className="doc-section">
@@ -5663,7 +5696,7 @@ function DocSection({ slide, index, patch }) {
                 </div>
                 <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>{p.roman} · {p.label}</div>
                 <ul style={{ margin: 0, paddingLeft: 18 }}>
-                  {(p.entries || []).map((e, j) => (
+                  {(p.entries || []).filter(e => !isCoverEntry(e)).map((e, j) => (
                     <li key={j}><strong>{e.num}</strong> {e.name}</li>
                   ))}
                 </ul>
@@ -5672,7 +5705,7 @@ function DocSection({ slide, index, patch }) {
           </div>
         ) : (
           <ul>
-            {(d.entries || []).map((e, i) => (
+            {(d.entries || []).filter(e => !isCoverEntry(e)).map((e, i) => (
               <li key={i}><strong>{e.num}. {e.name}</strong> <span style={{color:'#7d8590'}}>— {e.sub}</span></li>
             ))}
           </ul>
@@ -7141,16 +7174,46 @@ function migrateLegacyValues(state) {
     const splitter = (typeof window !== 'undefined' && window.gddSlideSplitter)
       ? window.gddSlideSplitter
       : null;
+    // TOC entries 중 "표지" 항목 제거 — 사용자 요청.
+    // slides.jsx 의 gddTocFilters 가 로드되어 있으면 사용, 없으면 인라인 fallback.
+    const tocFilter = (typeof window !== 'undefined' && window.gddTocFilters && window.gddTocFilters.isCoverTocEntry)
+      ? window.gddTocFilters.isCoverTocEntry
+      : (e) => /^(표지|cover|front\s*page|title\s*page)$/i.test(String((e && e.name) || '').trim().toLowerCase());
+    const cleanTocSlides = (slides) => slides.map((s) => {
+      if (!s || s.type !== 'toc' || !s.data) return s;
+      const d = s.data;
+      let changed = false;
+      let newEntries = d.entries;
+      let newParts = d.parts;
+      if (Array.isArray(d.entries)) {
+        const filtered = d.entries.filter(e => !tocFilter(e));
+        if (filtered.length !== d.entries.length) { newEntries = filtered; changed = true; }
+      }
+      if (Array.isArray(d.parts)) {
+        const filteredParts = d.parts.map(p => {
+          if (!Array.isArray(p.entries)) return p;
+          const f = p.entries.filter(e => !tocFilter(e));
+          if (f.length !== p.entries.length) { changed = true; return { ...p, entries: f }; }
+          return p;
+        });
+        if (changed) newParts = filteredParts;
+      }
+      return changed ? { ...s, data: { ...d, entries: newEntries, parts: newParts } } : s;
+    });
+
     next.projects = state.projects.map((p) => {
       if (!p || typeof p !== 'object') return p;
       let nextSlides = p.slides;
-      if (splitter && Array.isArray(p.slides) && p.slides.length > 0) {
+      if (Array.isArray(p.slides) && p.slides.length > 0) {
         try {
-          const before = p.slides.length;
-          const split = splitter.splitAllOverflowing(p.slides);
-          // 변경이 일어났을 때만 새 배열로 교체 (불필요한 reference 변경 방지)
-          if (split.length !== before || split.some((s, i) => s !== p.slides[i])) {
-            nextSlides = split;
+          nextSlides = cleanTocSlides(nextSlides);
+          if (splitter) {
+            const before = nextSlides.length;
+            const split = splitter.splitAllOverflowing(nextSlides);
+            // 변경이 일어났을 때만 새 배열로 교체 (불필요한 reference 변경 방지)
+            if (split.length !== before || split.some((s, i) => s !== nextSlides[i])) {
+              nextSlides = split;
+            }
           }
         } catch (_) { /* 분할 실패해도 원본 유지 */ }
       }

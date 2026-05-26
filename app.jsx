@@ -38,16 +38,46 @@ function migrateLegacyValues(state) {
     const splitter = (typeof window !== 'undefined' && window.gddSlideSplitter)
       ? window.gddSlideSplitter
       : null;
+    // TOC entries 중 "표지" 항목 제거 — 사용자 요청.
+    // slides.jsx 의 gddTocFilters 가 로드되어 있으면 사용, 없으면 인라인 fallback.
+    const tocFilter = (typeof window !== 'undefined' && window.gddTocFilters && window.gddTocFilters.isCoverTocEntry)
+      ? window.gddTocFilters.isCoverTocEntry
+      : (e) => /^(표지|cover|front\s*page|title\s*page)$/i.test(String((e && e.name) || '').trim().toLowerCase());
+    const cleanTocSlides = (slides) => slides.map((s) => {
+      if (!s || s.type !== 'toc' || !s.data) return s;
+      const d = s.data;
+      let changed = false;
+      let newEntries = d.entries;
+      let newParts = d.parts;
+      if (Array.isArray(d.entries)) {
+        const filtered = d.entries.filter(e => !tocFilter(e));
+        if (filtered.length !== d.entries.length) { newEntries = filtered; changed = true; }
+      }
+      if (Array.isArray(d.parts)) {
+        const filteredParts = d.parts.map(p => {
+          if (!Array.isArray(p.entries)) return p;
+          const f = p.entries.filter(e => !tocFilter(e));
+          if (f.length !== p.entries.length) { changed = true; return { ...p, entries: f }; }
+          return p;
+        });
+        if (changed) newParts = filteredParts;
+      }
+      return changed ? { ...s, data: { ...d, entries: newEntries, parts: newParts } } : s;
+    });
+
     next.projects = state.projects.map((p) => {
       if (!p || typeof p !== 'object') return p;
       let nextSlides = p.slides;
-      if (splitter && Array.isArray(p.slides) && p.slides.length > 0) {
+      if (Array.isArray(p.slides) && p.slides.length > 0) {
         try {
-          const before = p.slides.length;
-          const split = splitter.splitAllOverflowing(p.slides);
-          // 변경이 일어났을 때만 새 배열로 교체 (불필요한 reference 변경 방지)
-          if (split.length !== before || split.some((s, i) => s !== p.slides[i])) {
-            nextSlides = split;
+          nextSlides = cleanTocSlides(nextSlides);
+          if (splitter) {
+            const before = nextSlides.length;
+            const split = splitter.splitAllOverflowing(nextSlides);
+            // 변경이 일어났을 때만 새 배열로 교체 (불필요한 reference 변경 방지)
+            if (split.length !== before || split.some((s, i) => s !== nextSlides[i])) {
+              nextSlides = split;
+            }
           }
         } catch (_) { /* 분할 실패해도 원본 유지 */ }
       }

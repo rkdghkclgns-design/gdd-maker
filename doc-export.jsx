@@ -178,7 +178,254 @@ function DocSection({ slide, index, patch }) {
     );
   }
 
+  if (slide.type === 'image-embed') {
+    return (
+      <div className="doc-section">
+        <h2><span className="idx">{String(index).padStart(2, '0')}</span>{d.title}</h2>
+        <div className="sub">{sectionTag}</div>
+        {d.caption && <p style={{ fontStyle: 'italic', color: 'var(--text-2)' }}>{d.caption}</p>}
+        {d.imageSrc ? (
+          <img src={d.imageSrc} alt={d.title || 'reference'} style={{ maxWidth: '100%', borderRadius: 8, display: 'block', margin: '12px 0' }} />
+        ) : (
+          <p style={{ color: '#7d8590', fontStyle: 'italic' }}>[참고 이미지 placeholder]</p>
+        )}
+        {d.imagePrompt && (
+          <pre style={{ fontSize: 11, background: 'rgba(76,194,255,0.06)', padding: 8, borderLeft: '3px solid var(--accent)', borderRadius: 4, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{d.imagePrompt}</pre>
+        )}
+      </div>
+    );
+  }
+
+  if (slide.type === 'diagram' || slide.type === 'sequence-diagram' || slide.type === 'class-diagram') {
+    const nodeKey = slide.type === 'sequence-diagram' ? 'participants' : (slide.type === 'class-diagram' ? 'classes' : 'nodes');
+    const items = d[nodeKey] || d.nodes || [];
+    return (
+      <div className="doc-section">
+        <h2><span className="idx">{String(index).padStart(2, '0')}</span>{d.title}</h2>
+        <div className="sub">{sectionTag}</div>
+        {items.length > 0 && (
+          <ul>{items.map((n, i) => (
+            <li key={i}>
+              <strong>{n.label || n.name || n.id}</strong>
+              {n.sub ? <span style={{ color: '#7d8590', marginLeft: 6 }}>{n.sub}</span> : null}
+              {n.kind ? <code style={{ marginLeft: 6, color: 'var(--accent)' }}>[{n.kind}]</code> : null}
+            </li>
+          ))}</ul>
+        )}
+        {Array.isArray(d.messages) && d.messages.length > 0 && (
+          <>
+            <h3>메시지</h3>
+            <ol>{d.messages.map((m, i) => (
+              <li key={i}><code>{m.from} → {m.to}</code>: {m.label}</li>
+            ))}</ol>
+          </>
+        )}
+        {Array.isArray(d.relations) && d.relations.length > 0 && (
+          <>
+            <h3>관계</h3>
+            <ol>{d.relations.map((r, i) => (
+              <li key={i}><code>{r.from} {r.type || '→'} {r.to}</code>{r.label ? ' : ' + r.label : ''}</li>
+            ))}</ol>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  if (slide.type === 'balance-table') {
+    const vars = d.vars || [];
+    return (
+      <div className="doc-section">
+        <h2><span className="idx">{String(index).padStart(2, '0')}</span>{d.title}</h2>
+        <div className="sub">{sectionTag}</div>
+        {d.formula && <p><code style={{ background: 'rgba(76,194,255,0.08)', padding: '2px 6px', borderRadius: 3 }}>{d.formula}</code></p>}
+        {vars.length > 0 && (
+          <table>
+            <thead><tr><th>변수</th><th>기본값</th><th>최소~최대</th><th>설명</th></tr></thead>
+            <tbody>{vars.map((v, i) => (
+              <tr key={i}>
+                <td><code>{v.name}</code></td>
+                <td>{v.default ?? v.value ?? ''}</td>
+                <td>{v.min != null && v.max != null ? `${v.min} ~ ${v.max}` : ''}</td>
+                <td>{v.desc || v.description || ''}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        )}
+        {d.curve && <p style={{ color: '#7d8590', fontStyle: 'italic' }}>커브: {d.curve}</p>}
+      </div>
+    );
+  }
+
+  if (slide.type === 'state-machine') {
+    const states = d.states || [];
+    const transitions = d.transitions || [];
+    return (
+      <div className="doc-section">
+        <h2><span className="idx">{String(index).padStart(2, '0')}</span>{d.title}</h2>
+        <div className="sub">{sectionTag}</div>
+        {states.length > 0 && (
+          <>
+            <h3>상태</h3>
+            <ul>{states.map((s, i) => (
+              <li key={i}><strong>{s.id || s.name}</strong>{s.desc ? ' — ' + s.desc : ''}</li>
+            ))}</ul>
+          </>
+        )}
+        {transitions.length > 0 && (
+          <>
+            <h3>전이</h3>
+            <ol>{transitions.map((t, i) => (
+              <li key={i}><code>{t.from} → {t.to}</code>{t.on ? ` (on: ${t.on})` : ''}{t.guard ? ` [guard: ${t.guard}]` : ''}</li>
+            ))}</ol>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  if (slide.type === 'api-contract') {
+    return (
+      <div className="doc-section">
+        <h2><span className="idx">{String(index).padStart(2, '0')}</span>{d.title}</h2>
+        <div className="sub">{sectionTag}</div>
+        <p>
+          <code style={{ background: 'var(--accent)', color: '#061018', padding: '2px 8px', borderRadius: 3, fontWeight: 700 }}>
+            {d.method || 'GET'}
+          </code>
+          <code style={{ marginLeft: 8 }}>{d.endpoint || ''}</code>
+        </p>
+        {d.auth && <p>인증: <code>{d.auth}</code></p>}
+        {d.slaMs != null && <p>SLA: <code>{d.slaMs}ms</code></p>}
+        {d.request && <><h3>Request</h3><pre style={{ background: '#f3f5f7', padding: 8, borderRadius: 4, overflowX: 'auto' }}>{d.request}</pre></>}
+        {d.response && <><h3>Response</h3><pre style={{ background: '#f3f5f7', padding: 8, borderRadius: 4, overflowX: 'auto' }}>{d.response}</pre></>}
+        {Array.isArray(d.errors) && d.errors.length > 0 && (
+          <>
+            <h3>에러</h3>
+            <ul>{d.errors.map((e, i) => (
+              <li key={i}><code>{e.code}</code> {e.desc || e.description || ''}</li>
+            ))}</ul>
+          </>
+        )}
+        {d.idempotencyKey && <p>Idempotency-Key: <code>{d.idempotencyKey}</code></p>}
+        {d.notes && <p style={{ color: '#7d8590' }}>{d.notes}</p>}
+      </div>
+    );
+  }
+
+  if (slide.type === 'acceptance-criteria') {
+    const criteria = d.criteria || [];
+    return (
+      <div className="doc-section">
+        <h2><span className="idx">{String(index).padStart(2, '0')}</span>{d.title}</h2>
+        <div className="sub">{sectionTag}</div>
+        {d.userStory && (
+          <blockquote style={{ borderLeft: '3px solid var(--accent)', paddingLeft: 12, color: 'var(--text-2)', fontStyle: 'italic' }}>
+            {d.userStory}
+          </blockquote>
+        )}
+        {criteria.map((c, i) => (
+          <div key={i} style={{ margin: '10px 0', padding: '8px 12px', background: 'rgba(76,194,255,0.04)', borderLeft: '2px solid var(--accent)', borderRadius: 3 }}>
+            <p style={{ margin: '0 0 4px', fontWeight: 700 }}>{i + 1}. {c.scenario || c.title || ''}</p>
+            {c.given && <p style={{ margin: '2px 0' }}><strong>Given</strong> {c.given}</p>}
+            {c.when && <p style={{ margin: '2px 0' }}><strong>When</strong> {c.when}</p>}
+            {c.then && <p style={{ margin: '2px 0' }}><strong>Then</strong> {c.then}</p>}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (slide.type === 'telemetry') {
+    const events = d.events || [];
+    return (
+      <div className="doc-section">
+        <h2><span className="idx">{String(index).padStart(2, '0')}</span>{d.title}</h2>
+        <div className="sub">{sectionTag}</div>
+        {events.length > 0 && (
+          <table>
+            <thead><tr><th>이벤트</th><th>트리거</th><th>속성</th></tr></thead>
+            <tbody>{events.map((e, i) => (
+              <tr key={i}>
+                <td><code>{e.name}</code></td>
+                <td>{e.trigger || ''}</td>
+                <td>{Array.isArray(e.properties) ? e.properties.join(', ') : (e.properties || '')}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        )}
+        {Array.isArray(d.funnels) && d.funnels.length > 0 && (
+          <>
+            <h3>퍼널</h3>
+            <ol>{d.funnels.map((f, i) => (
+              <li key={i}><strong>{f.name}</strong>{f.steps ? ` — ${(f.steps || []).join(' → ')}` : ''}</li>
+            ))}</ol>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  if (slide.type === 'risk-register') {
+    const risks = d.risks || [];
+    return (
+      <div className="doc-section">
+        <h2><span className="idx">{String(index).padStart(2, '0')}</span>{d.title}</h2>
+        <div className="sub">{sectionTag}</div>
+        <table>
+          <thead><tr><th>위험</th><th>영향</th><th>발생률</th><th>완화</th></tr></thead>
+          <tbody>{risks.map((r, i) => (
+            <tr key={i}>
+              <td><strong>{r.name || r.title}</strong>{r.desc ? <><br /><span style={{ color: '#7d8590', fontSize: 12 }}>{r.desc}</span></> : null}</td>
+              <td>{r.impact || ''}</td>
+              <td>{r.likelihood || r.probability || ''}</td>
+              <td>{r.mitigation || ''}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </div>
+    );
+  }
+
+  if (slide.type === 'roadmap') {
+    const phases = d.phases || [];
+    return (
+      <div className="doc-section">
+        <h2><span className="idx">{String(index).padStart(2, '0')}</span>{d.title}</h2>
+        <div className="sub">{sectionTag}</div>
+        {phases.map((p, i) => (
+          <div key={i} style={{ margin: '12px 0', padding: '10px 14px', borderLeft: '3px solid var(--accent)', background: 'rgba(76,194,255,0.04)' }}>
+            <h3 style={{ margin: '0 0 6px' }}>
+              {p.name}
+              <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--accent)', fontFamily: 'JetBrains Mono, monospace' }}>
+                {p.start || ''} ~ {p.end || ''}
+              </span>
+            </h3>
+            {Array.isArray(p.deliverables) && p.deliverables.length > 0 && (
+              <ul style={{ margin: '4px 0' }}>{p.deliverables.map((d2, j) => <li key={j}>{d2}</li>)}</ul>
+            )}
+            {p.note && <p style={{ margin: '4px 0', color: '#7d8590', fontStyle: 'italic' }}>{p.note}</p>}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   if (slide.type === 'resources') {
+    /* items 는 두 가지 형태 모두 지원:
+     *  - string: 그대로 표시
+     *  - { name, spec?, example? }: name 굵게 + spec/example 인라인 */
+    const renderResourceItem = (it, ii) => {
+      if (typeof it === 'string') return <li key={ii}>{it}</li>;
+      if (it && typeof it === 'object') {
+        const parts = [];
+        if (it.name) parts.push(<strong key="n">{it.name}</strong>);
+        if (it.spec) parts.push(<span key="s" style={{ color: 'var(--text-3)', fontFamily: 'JetBrains Mono', fontSize: 12, marginLeft: 6 }}>{it.spec}</span>);
+        if (it.example) parts.push(<span key="e" style={{ color: 'var(--text-4)', marginLeft: 8 }}>예: {it.example}</span>);
+        return <li key={ii}>{parts.length ? parts : <em style={{ color: 'var(--text-4)' }}>(빈 항목)</em>}</li>;
+      }
+      return <li key={ii}>{String(it ?? '')}</li>;
+    };
     return (
       <div className="doc-section">
         <h2><span className="idx">{String(index).padStart(2, '0')}</span>{d.title}</h2>
@@ -186,7 +433,8 @@ function DocSection({ slide, index, patch }) {
         {(d.categories || []).map((c, i) => (
           <div key={i}>
             <h3>{c.name} <span style={{color:'var(--accent)', fontFamily:'JetBrains Mono'}}>{c.count}</span></h3>
-            <ul>{(c.items || []).map((it, ii) => <li key={ii}>{it}</li>)}</ul>
+            {c.guideline && <p style={{ color: 'var(--text-3)', fontSize: 13 }}>{c.guideline}</p>}
+            <ul>{(c.items || []).map(renderResourceItem)}</ul>
           </div>
         ))}
       </div>
@@ -725,7 +973,7 @@ async function exportPptx(project, opts) {
         const w = Math.max(0.3, ((end - start) / range) * trackW);
         slide.addText(p.name || '', { x: PAD_X, y: y - 0.05, w: 1.3, h: 0.3, fontSize: 11, fontFace: FONT, bold: true, color: TEXT, align: 'right' });
         slide.addShape('roundRect', { x: trackX, y, w: trackW, h: 0.25, fill: { color: 'F0F4F8' }, line: { color: 'F0F4F8' }, rectRadius: 0.12 });
-        slide.addShape('roundRect', { x: left, y, w, h: 0.25, fill: { color: ACCENT }, line: { color: ACCENT_2 || '2B88C4' }, rectRadius: 0.12 });
+        slide.addShape('roundRect', { x: left, y, w, h: 0.25, fill: { color: ACCENT }, line: { color: '2B88C4' }, rectRadius: 0.12 });
         slide.addText(`${p.start || ''} – ${p.end || ''}`, { x: left + 0.1, y, w: w - 0.2, h: 0.25, fontSize: 8.5, fontFace: MONO, color: '061018', valign: 'middle', bold: true });
         y += 0.4;
         if (y > 4.5) break;

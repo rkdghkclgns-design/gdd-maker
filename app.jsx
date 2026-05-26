@@ -1236,6 +1236,66 @@ function ThumbScaler({ slide, index, total }) {
 }
 
 /* === Add slide menu === */
+/**
+ * ConceptGenerationOverlay — 컨셉 만들기 클릭 후 AI 생성 진행 상황 가이드.
+ *
+ * 30~60초 걸리는 AI 호출 + 이미지 생성 동안 사용자에게 다음을 보여줌:
+ *  - 현재 단계 (prompt → ai-call → parsing → image → validating → done)
+ *  - 진행 % progress bar
+ *  - 단계별 자세한 메시지
+ *  - 회전하는 spinner + 친근한 안내문
+ *
+ * full-screen modal: 화면 중앙 카드 + 어두운 backdrop. 닫기 버튼 X (생성 종료까지 자동 dismiss).
+ */
+function ConceptGenerationOverlay({ progress }) {
+  const STAGE_LABELS = {
+    start: '준비 중',
+    prompt: '프롬프트 작성',
+    'ai-call': 'AI 컨셉 작성',
+    parsing: '응답 파싱',
+    image: '컨셉 아트 생성',
+    validating: '검증 / 자동 보정',
+    done: '완료',
+    demo: '데모 데이터',
+  };
+  const ALL_STAGES = ['prompt', 'ai-call', 'parsing', 'image', 'validating', 'done'];
+  const currentIdx = ALL_STAGES.indexOf(progress.stage);
+  const pct = Math.max(0, Math.min(100, progress.percent || 0));
+
+  return (
+    <div className="concept-gen-overlay">
+      <div className="concept-gen-card">
+        <div className="concept-gen-icon">
+          <div className="concept-gen-spinner">✦</div>
+        </div>
+        <h2 className="concept-gen-title">AI 가 컨셉을 생성하고 있어요</h2>
+        <p className="concept-gen-message">{progress.message || 'AI 호출 중…'}</p>
+
+        <div className="concept-gen-progress-track">
+          <div className="concept-gen-progress-fill" style={{ width: pct + '%' }}></div>
+        </div>
+        <div className="concept-gen-percent">{pct}%</div>
+
+        <ol className="concept-gen-steps">
+          {ALL_STAGES.map((s, i) => {
+            const state = i < currentIdx ? 'done' : (i === currentIdx ? 'active' : 'pending');
+            return (
+              <li key={s} className={'concept-gen-step ' + state}>
+                <span className="step-dot">{state === 'done' ? '✓' : (state === 'active' ? '▶' : '·')}</span>
+                <span className="step-label">{STAGE_LABELS[s] || s}</span>
+              </li>
+            );
+          })}
+        </ol>
+
+        <div className="concept-gen-hint">
+          💡 1-Page 컨셉 + 5색 팔레트 + 컨셉 아트까지 자동 생성됩니다. 보통 20~60초 소요.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AddSlideMenu({ onAdd, onClose }) {
   const types = [
     // 개요/구조
@@ -1382,6 +1442,8 @@ function App({ onStateChange }) {
   const [scale, setScale] = useState(0.6);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  /* 컨셉 생성 진행 상황 (null = 진행 중 아님). { stage, message, percent } */
+  const [conceptGenProgress, setConceptGenProgress] = useState(null);
   const [generationMode, setGenerationMode] = useState('ai');
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [showBrief, setShowBrief] = useState(false);
@@ -1946,18 +2008,24 @@ function App({ onStateChange }) {
     setShowBrief(false);
     setGenerationMode(mode);
     setIsGenerating(true);
+    // 진행 상황 가이드 UX — 사용자가 30~60초 기다리는 동안 단계별 진행 시각화
+    setConceptGenProgress({ stage: 'start', message: '준비 중…', percent: 0 });
     try {
       let result;
       const command = idea || '랜덤 게임 컨셉';
       if (mode === 'demo') {
+        setConceptGenProgress({ stage: 'demo', message: '데모 컨셉 준비 중…', percent: 50 });
         await new Promise(r => setTimeout(r, 600));
         result = {
           ...window.CONCEPT_BLANK(),
           title: '랜덤 컨셉',
           subtitle: idea ? idea.slice(0, 60) : '한 줄 부제',
         };
+        setConceptGenProgress({ stage: 'done', message: '완료', percent: 100 });
       } else {
-        result = await aiGenerateConcept(command, attachments);
+        result = await aiGenerateConcept(command, attachments, {
+          onProgress: (p) => setConceptGenProgress(p),
+        });
       }
       // Apply user-provided team/author/theme overrides
       if (team) result.badge = team;
@@ -1987,6 +2055,8 @@ function App({ onStateChange }) {
       toast('컨셉 생성 실패: ' + (e.message || e), 'err');
     } finally {
       setIsGenerating(false);
+      // 살짝 지연 후 overlay 제거 — 100% bar 가 사용자에게 보이도록
+      setTimeout(() => setConceptGenProgress(null), 600);
     }
   };
 
@@ -2996,6 +3066,10 @@ function App({ onStateChange }) {
         mode={briefMode}
         prefill={briefPrefill}
       />}
+      {/* 컨셉 생성 진행 상황 가이드 — AI 호출 30~60초 동안 사용자에게 단계별 진행 시각화 */}
+      {conceptGenProgress && (
+        <ConceptGenerationOverlay progress={conceptGenProgress} />
+      )}
 
       <TweaksPanel>
         <TweakSection title="테마">

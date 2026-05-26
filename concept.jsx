@@ -1021,8 +1021,20 @@ ${imageNote}
 - "TBD/추후/협의" 금지.`;
 }
 
-async function aiGenerateConcept(command, attachments) {
+/**
+ * aiGenerateConcept(command, attachments, opts?)
+ *
+ * opts.onProgress({ stage, message, percent }) — 진행 상황 콜백.
+ *  stages: 'prompt' → 'ai-call' → 'parsing' → 'image' → 'validating' → 'done'
+ */
+async function aiGenerateConcept(command, attachments, opts) {
+  opts = opts || {};
+  const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : () => {};
+
+  onProgress({ stage: 'prompt', message: '프롬프트 준비 중…', percent: 5 });
   const prompt = buildConceptPrompt(command, attachments);
+
+  onProgress({ stage: 'ai-call', message: 'AI 가 컨셉을 작성 중…', percent: 15 });
   let raw;
   try {
     const images = (attachments || []).filter(a => a.kind === 'image');
@@ -1045,6 +1057,7 @@ async function aiGenerateConcept(command, attachments) {
     throw new Error('Gemini 호출 실패');
   }
 
+  onProgress({ stage: 'parsing', message: 'AI 응답 파싱 중…', percent: 55 });
   let parsed;
   try { parsed = window.parseAiJson(raw); } catch (e) { throw new Error(e.message || 'JSON 복구 실패'); }
 
@@ -1054,6 +1067,7 @@ async function aiGenerateConcept(command, attachments) {
   const visualPalette = parsed.palette || (CONCEPT_BLANK().palette);
   let imageSrc = null;
   if (visualPrompt) {
+    onProgress({ stage: 'image', message: '🍌 nano-banana 가 컨셉 아트 생성 중… (보통 10~20초)', percent: 65 });
     try {
       // 팔레트 전달 → 이미지가 컨셉 색상에 맞춰 생성됨
       imageSrc = await window.gemini.generateImage(visualPrompt, { palette: visualPalette });
@@ -1082,14 +1096,17 @@ async function aiGenerateConcept(command, attachments) {
       linkedGddId: null,
     })),
   };
+  onProgress({ stage: 'validating', message: '스키마 검증 + 자동 보정 중…', percent: 92 });
   // Schema 검증 + 자동 보정
   if (window.validateConcept) {
     const r = window.validateConcept(conceptResult);
     if (r.fixes.length && window.gddToast) {
       try { window.gddToast(`컨셉 응답 ${r.fixes.length}개 항목 자동 보정`, 'ok'); } catch {}
     }
+    onProgress({ stage: 'done', message: '완료', percent: 100 });
     return r.concept;
   }
+  onProgress({ stage: 'done', message: '완료', percent: 100 });
   return conceptResult;
 }
 

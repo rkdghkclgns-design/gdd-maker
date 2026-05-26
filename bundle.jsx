@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-26T05:09:11.278Z
+   생성 시각: 2026-05-26T07:16:49.140Z
 */
 
 // ============================================================
@@ -9708,15 +9708,37 @@ async function aiGenerateGddTwoStage(command, existingTitles, attachments, conte
     } catch (e) { /* swallow */ }
   }
 
-  if (onChunk) onChunk({ kind: 'done', project: { ...projectMeta, slides: placeholderSlides } });
+  /* ---- Stage 6: 자동 슬라이드 분할 — 오버플로 슬라이드를 N장으로 강제 분할 ----
+   * AI 가 한 슬라이드에 너무 많은 항목(rows/cards/blocks/transitions 등) 을
+   * 채워 1280×720 frame 을 넘기는 경우, slide-splitter 의 임계값으로
+   * 자동 분할. 이 단계는 마지막에 수행 — 이미지 src/critique 결과를
+   * 모두 반영한 뒤 분할되어야 후속 슬라이드들이 데이터 손실 없이 분리된다.
+   */
+  let finalSlides = placeholderSlides;
+  try {
+    if (window.gddSlideSplitter && window.gddSlideSplitter.splitAllOverflowing) {
+      const before = finalSlides.length;
+      finalSlides = window.gddSlideSplitter.splitAllOverflowing(finalSlides);
+      const added = finalSlides.length - before;
+      if (added > 0 && onProgress) {
+        onProgress({ stage: 'split', message: `오버플로 슬라이드 ${added}장 자동 분할 완료` });
+      }
+    }
+  } catch (e) { /* swallow — 분할 실패해도 원본 슬라이드는 그대로 반환 */ }
 
-  return { ...projectMeta, slides: placeholderSlides };
+  if (onChunk) onChunk({ kind: 'done', project: { ...projectMeta, slides: finalSlides } });
+
+  return { ...projectMeta, slides: finalSlides };
 }
 
 /* === 이미지 프롬프트 폴백 합성 ===
- * AI 가 imagePrompt 를 빼먹은 슬라이드를 위해 title/caption/subtitle/team 으로부터
- * 영문 이미지 생성 프롬프트를 합성. 한국어 키워드는 그대로 두되 nano-banana 가
- * 의미를 파악할 수 있게 영문 컨텍스트 키워드 + 스타일 + 16:9 키워드를 덧붙임.
+ * AI 가 imagePrompt 를 빼먹은 슬라이드를 위해 title/caption/subtitle 로부터
+ * 영문 이미지 생성 프롬프트를 합성. nano-banana 가 16:9 widescreen 비율로 정확히
+ * 생성하도록 강한 제약을 prompt 에 명시.
+ *
+ * 핵심: Gemini 2.5 flash image 는 명시적 aspect ratio 파라미터가 없으므로
+ * prompt 에 "widescreen 16:9", "no letterboxing", "fill the frame edge to edge"
+ * 등을 반복 명시해 모델이 정확한 비율로 생성하도록 유도한다.
  */
 function synthesizeImagePrompt(slide, parsedRoot) {
   if (!slide) return '';
@@ -9728,13 +9750,15 @@ function synthesizeImagePrompt(slide, parsedRoot) {
     .join(', ');
   if (!topic) return '';
   const styleByType = {
-    'cover': 'cinematic key art cover, dramatic lighting, ultra-detailed, bold composition, 16:9 aspect ratio',
-    'section-divider': 'atmospheric chapter concept art, moody lighting, dark background with negative space for text, cinematic 16:9',
-    'ui-design': 'clean game UI mockup, dark sci-fi theme, hud elements, high-fidelity wireframe, 16:9 aspect ratio',
-    'image-embed': 'high-detail concept art reference, painterly digital art, cinematic lighting, 16:9 aspect ratio',
+    'cover': 'cinematic key art cover, dramatic lighting, ultra-detailed, bold composition',
+    'section-divider': 'atmospheric chapter concept art, moody lighting, dark background with negative space for text',
+    'ui-design': 'clean game UI mockup, dark sci-fi theme, hud elements, high-fidelity wireframe',
+    'image-embed': 'high-detail concept art reference, painterly digital art, cinematic lighting',
   };
   const style = styleByType[slide.type] || styleByType['image-embed'];
-  return `Game design reference: ${topic}. Style: ${style}, professional game art, vivid colors, high contrast.`;
+  // 비율/프레임 제약 — 핵심 제약을 끝에 배치 (모델이 마지막 지시를 우선시함)
+  const frameConstraint = 'WIDESCREEN 16:9 aspect ratio, fill frame edge to edge, no letterboxing, no borders, no negative space outside subject';
+  return `Game design reference image: ${topic}. Style: ${style}, professional game art, vivid colors, high contrast. ${frameConstraint}.`;
 }
 
 /* === AI generation via window.gemini.complete === */
@@ -10004,12 +10028,20 @@ async function aiEditGdd(currentProject, command, attachments, palette) {
     }
   }
 
-  // 3) 갱신된 project 반환
+  // 3) 자동 슬라이드 분할 — AI 수정 결과로 오버플로된 슬라이드도 분할
+  let finalSlides = slides;
+  try {
+    if (window.gddSlideSplitter && window.gddSlideSplitter.splitAllOverflowing) {
+      finalSlides = window.gddSlideSplitter.splitAllOverflowing(slides);
+    }
+  } catch (_) {}
+
+  // 4) 갱신된 project 반환
   const summary = (parsed.summary && String(parsed.summary).slice(0, 200)) || `${ops.length}개 변경 적용`;
   const updatedProject = {
     ...currentProject,
     ...metaUpdate,
-    slides,
+    slides: finalSlides,
     updatedAt: new Date().toISOString().slice(0, 10),
     history: [
       ...(currentProject.history || []),

@@ -231,7 +231,21 @@
 
     // 팔레트 힌트 자동 주입 (옵션이 있을 때만)
     const paletteHint = buildPaletteHint(options.palette);
-    const finalPrompt = paletteHint ? (prompt + '\n' + paletteHint) : prompt;
+    // 슬라이드용 이미지는 강제로 16:9 widescreen 비율로 생성되도록 추가 지시.
+    // options.aspectRatio === 'square' 또는 'portrait' 면 그대로, 기본은 widescreen.
+    // options.skipAspectHint === true 면 비율 힌트 생략 (이미 prompt 에 포함된 경우).
+    let aspectHint = '';
+    if (!options.skipAspectHint && !/\baspect ratio\b/i.test(prompt)) {
+      const ratio = options.aspectRatio || 'widescreen';
+      if (ratio === 'widescreen' || ratio === '16:9') {
+        aspectHint = '\n\nFRAME: WIDESCREEN 16:9 aspect ratio (1280×720 proportions). Subject fills the frame edge to edge. No letterboxing, no black bars, no white margins, no padding around subject. Composition uses full width and height.';
+      } else if (ratio === 'square') {
+        aspectHint = '\n\nFRAME: 1:1 SQUARE aspect ratio. Subject fills the frame edge to edge.';
+      } else if (ratio === 'portrait') {
+        aspectHint = '\n\nFRAME: 9:16 PORTRAIT aspect ratio. Subject fills the frame top to bottom.';
+      }
+    }
+    const finalPrompt = (paletteHint ? (prompt + '\n' + paletteHint) : prompt) + aspectHint;
 
     const body = {
       contents: [{ role: 'user', parts: [{ text: finalPrompt }] }],

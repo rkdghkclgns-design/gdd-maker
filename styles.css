@@ -3447,7 +3447,13 @@ input, textarea, select { font-family: inherit; color: inherit; }
     radial-gradient(1200px 600px at 80% -10%, rgba(63, 185, 80, 0.08), transparent 50%),
     radial-gradient(900px 600px at 10% 110%, rgba(245, 217, 79, 0.04), transparent 50%),
     var(--bg);
-  padding: 32px 40px 60px;
+  /* padding 제거 — toolbar 가 canvas 최상단(= TopBar 바로 아래)에 정확히 붙도록.
+     하단 여유 공간만 padding-bottom 으로 유지. 좌우 여백은 .concept-page 에서 처리. */
+  padding: 0 0 60px;
+}
+/* toolbar 바로 아래 컨텐츠 영역에 좌우 + 상단 여백 부여 — 기존 32px/40px padding 을 여기로 이동 */
+.concept-canvas-content {
+  padding: 32px 40px 0;
 }
 .concept-page {
   min-width: 920px;
@@ -3841,7 +3847,9 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .concept-page [contenteditable=true]:hover { box-shadow: 0 0 0 1px rgba(136, 223, 176, 0.4); }
 .concept-page [contenteditable=true]:focus { box-shadow: 0 0 0 2px #88DFB0, 0 0 0 4px rgba(136, 223, 176, 0.2); background: rgba(136, 223, 176, 0.05); }
 
-/* ===== Concept toolbar — 컨셉 캔버스 최상단에 항상 고정 ===== */
+/* ===== Concept toolbar — 컨셉 캔버스 최상단에 항상 고정 =====
+   .concept-canvas 의 padding 을 0 으로 만들었으므로 음수 마진 불필요.
+   toolbar 가 canvas 최상단(= TopBar 바로 아래) 에 정확히 붙음. */
 .concept-toolbar {
   position: sticky;
   top: 0;
@@ -3851,8 +3859,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
   justify-content: space-between;
   gap: 12px;
   padding: 10px 18px;
-  /* 컨셉 캔버스 padding(32px 40px)을 음수 마진으로 깨고 캔버스 끝까지 닿게 */
-  margin: -32px -40px 20px;
+  margin: 0;
   background: #0a0d12;     /* 완전 불투명 — 뒤 콘텐츠 절대 안 비침 */
   border-bottom: 1px solid var(--border-strong, #3a414d);
   box-shadow:
@@ -3935,10 +3942,10 @@ input, textarea, select { font-family: inherit; color: inherit; }
   padding: 14px 20px;
   border-bottom: 1px solid rgba(136, 223, 176, 0.18);
   /* 완전 불투명 배경 + 섹션 내 스크롤 고정.
-   * top 은 concept-toolbar 의 실제 높이 + 섹션 카드 사이 갭(16px).
+   * top 은 .concept-toolbar 의 실제 높이(약 51px).
    * border-radius 는 카드와 정확히 일치(13px = 카드 14px - 1px border)하여 모서리 삐져나옴 방지. */
   position: sticky;
-  top: 48px;
+  top: 51px;
   z-index: 20;
   background: #142822;
   border-radius: 13px 13px 0 0;

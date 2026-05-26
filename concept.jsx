@@ -282,7 +282,7 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, isG
 
   return (
     <div className="concept-canvas">
-      {/* Top toolbar */}
+      {/* Top toolbar — canvas 최상단(= TopBar 바로 아래)에 sticky */}
       <div className="concept-toolbar">
         <div className="ct-left">
           <span className="ct-label">테마</span>
@@ -314,7 +314,8 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, isG
         </div>
       </div>
 
-      {/* Concept page */}
+      {/* Concept page — toolbar 아래 컨텐츠 영역, 좌우/상단 여백을 이 wrapper 에 부여 */}
+      <div className="concept-canvas-content">
       <div className="concept-page" ref={pageRef} style={themeStyle}>
         {/* Header (always visible) */}
         <div className="concept-head">
@@ -625,6 +626,7 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, isG
           </div>
         </div>
       </div>
+      </div>{/* /concept-canvas-content */}
     </div>
   );
 }

@@ -1639,9 +1639,21 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .ui-mockup .mock-canvas .placeholder { padding: 16px 24px; border: 1px dashed #3a414d; border-radius: 6px; text-align: center; }
 .ui-mockup .mock-canvas .placeholder .lbl { color: var(--accent); font-size: 11px; letter-spacing: 0.08em; }
 .ui-mockup .mock-canvas .placeholder .desc { color: #b1bac4; margin-top: 6px; font-family: 'Pretendard', sans-serif; font-size: 13px; }
-.ui-mockup .mock-canvas .ui-mockup-img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 8px; }
+.ui-mockup .mock-canvas .ui-mockup-img { width: 100%; height: 100%; object-fit: contain; display: block; border-radius: 8px; }
 
-/* 콜아웃 넘버 배지 (이미지 위 오버레이) */
+/* === pan/zoom transform 그룹 ===
+   이미지와 콜아웃을 함께 묶어 transform 적용 → 줌/이동 시 콜아웃이 이미지에 부착됨. */
+.ui-mockup .mock-canvas .ui-mockup-transform {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  user-select: none;
+}
+.ui-mockup .mock-canvas.has-image { cursor: grab; user-select: none; }
+.ui-mockup .mock-canvas.has-image.dragging { cursor: grabbing; }
+
+/* 콜아웃 넘버 배지 (이미지 위 오버레이) — transform 그룹 안에 위치 */
 .ui-mockup .mock-canvas .ui-callout-badge {
   position: absolute;
   width: 28px;
@@ -1656,21 +1668,70 @@ input, textarea, select { font-family: inherit; color: inherit; }
   font-weight: 800;
   font-size: 13px;
   line-height: 1;
-  transform: translate(-50%, -50%);
+  /* JSX 의 inline style 이 translate(-50%, -50%) scale(1/scale) 로 덮어씀 */
   box-shadow:
     0 0 0 2px rgba(0, 0, 0, 0.35),
     0 2px 6px rgba(0, 0, 0, 0.45);
   pointer-events: auto;
   z-index: 2;
   cursor: default;
-  transition: transform 0.12s, box-shadow 0.12s;
+  transition: box-shadow 0.12s;
 }
 .ui-mockup .mock-canvas .ui-callout-badge:hover {
-  transform: translate(-50%, -50%) scale(1.15);
   box-shadow:
     0 0 0 2px rgba(0, 0, 0, 0.35),
     0 0 12px var(--accent, #4cc2ff),
     0 4px 10px rgba(0, 0, 0, 0.55);
+}
+
+/* zoom 컨트롤 바 — mock-canvas 직속, transform 영향 없음 */
+.ui-design-transform-bar {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: rgba(13, 17, 23, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  z-index: 10;
+  user-select: none;
+  pointer-events: auto;
+}
+.ui-design-transform-bar button {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #e6edf3;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 9px;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+}
+.ui-design-transform-bar button:hover {
+  background: rgba(76, 194, 255, 0.15);
+  border-color: var(--accent, #4cc2ff);
+  color: var(--accent, #4cc2ff);
+}
+.ui-design-transform-bar .zoom-label {
+  color: #b1bac4;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  min-width: 44px;
+  text-align: center;
+}
+.ui-design-transform-bar .sep {
+  display: inline-block;
+  width: 1px;
+  height: 14px;
+  background: rgba(255, 255, 255, 0.15);
+  margin: 0 4px;
 }
 
 .ui-mockup-grid {

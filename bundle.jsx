@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-26T22:14:05.809Z
+   생성 시각: 2026-05-26T22:18:41.246Z
 */
 
 // ============================================================
@@ -1449,8 +1449,61 @@ function FlowSlide({ data, patch, page, totalPages }) {
 /* ------ 10. UI design ------ */
 function UiDesignSlide({ data, patch, page, totalPages }) {
   const fileRef = React.useRef(null);
+  const canvasRef = React.useRef(null);
   const [generating, setGenerating] = React.useState(false);
   const [promptDraft, setPromptDraft] = React.useState('');
+  const [dragging, setDragging] = React.useState(false);
+  /* 이미지 transform — scale + 평행이동. data.imageTransform 으로 persist.
+     callout badge 가 이미지에 부착되어 함께 움직이도록 같은 transform 적용. */
+  const transform = data.imageTransform || { scale: 1, x: 0, y: 0 };
+
+  // 휠 zoom — passive:false 로 부착해서 페이지 스크롤 가로채기
+  React.useEffect(() => {
+    const el = canvasRef.current;
+    if (!el || !data.imageSrc) return;
+    const onWheel = (e) => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.08 : 0.92;
+      const cur = data.imageTransform || { scale: 1, x: 0, y: 0 };
+      const newScale = Math.max(0.2, Math.min(8, cur.scale * factor));
+      patch({ imageTransform: { ...cur, scale: newScale } });
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [data.imageSrc, data.imageTransform, patch]);
+
+  // 드래그 pan — window 단위 리스너로 mouse cursor 가 영역 밖으로 나가도 추적 유지
+  const startDrag = (e) => {
+    if (!data.imageSrc) return;
+    // 콜아웃 배지 위에서 드래그 시작하면 배지 hover 동작 우선 (배지가 stopPropagation 처리)
+    if (e.target && e.target.closest && e.target.closest('.ui-callout-badge')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(true);
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const start = { ...transform };
+    const onMove = (ev) => {
+      patch({ imageTransform: { scale: start.scale, x: start.x + (ev.clientX - startX), y: start.y + (ev.clientY - startY) } });
+    };
+    const onUp = () => {
+      setDragging(false);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  const resetTransform = (e) => {
+    e.stopPropagation();
+    patch({ imageTransform: { scale: 1, x: 0, y: 0 } });
+  };
+  const zoomBtn = (factor) => (e) => {
+    e.stopPropagation();
+    const cur = data.imageTransform || { scale: 1, x: 0, y: 0 };
+    patch({ imageTransform: { ...cur, scale: Math.max(0.2, Math.min(8, cur.scale * factor)) } });
+  };
 
   const updateCallout = (i, key, val) => {
     const cs = [...(data.callouts || [])];
@@ -1558,7 +1611,12 @@ function UiDesignSlide({ data, patch, page, totalPages }) {
              onDragOver={(e) => e.preventDefault()}
              onDrop={onDrop}>
           <div className="mock-bar"><span></span><span></span><span></span></div>
-          <div className="mock-canvas">
+          <div
+            className={'mock-canvas' + (data.imageSrc ? ' has-image' : '') + (dragging ? ' dragging' : '')}
+            ref={canvasRef}
+            onMouseDown={data.imageSrc ? startDrag : undefined}
+            style={data.imageSrc ? { cursor: dragging ? 'grabbing' : 'grab' } : undefined}
+          >
             {generating ? (
               <div className="placeholder" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
                 <div className="banana-spin">🍌</div>
@@ -1566,7 +1624,35 @@ function UiDesignSlide({ data, patch, page, totalPages }) {
                 <div className="desc">nano-banana 로 UI 목업 생성 중</div>
               </div>
             ) : data.imageSrc ? (
-              <img src={data.imageSrc} alt="UI mockup" className="ui-mockup-img" />
+              /* 이미지 + 콜아웃을 같은 transform 그룹에 묶어 함께 pan/zoom */
+              <div
+                className="ui-mockup-transform"
+                style={{
+                  transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
+                  transformOrigin: 'center center',
+                  transition: dragging ? 'none' : 'transform 0.12s ease-out',
+                  willChange: 'transform',
+                }}
+              >
+                <img src={data.imageSrc} alt="UI mockup" className="ui-mockup-img" draggable={false} />
+                {/* 콜아웃 넘버링 배지 — 이미지와 함께 transform 됨 (정합성 유지) */}
+                {rawCallouts.map((c, originalIdx) => (
+                  <div
+                    key={originalIdx}
+                    className="ui-callout-badge"
+                    style={{
+                      left: `${rawPositions[originalIdx].x}%`,
+                      top: `${rawPositions[originalIdx].y}%`,
+                      /* 배지 크기는 scale 의 역수로 보정 → 줌해도 배지는 일정 크기 유지 */
+                      transform: `translate(-50%, -50%) scale(${1 / transform.scale})`,
+                    }}
+                    title={c.name}
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    {displayNumByOriginal.get(originalIdx)}
+                  </div>
+                ))}
+              </div>
             ) : (
               <>
                 <div className="ui-mockup-grid"></div>
@@ -1590,17 +1676,16 @@ function UiDesignSlide({ data, patch, page, totalPages }) {
                 </div>
               </>
             )}
-            {/* 콜아웃 넘버링 배지 — 시각 위치 기준 정렬된 번호 (y, x) */}
-            {!generating && rawCallouts.map((c, originalIdx) => (
-              <div
-                key={originalIdx}
-                className="ui-callout-badge"
-                style={{ left: `${rawPositions[originalIdx].x}%`, top: `${rawPositions[originalIdx].y}%` }}
-                title={c.name}
-              >
-                {displayNumByOriginal.get(originalIdx)}
+            {/* 줌/이동 컨트롤 바 — 이미지 있을 때만 표시. transform 영향 받지 않게 mock-canvas 직속. */}
+            {!generating && data.imageSrc && (
+              <div className="image-embed-transform-bar ui-design-transform-bar" onMouseDown={(e) => e.stopPropagation()}>
+                <button onClick={zoomBtn(0.85)} title="축소 (휠 ↓)">−</button>
+                <span className="zoom-label">{Math.round(transform.scale * 100)}%</span>
+                <button onClick={zoomBtn(1.15)} title="확대 (휠 ↑)">+</button>
+                <span className="sep"></span>
+                <button onClick={resetTransform} title="위치·크기 초기화">↻ 초기화</button>
               </div>
-            ))}
+            )}
           </div>
         </div>
         <div className="ui-callouts">

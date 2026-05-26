@@ -2380,9 +2380,23 @@ function App({ onStateChange }) {
     setCurrentIdx(0);
   }, [selection.id, selection.type]);
 
-  if (!project && !concept) {
-    return <div style={{ padding: 40 }}>선택된 항목이 없습니다. 좌측에서 컨셉이나 기획서를 선택하세요.</div>;
-  }
+  /* === 빈 상태 처리 ===
+   * - 컨셉/프로젝트가 하나도 없으면: 첫 로드 시 자동으로 컨셉 브리프 오픈 (한 번만)
+   * - 데이터는 있는데 선택만 없는 경우: 환영 CTA 화면 표시
+   * - 어느 경우든 TopBar/Sidebar/Brief 모달 등 chrome 은 메인 렌더 경로에서 처리되도록
+   *   project/concept 가 없어도 일찍 return 하지 않고 fallback 변수 (emptyMode) 로 분기
+   */
+  const hasAnyData = (state.concepts?.length || 0) + (state.projects?.length || 0) > 0;
+  const emptyMode = !project && !concept; // true 면 canvas 영역만 환영 화면으로 교체
+
+  // 데이터가 전혀 없는 첫 진입 시 한 번만 컨셉 브리프 자동 오픈
+  useEffect(() => {
+    if (!hasAnyData && !showBrief && !window.__gddAutoBriefOpened) {
+      window.__gddAutoBriefOpened = true;
+      const t = setTimeout(() => { openBriefForConcept(); }, 250);
+      return () => clearTimeout(t);
+    }
+  }, [hasAnyData, showBrief]);
 
   return (
     <div className="app">
@@ -2460,7 +2474,33 @@ function App({ onStateChange }) {
       />
 
       <div className="canvas">
-        {selection.type === 'concept' ? (
+        {emptyMode ? (
+          /* === 빈 상태: 환영 화면 + 새 컨셉 만들기 CTA === */
+          <div className="empty-canvas">
+            <div className="empty-canvas-inner">
+              <div className="empty-canvas-icon">✦</div>
+              <h1 className="empty-canvas-title">
+                {hasAnyData ? '항목이 선택되지 않았습니다' : 'GDD 메이커에 오신 것을 환영합니다'}
+              </h1>
+              <p className="empty-canvas-desc">
+                {hasAnyData
+                  ? '좌측에서 컨셉이나 기획서를 선택하거나, 아래 버튼으로 새 컨셉을 만들 수 있습니다.'
+                  : '게임 아이디어로 시작해 보세요. AI 가 1-Page 컨셉과 필요한 세부 기획서 목록까지 자동으로 만들어 드립니다.'}
+              </p>
+              <div className="empty-canvas-actions">
+                <button className="btn primary lg" onClick={openBriefForConcept}>
+                  ✦ 새 컨셉 만들기
+                </button>
+                <button className="btn ghost" onClick={newProject}>
+                  + 빈 기획서로 시작
+                </button>
+              </div>
+              <div className="empty-canvas-hint">
+                <kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd> 로 명령 팔레트도 열 수 있습니다.
+              </div>
+            </div>
+          </div>
+        ) : selection.type === 'concept' ? (
           <div className="canvas-main">
             <ConceptView
               concept={concept}

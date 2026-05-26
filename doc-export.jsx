@@ -520,6 +520,27 @@ function blobToDataUrl(blob) {
   });
 }
 
+/** 엄격한 data:image URL 검증.
+ *  PptxGenJS 가 손상된 base64 / 알 수 없는 MIME 을 받으면 OOXML 무결성이 깨져 PowerPoint 가 복구를 요구.
+ *  허용 MIME: png/jpeg/jpg/gif/webp/bmp. 그 외는 변환 후 null 반환.
+ *  base64 길이가 너무 짧으면(<100) 비정상 — 건너뜀.
+ */
+function isValidImageDataUrl(s) {
+  if (!s || typeof s !== 'string') return false;
+  // data:image/{ext};base64,{base64}
+  const m = s.match(/^data:image\/(png|jpe?g|gif|webp|bmp);base64,([A-Za-z0-9+/=\s]+)$/);
+  if (!m) return false;
+  const b64 = (m[2] || '').replace(/\s+/g, '');
+  if (b64.length < 100) return false; // 1×1 픽셀도 100 글자 넘음
+  return true;
+}
+
+/** 좌표/크기 수치 정상화 — NaN/Infinity/음수 차단. */
+function safeNum(v, fallback) {
+  if (typeof v !== 'number' || !isFinite(v)) return fallback;
+  return v;
+}
+
 /**
  * 프로젝트의 모든 슬라이드 imageSrc 를 data URL 로 변환.
  * 같은 src 가 여러 슬라이드에서 사용돼도 1번만 fetch 하고 결과 캐시.
@@ -647,17 +668,20 @@ async function exportPptx(project, opts) {
     });
   };
 
+  // 슬라이드 단위 try/catch — 한 슬라이드의 잘못된 데이터가 전체 OOXML 무결성을 깨지 않도록.
+  // 잘못된 슬라이드는 에러 메시지 한 줄만 표시하고 다음으로 진행.
   for (let i = 0; i < slides.length; i++) {
-    const s = slides[i];
+    const s = slides[i] || {};
     const d = s.data || {};
     const page = i + 1;
     const slide = pptx.addSlide();
     slide.background = { color: BG };
+    try {
 
     if (s.type === 'cover') {
       slide.background = { color: '0A0D12' };
       // 배경 이미지 + 어두운 오버레이 (AI 생성된 표지 이미지)
-      if (d.imageSrc && typeof d.imageSrc === 'string' && d.imageSrc.startsWith('data:image/')) {
+      if (isValidImageDataUrl(d.imageSrc)) {
         slide.addImage({ data: d.imageSrc, x: 0, y: 0, w: W, h: H, sizing: { type: 'cover', w: W, h: H } });
         slide.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: '0A0D12', transparency: 35 }, line: { color: '0A0D12', width: 0 } });
       }
@@ -676,7 +700,7 @@ async function exportPptx(project, opts) {
     if (s.type === 'section-divider') {
       slide.background = { color: '0A0D12' };
       // 배경 컨셉 아트 (AI 생성)
-      if (d.imageSrc && typeof d.imageSrc === 'string' && d.imageSrc.startsWith('data:image/')) {
+      if (isValidImageDataUrl(d.imageSrc)) {
         slide.addImage({ data: d.imageSrc, x: 0, y: 0, w: W, h: H, sizing: { type: 'cover', w: W, h: H } });
         slide.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: '0A0D12', transparency: 25 }, line: { color: '0A0D12', width: 0 } });
       }
@@ -895,7 +919,7 @@ async function exportPptx(project, opts) {
       // 좌측: UI 시안 박스 (실제 이미지 또는 placeholder), 우측: 콜아웃 리스트
       const imgX = PAD_X, imgY = 1.6, imgW = 6.5, imgH = 4.6;
       slide.addShape('roundRect', { x: imgX, y: imgY, w: imgW, h: imgH, fill: { color: '0A0D12' }, line: { color: '0A0D12' }, rectRadius: 0.1 });
-      const hasImage = d.imageSrc && typeof d.imageSrc === 'string' && d.imageSrc.startsWith('data:image/');
+      const hasImage = isValidImageDataUrl(d.imageSrc);
       if (hasImage) {
         // 실제 UI 디자인 이미지 inline 삽입 (contain 으로 비율 유지)
         slide.addImage({ data: d.imageSrc, x: imgX + 0.05, y: imgY + 0.05, w: imgW - 0.1, h: imgH - 0.1, sizing: { type: 'contain', w: imgW - 0.1, h: imgH - 0.1 } });
@@ -909,12 +933,13 @@ async function exportPptx(project, opts) {
         .sort((a, b) => Math.abs(a.y - b.y) > 8 ? a.y - b.y : a.x - b.x)
         .map(s => s.c);
       // 이미지가 있다면 이미지 위에 배지 오버레이 (퍼센트 좌표 → inch 변환)
+      // — NaN/Infinity 차단을 위해 safeNum 으로 모든 좌표 정상화. OOXML 에 NaN 이 들어가면 파일 손상.
       if (hasImage) {
         callouts.forEach((c, idx) => {
-          const cx = typeof c.x === 'number' ? c.x : 50;
-          const cy = typeof c.y === 'number' ? c.y : 50;
-          const badgeX = imgX + (cx / 100) * imgW - 0.18;
-          const badgeY = imgY + (cy / 100) * imgH - 0.18;
+          const cx = Math.max(0, Math.min(100, safeNum(c && c.x, 50)));
+          const cy = Math.max(0, Math.min(100, safeNum(c && c.y, 50)));
+          const badgeX = safeNum(imgX + (cx / 100) * imgW - 0.18, imgX);
+          const badgeY = safeNum(imgY + (cy / 100) * imgH - 0.18, imgY);
           slide.addShape('ellipse', { x: badgeX, y: badgeY, w: 0.36, h: 0.36, fill: { color: ACCENT }, line: { color: 'FFFFFF', width: 1.5 } });
           slide.addText(String(idx + 1), { x: badgeX, y: badgeY, w: 0.36, h: 0.36, fontSize: 11, bold: true, fontFace: MONO, color: '061018', align: 'center', valign: 'middle' });
         });
@@ -1141,7 +1166,7 @@ async function exportPptx(project, opts) {
       }
       const imgY = cap ? 2.0 : 1.7;
       const imgH = H - imgY - 0.7;
-      if (d.imageSrc && typeof d.imageSrc === 'string' && d.imageSrc.startsWith('data:image/')) {
+      if (isValidImageDataUrl(d.imageSrc)) {
         slide.addImage({ data: d.imageSrc, x: PAD_X, y: imgY, w: W - 2 * PAD_X, h: imgH, sizing: { type: 'contain', w: W - 2 * PAD_X, h: imgH } });
       } else {
         slide.addShape('rect', { x: PAD_X, y: imgY, w: W - 2 * PAD_X, h: imgH, fill: { color: 'F3F5F7' }, line: { color: 'E3E7EB', width: 0.5 } });
@@ -1312,6 +1337,15 @@ async function exportPptx(project, opts) {
     }
 
     addFooter(slide, d.section || '', d.sectionName || SLIDE_LABELS[s.type] || '', page);
+    } catch (slideErr) {
+      // 슬라이드 렌더 도중 오류 — 메시지 한 줄만 표시. 전체 export 는 계속.
+      try {
+        slide.addText(`(슬라이드 #${page} 렌더 오류: ${(slideErr && slideErr.message) || slideErr})`, {
+          x: PAD_X, y: H / 2 - 0.2, w: W - 2 * PAD_X, h: 0.4,
+          fontSize: 11, fontFace: FONT, color: 'D14545', align: 'center',
+        });
+      } catch (_) { /* 마지막 보호 — 진짜 어쩔 수 없음 */ }
+    }
   }
 
   // returnBlob 옵션 ON → Blob 반환 (호출자가 ZIP 패키징/대기열 처리 가능)

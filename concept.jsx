@@ -85,9 +85,40 @@ const CONCEPT_BLANK = () => ({
   snapshots: [],
 });
 
+/* ===== 이미지 리사이즈 유틸 =====
+ * dataURL 입력 → 정사각형 dataURL 출력 (object-fit: cover 의 캔버스 버전).
+ * - 짧은 변 기준으로 중앙 크롭 → size×size 픽셀로 다운샘플
+ * - JPEG 0.85 압축 (PNG 보다 IndexedDB 공간 효율 ↑, 인물/사진 품질 충분)
+ * - 비동기 (Image 디코딩) → Promise 반환
+ */
+function resizeImageToSquare(dataUrl, size = 128) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        // 중앙 크롭 — 원본 짧은 변 기준
+        const srcSize = Math.min(img.naturalWidth, img.naturalHeight);
+        const sx = (img.naturalWidth - srcSize) / 2;
+        const sy = (img.naturalHeight - srcSize) / 2;
+        ctx.drawImage(img, sx, sy, srcSize, srcSize, 0, 0, size, size);
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      } catch (e) { reject(e); }
+    };
+    img.onerror = () => reject(new Error('이미지 디코딩 실패'));
+    img.src = dataUrl;
+  });
+}
+
 /* ===== ConceptView ===== */
 function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, isGenerating, toast }) {
   const fileInputRef = React.useRef(null);
+  const avatarInputRef = React.useRef(null);
   const pageRef = React.useRef(null);
   const [busySection, setBusySection] = React.useState(null);
   const [exporting, setExporting] = React.useState(false);
@@ -338,6 +369,37 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, isG
     patchField('visual', { ...concept.visual, src });
   };
 
+  /* 작성자 아바타 선택 — 동그라미 클릭 시.
+   * - 64x64 square 로 리사이즈 (CSS 가 border-radius 50% + object-fit: cover 로 원형 마스킹)
+   * - 큰 원본 이미지가 IndexedDB 를 차지하지 않도록 캔버스로 미리 축소
+   * - JPEG 0.85 품질로 압축 → 평균 5~15KB
+   * - 결과는 concept.authorAvatar 에 dataURL 로 저장
+   */
+  const onAvatarPick = async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    try {
+      const src = await fileToDataUrl(f);
+      const resized = await resizeImageToSquare(src, 128); // 2x 픽셀 밀도 (HiDPI 대응)
+      patchField('authorAvatar', resized);
+      toast?.('아바타 적용 완료', 'ok');
+    } catch (err) {
+      console.error(err);
+      toast?.('이미지 처리 실패: ' + (err.message || err), 'err');
+    } finally {
+      // 같은 파일을 다시 선택해도 onChange 가 다시 발화하도록 value 리셋
+      e.target.value = '';
+    }
+  };
+
+  /* 아바타 제거 (alt+클릭 또는 우클릭 등의 경로). 현재 UI 에서는 prompt 로 확인. */
+  const clearAvatar = () => {
+    if (!concept.authorAvatar) return;
+    if (!confirm('아바타를 제거할까요?')) return;
+    patchField('authorAvatar', null);
+    toast?.('아바타 제거됨', '');
+  };
+
   const patchUsp = (i, value) => {
     const usp = [...(concept.keyUsp || [])]; usp[i] = value;
     patchField('keyUsp', usp);
@@ -413,7 +475,32 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, isG
               style={{ borderColor: theme.main, color: theme.main }}
             />
             <div className="concept-author">
-              <span>◯</span>
+              {/* 작성자 아바타 — 동그라미 영역.
+                  - 이미지 있으면 채워서 표시 (object-fit: cover)
+                  - 없으면 빈 원 + 호버 시 + 아이콘
+                  - 클릭 → 파일 선택 → 64x64 리사이즈 → concept.authorAvatar 에 저장
+                  - alt+클릭 또는 우클릭 → 제거 (clearAvatar) */}
+              <label
+                className={'author-avatar' + (concept.authorAvatar ? ' has-img' : '')}
+                title={concept.authorAvatar ? '클릭하여 변경 · Alt+클릭으로 제거' : '클릭하여 이미지 업로드'}
+                onClick={(e) => {
+                  if (e.altKey && concept.authorAvatar) { e.preventDefault(); clearAvatar(); }
+                }}
+                onContextMenu={(e) => {
+                  if (concept.authorAvatar) { e.preventDefault(); clearAvatar(); }
+                }}
+              >
+                {concept.authorAvatar
+                  ? <img src={concept.authorAvatar} alt="" />
+                  : <span className="author-avatar-plus" aria-hidden="true">+</span>}
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={onAvatarPick}
+                  style={{ display: 'none' }}
+                />
+              </label>
               <span>Created by</span>
               <Editable tag="span" value={concept.author} onChange={(v) => patchField('author', v)} />
             </div>

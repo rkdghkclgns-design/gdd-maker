@@ -3527,6 +3527,45 @@ input, textarea, select { font-family: inherit; color: inherit; }
   font-family: 'JetBrains Mono', monospace;
   display: flex; gap: 6px; align-items: center;
 }
+/* ===== 작성자 아바타 =====
+   - 32x32 원형. label 로 감싸 클릭 즉시 파일 다이얼로그 오픈.
+   - 이미지 있으면 채움 (img object-fit: cover), 없으면 빈 원 + 호버 시 + 표시.
+   - hover 시 살짝 확대 + 테두리 강조.
+*/
+.author-avatar {
+  display: inline-flex;
+  align-items: center; justify-content: center;
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(136, 223, 176, 0.5);
+  background: rgba(136, 223, 176, 0.04);
+  overflow: hidden;
+  cursor: pointer;
+  flex-shrink: 0;
+  position: relative;
+  transition: transform 0.12s, border-color 0.12s, background 0.12s, box-shadow 0.12s;
+}
+.author-avatar:hover {
+  border-color: #88DFB0;
+  background: rgba(136, 223, 176, 0.1);
+  transform: scale(1.06);
+  box-shadow: 0 0 0 3px rgba(136, 223, 176, 0.12);
+}
+.author-avatar:active { transform: scale(1.02); }
+.author-avatar img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.author-avatar.has-img { border-color: rgba(136, 223, 176, 0.7); }
+.author-avatar .author-avatar-plus {
+  font-size: 16px;
+  font-weight: 300;
+  color: rgba(136, 223, 176, 0.6);
+  line-height: 1;
+  pointer-events: none;
+}
+.author-avatar:hover .author-avatar-plus { color: #88DFB0; }
 
 .concept-grid {
   display: grid;

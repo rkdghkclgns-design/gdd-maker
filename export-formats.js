@@ -450,9 +450,15 @@
     return `### [${T}] ${d.title || ''}\n\n*(이 슬라이드 타입은 마크다운 변환 미지원)*\n`;
   }
 
-  function exportMarkdown(project) {
+  /**
+   * exportMarkdown(project, opts?)
+   *
+   * opts.returnText === true → MD 텍스트 반환 (자동 다운로드 X). 일괄/ZIP 패키징용.
+   */
+  function exportMarkdown(project, opts) {
     project = sanitizeProjectForExport(project);
     if (!project) throw new Error('내보낼 기획서가 없습니다.');
+    opts = opts || {};
     const slides = project.slides || [];
     const md = [
       `# ${project.title || '기획서'}`,
@@ -465,6 +471,8 @@
       ...slides.map((s, i) => slideToMarkdown(s, i, slides.length)),
       '',
     ].filter(x => x !== null && x !== undefined).join('\n');
+
+    if (opts.returnText) return md;
 
     const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);

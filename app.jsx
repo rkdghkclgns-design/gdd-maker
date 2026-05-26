@@ -2396,6 +2396,66 @@ function App({ onStateChange }) {
     }
   };
 
+  /**
+   * 일괄 다운로드 — 다수의 GDD 를 ZIP 한 개로 묶어 저장.
+   *
+   * @param scope  'concept' | 'all'
+   *               'concept': 현재 컨셉에 연결된 GDD 들만
+   *               'all': state.projects 의 전체 GDD
+   * @param format 'pptx' | 'md' (기본 pptx)
+   */
+  const bulkDownload = async (scope, format) => {
+    scope = scope || 'concept';
+    format = format || 'pptx';
+    let targets = [];
+    let zipBase = 'GDDs';
+    if (scope === 'concept') {
+      const c = concept || state.concepts?.find(x => x.id === project?.conceptId);
+      if (!c) {
+        toast('현재 컨셉을 찾을 수 없습니다. "전체 일괄 다운로드" 를 시도하세요.', 'err');
+        return;
+      }
+      const linkedIds = new Set((c.recommendedPlans || []).map(p => p.linkedGddId).filter(Boolean));
+      // 컨셉 id 와 매칭되는 project 도 포함 (legacy)
+      targets = state.projects.filter(p => linkedIds.has(p.id) || p.conceptId === c.id);
+      zipBase = (c.title || 'concept').replace(/[\\/:*?"<>|]+/g, '_');
+    } else {
+      targets = [...(state.projects || [])];
+      zipBase = 'GDDs_All';
+    }
+    if (targets.length === 0) {
+      toast('다운로드할 기획서가 없습니다.', 'err');
+      return;
+    }
+    if (!window.bulkDownloadProjects) {
+      toast('일괄 다운로드 모듈 로드 실패', 'err');
+      return;
+    }
+    setIsDownloading(true);
+    toast(`${targets.length}개 기획서를 ${format.toUpperCase()} 로 묶는 중…`, '');
+    try {
+      const ts = new Date().toISOString().slice(0, 10);
+      const result = await window.bulkDownloadProjects(targets, {
+        format,
+        zipName: `${zipBase}_${ts}.zip`,
+        onProgress: ({ done, total, currentTitle }) => {
+          if (currentTitle) toast(`(${done + 1}/${total}) ${currentTitle}`, '');
+        },
+      });
+      toast(
+        result.asZip
+          ? `✓ ${result.count}개 기획서 ZIP 다운로드 완료`
+          : `✓ ${result.count}개 기획서 순차 다운로드 완료 (JSZip 없음)`,
+        'ok'
+      );
+    } catch (e) {
+      console.error(e);
+      toast('일괄 다운로드 실패: ' + (e.message || e), 'err');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
   // Reset slide idx when selection changes
   useEffect(() => {
     setCurrentIdx(0);
@@ -2529,7 +2589,9 @@ function App({ onStateChange }) {
               onCreateGdd={openBriefForRecommendedPlan}
               onOpenGdd={(gddId) => setState(s => ({ ...s, selection: { type: 'gdd', id: gddId } }))}
               onBulkCreate={bulkCreatePlansForConcept}
+              onBulkDownload={(format) => bulkDownload('concept', format || 'pptx')}
               isGenerating={isGenerating}
+              isDownloading={isDownloading}
               toast={toast}
             />
           </div>
@@ -2701,6 +2763,10 @@ function App({ onStateChange }) {
               try { window.exportMarkdown(project); toast('Markdown 다운로드 완료', 'ok'); }
               catch (e) { toast('MD 실패: ' + e.message, 'err'); }
             }},
+            { id: 'bulk-pptx-concept', title: '📦 현재 컨셉의 기획서 일괄 PPTX', sub: '컨셉에 연결된 모든 GDD 를 ZIP 하나로', shortcut: 'CMD', keywords: ['bulk', '일괄', 'pptx', 'zip', '컨셉', 'concept'], run: () => bulkDownload('concept', 'pptx') },
+            { id: 'bulk-md-concept', title: '📦 현재 컨셉의 기획서 일괄 Markdown', sub: '컨셉에 연결된 모든 GDD 를 .md 로 묶어 ZIP', shortcut: 'CMD', keywords: ['bulk', '일괄', 'md', 'markdown', 'zip', '컨셉'], run: () => bulkDownload('concept', 'md') },
+            { id: 'bulk-pptx-all', title: '📦 전체 기획서 일괄 PPTX', sub: '저장된 모든 GDD 를 ZIP 하나로', shortcut: 'CMD', keywords: ['bulk', '일괄', '전체', 'all', 'pptx', 'zip'], run: () => bulkDownload('all', 'pptx') },
+            { id: 'bulk-md-all', title: '📦 전체 기획서 일괄 Markdown', sub: '저장된 모든 GDD 를 .md 로 ZIP', shortcut: 'CMD', keywords: ['bulk', '일괄', '전체', 'all', 'md', 'markdown'], run: () => bulkDownload('all', 'md') },
             { id: 'slide-png', title: '🖼 현재 슬라이드 PNG', sub: '1280×720 @ 2x 캡처', shortcut: 'CMD', keywords: ['png', '슬라이드', '이미지'], run: async () => {
               if (!project) return;
               const cur = (project.slides || [])[currentIdx];

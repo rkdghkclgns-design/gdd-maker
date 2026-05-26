@@ -116,7 +116,14 @@ function resizeImageToSquare(dataUrl, size = 128) {
 }
 
 /* ===== ConceptView ===== */
-function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, isGenerating, toast }) {
+function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, onBulkDownload, isGenerating, isDownloading, toast }) {
+  // 일괄 다운로드 메뉴 토글 (PPTX / Markdown 선택)
+  const [showBulkMenu, setShowBulkMenu] = React.useState(false);
+  // 연결된 GDD 개수 계산 — 0이면 버튼 비활성화
+  const linkedCount = React.useMemo(() => {
+    if (!concept) return 0;
+    return (concept.recommendedPlans || []).filter(p => p.linkedGddId).length;
+  }, [concept?.recommendedPlans]);
   const fileInputRef = React.useRef(null);
   const avatarInputRef = React.useRef(null);
   const pageRef = React.useRef(null);
@@ -429,6 +436,35 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, isG
           <button className="btn ghost" onClick={() => setShowSnapshotMenu(v => !v)} disabled={!(concept.snapshots || []).length}>
             ⌖ 히스토리 ({(concept.snapshots || []).length})
           </button>
+          {/* 일괄 다운로드 — 연결된 GDD 가 있을 때만 활성화 */}
+          <div className="bulk-download-wrap" style={{ position: 'relative' }}>
+            <button
+              className="btn ghost"
+              onClick={() => setShowBulkMenu(v => !v)}
+              disabled={!onBulkDownload || isDownloading || linkedCount === 0}
+              title={linkedCount === 0 ? '연결된 기획서가 없습니다' : `${linkedCount}개 기획서 일괄 다운로드`}
+            >
+              {isDownloading ? '준비 중…' : `📦 일괄 다운로드 (${linkedCount})`}
+            </button>
+            {showBulkMenu && (
+              <div className="snapshot-menu" style={{ width: 220 }}>
+                <div
+                  className="snapshot-item"
+                  onClick={() => { setShowBulkMenu(false); onBulkDownload?.('pptx'); }}
+                >
+                  <div className="snap-name">↓ PPTX 일괄 다운로드</div>
+                  <div className="snap-ts">.pptx × {linkedCount} → ZIP</div>
+                </div>
+                <div
+                  className="snapshot-item"
+                  onClick={() => { setShowBulkMenu(false); onBulkDownload?.('md'); }}
+                >
+                  <div className="snap-name">↓ Markdown 일괄 다운로드</div>
+                  <div className="snap-ts">.md × {linkedCount} → ZIP</div>
+                </div>
+              </div>
+            )}
+          </div>
           <button className="btn primary" onClick={exportPng} disabled={exporting}>
             {exporting ? '생성 중…' : '↓ PNG 다운로드'}
           </button>

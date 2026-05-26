@@ -213,8 +213,15 @@ function sanitizeProjectForExport(project) {
   };
 }
 
-async function exportPptx(project) {
+/**
+ * exportPptx(project, opts?)
+ *
+ * opts.returnBlob === true → Blob 반환 (자동 다운로드 X). 일괄 다운로드/ZIP 패키징용.
+ *                            그 외 → 기존 동작 (writeFile 로 자동 다운로드).
+ */
+async function exportPptx(project, opts) {
   if (!window.PptxGenJS) throw new Error('PptxGenJS not loaded');
+  opts = opts || {};
   // pan/zoom 상태 제거 — 사용자가 줌-인 한 채로 두면 캡처 결과에 그대로 박힘
   project = sanitizeProjectForExport(project);
   const pptx = new window.PptxGenJS();
@@ -914,7 +921,109 @@ async function exportPptx(project) {
     addFooter(slide, d.section || '', d.sectionName || SLIDE_LABELS[s.type] || '', page);
   }
 
+  // returnBlob 옵션 ON → Blob 반환 (호출자가 ZIP 패키징/대기열 처리 가능)
+  if (opts.returnBlob) {
+    return await pptx.write({ outputType: 'blob' });
+  }
   await pptx.writeFile({ fileName: `${project.title || 'GDD'}.pptx` });
 }
 
-Object.assign(window, { DocumentView, exportPptx });
+/**
+ * 여러 GDD 를 ZIP 한 개로 묶어 일괄 다운로드.
+ *
+ * @param projects  Array<Project>  — 다운로드 대상
+ * @param opts.zipName  string      — 결과 ZIP 파일 이름 (확장자 포함)
+ * @param opts.onProgress fn        — ({done, total, currentTitle}) 진행 콜백
+ * @param opts.format  'pptx'|'md'  — 어떤 포맷으로 묶을지 (기본 pptx)
+ *
+ * JSZip 이 로드되지 않은 경우 sequential 개별 다운로드로 폴백.
+ */
+async function bulkDownloadProjects(projects, opts) {
+  opts = opts || {};
+  const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : () => {};
+  const format = opts.format || 'pptx';
+  const total = projects.length;
+  if (!total) throw new Error('다운로드할 기획서가 없습니다.');
+
+  // 안전한 파일명 (운영체제 호환)
+  const safeName = (s, fallback) => {
+    const base = String(s || fallback || 'GDD')
+      .replace(/[\\/:*?"<>|]+/g, '_')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return base || fallback || 'GDD';
+  };
+  // 중복 파일명 처리 — Set 으로 추적하면서 (2), (3) 접미사 부여
+  const usedNames = new Set();
+  const uniqueName = (base, ext) => {
+    let candidate = `${base}.${ext}`;
+    let i = 2;
+    while (usedNames.has(candidate)) {
+      candidate = `${base} (${i}).${ext}`;
+      i++;
+    }
+    usedNames.add(candidate);
+    return candidate;
+  };
+
+  // 각 project 의 blob 생성
+  const blobs = [];
+  for (let i = 0; i < total; i++) {
+    const p = projects[i];
+    onProgress({ done: i, total, currentTitle: p.title || `(no title ${i + 1})` });
+    let blob, fileName;
+    try {
+      if (format === 'md') {
+        const md = window.exportMarkdown ? window.exportMarkdown(p, { returnText: true }) : null;
+        if (md == null) throw new Error('Markdown export 모듈이 returnText 모드를 지원하지 않습니다.');
+        blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+        fileName = uniqueName(safeName(p.title, 'GDD'), 'md');
+      } else {
+        blob = await exportPptx(p, { returnBlob: true });
+        fileName = uniqueName(safeName(p.title, 'GDD'), 'pptx');
+      }
+    } catch (e) {
+      // 한 GDD 실패해도 나머지는 진행 — error.txt 로 기록
+      const errBlob = new Blob([`Failed to export ${p.title}: ${e.message || e}`], { type: 'text/plain' });
+      blobs.push({ blob: errBlob, fileName: uniqueName(safeName(p.title, 'GDD') + '_ERROR', 'txt') });
+      continue;
+    }
+    blobs.push({ blob, fileName });
+  }
+  onProgress({ done: total, total, currentTitle: null });
+
+  // JSZip 사용 가능하면 한 ZIP 으로 묶기, 아니면 순차 개별 다운로드
+  const Zip = window.JSZip;
+  const zipName = opts.zipName || `GDDs_${new Date().toISOString().slice(0, 10)}.zip`;
+  if (Zip) {
+    const zip = new Zip();
+    for (const { blob, fileName } of blobs) {
+      zip.file(fileName, blob);
+    }
+    const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+    triggerDownload(zipBlob, zipName);
+    return { count: blobs.length, asZip: true };
+  }
+  // 폴백: 순차 다운로드 (브라우저가 여러 파일을 동시 받게 함)
+  for (const { blob, fileName } of blobs) {
+    triggerDownload(blob, fileName);
+    // 브라우저 동시 다운로드 제한 회피를 위해 약간 지연
+    await new Promise(r => setTimeout(r, 250));
+  }
+  return { count: blobs.length, asZip: false };
+}
+
+function triggerDownload(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 1000);
+}
+
+Object.assign(window, { DocumentView, exportPptx, bulkDownloadProjects });

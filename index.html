@@ -132,13 +132,15 @@
 <script src="https://cdn.jsdelivr.net/gh/gitbrent/PptxGenJS@v3.12.0/dist/pptxgen.bundle.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+<!-- 일괄 다운로드용 ZIP 패키저 -->
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 </head>
 <body>
 <div id="root"></div>
 <script src="storage.js?v=da71ab96"></script>
 <script src="usage.js?v=9778fab8"></script>
 <script src="validators.js?v=2664778f"></script>
-<script src="export-formats.js?v=9605aa6b"></script>
+<script src="export-formats.js?v=b5104e68"></script>
 <script src="consistency-check.js?v=51839193"></script>
 <script src="stats.js?v=3c174ce7"></script>
 <script src="gemini-adapter.js?v=4f7f28ec"></script>
@@ -150,6 +152,6 @@
 <script src="slide-splitter.js?v=f744f2ca"></script>
 <!-- 모든 .jsx 파일을 단일 bundle.jsx로 합쳐 babel-standalone에 전달.
      빌드: node build.js — GitHub Actions에서도 자동 실행. -->
-<script type="text/babel" data-presets="react" src="bundle.jsx?v=b45e67e6"></script>
+<script type="text/babel" data-presets="react" src="bundle.jsx?v=c458d6dc"></script>
 </body>
 </html>

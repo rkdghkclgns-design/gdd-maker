@@ -959,8 +959,18 @@ function ColorDot({ color, onChange, title }) {
 /* ===== Concept AI prompt ===== */
 function buildConceptPrompt(command, attachments) {
   const textBlocks = (attachments || []).filter(a => a.kind === 'text').map((a, i) => `\n[첨부 텍스트 ${i+1}: ${a.name}]\n${a.value.slice(0, 1500)}`).join('\n');
-  const imageNote = (attachments || []).filter(a => a.kind === 'image').length > 0
-    ? `\n참고: ${(attachments || []).filter(a => a.kind === 'image').length}개의 참고 이미지가 함께 제공됩니다.`
+  const imageCount = (attachments || []).filter(a => a.kind === 'image').length;
+  // 이미지가 있다면 명시적으로 시각 분석 지시 — Gemini multimodal 강점 활용
+  const imageNote = imageCount > 0
+    ? `\n\n# 참고 이미지 분석 지시 (${imageCount}장)
+사용자가 ${imageCount}장의 참고 이미지를 첨부했다. 다음 항목을 **이미지에서 직접 관찰**하여 컨셉에 반영하라:
+1) **시각 스타일**: 아트 스타일(픽셀/3D/2D/카툰/리얼), 컬러 톤, 분위기, 카메라 앵글
+2) **UI/UX 구조**: 화면에 보이는 UI 패널·HUD·버튼 배치 → recommendedPlans 의 "UI/UX" 영역에 구체 반영
+3) **게임플레이 요소**: 캐릭터·적·아이템·환경 오브젝트 → coreLoop 및 keyUsp 에 반영
+4) **장르 신호**: 인벤토리/스킬창/맵/채팅 등의 UI 요소로 장르를 추론 (MMORPG / 액션 / 시뮬레이션 등)
+5) **팔레트**: 이미지의 지배적 색상 3~5색을 추출하여 palette 의 hex 값에 반영
+
+⚠ 첨부 이미지의 게임이나 IP 를 그대로 베끼지는 말 것. 시각·구조 패턴만 참조하고, 사용자의 명령("${(command || '').slice(0, 80)}")에 맞춰 독창적으로 재해석한다.`
     : '';
 
   return `${window.SENIOR_PERSONA || ''}

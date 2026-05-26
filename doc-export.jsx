@@ -704,7 +704,10 @@ async function exportPptx(project, opts) {
         slide.addImage({ data: d.imageSrc, x: 0, y: 0, w: W, h: H, sizing: { type: 'cover', w: W, h: H } });
         slide.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: '0A0D12', transparency: 25 }, line: { color: '0A0D12', width: 0 } });
       }
-      slide.addText(d.num || '', { x: W - PAD_X - 6, y: 1.0, w: 6, h: 5.5, fontSize: 220, fontFace: MONO, color: 'FFFFFF22', align: 'right', valign: 'middle', bold: true });
+      // section-divider 큰 챕터 번호 — PptxGenJS 는 6자리 RGB 만 허용 (8자리 알파 금지).
+      // 화면상의 'FFFFFF22' (FFFFFF + 13% alpha) 의 효과는 어두운 배경 #0A0D12 위에서 #2D3037 같은 어두운 회색에 해당.
+      // OOXML 의 텍스트 알파는 별도 처리가 까다로워 어둠 회색 단색으로 근사.
+      slide.addText(d.num || '', { x: W - PAD_X - 6, y: 1.0, w: 6, h: 5.5, fontSize: 220, fontFace: MONO, color: '2D3037', align: 'right', valign: 'middle', bold: true });
       slide.addShape('rect', { x: PAD_X, y: 0.55, w: 0.25, h: 0.04, fill: { color: ACCENT } });
       slide.addText(`CHAPTER ${d.num || ''}`, { x: PAD_X + 0.35, y: 0.45, w: 5, h: 0.3, fontSize: 12, fontFace: MONO, color: ACCENT, charSpacing: 1.6 });
       slide.addText(d.title || '', { x: PAD_X, y: H - 2.2, w: W - 2 * PAD_X, h: 1.2, fontSize: 64, bold: true, fontFace: FONT, color: 'E6EDF3' });

@@ -46,6 +46,7 @@ function BriefComposer({ onClose, onSubmit, isGenerating, initialMode = 'ai', mo
   const [dragging, setDragging] = React.useState(false);
   const taRef = React.useRef(null);
   const dragCounterRef = React.useRef(0);
+  const fileInputRef = React.useRef(null); // 숨겨진 file input — 버튼 클릭으로 트리거
 
   const isConcept = mode === 'concept';
   const isLinked = mode === 'gdd-linked';
@@ -94,6 +95,21 @@ function BriefComposer({ onClose, onSubmit, isGenerating, initialMode = 'ai', mo
 
   const removeAttachment = (id) => setAttachments(a => a.filter(x => x.id !== id));
 
+  // 명시적 파일 선택 — 모바일/터치 환경에서도 첨부 가능. paste/drag 보조.
+  const onPickFiles = async (e) => {
+    const files = Array.from(e.target.files || []);
+    for (const f of files) {
+      if (f.type.startsWith('image/')) await addImage(f);
+      else if (f.type.startsWith('text/')) {
+        const text = await f.text();
+        addTextBlock(text, f.name);
+      }
+    }
+    // 같은 파일을 다시 선택할 수 있도록 input 값 리셋
+    if (e.target) e.target.value = '';
+  };
+  const triggerFilePicker = () => fileInputRef.current && fileInputRef.current.click();
+
   const submit = () => {
     const text = (title.trim() ? title.trim() + ' — ' : '') + brief.trim();
     if (!text && attachments.length === 0) return;
@@ -104,7 +120,7 @@ function BriefComposer({ onClose, onSubmit, isGenerating, initialMode = 'ai', mo
   const txtCount = attachments.filter(a => a.kind === 'text').length;
 
   const headerCopy = isConcept
-    ? { h: '새 게임 컨셉 만들기', sub: '게임의 한 줄 컨셉을 입력하세요. AI가 1-Page GDD + 필요한 세부 기획서 목록을 생성합니다.' }
+    ? { h: '새 게임 컨셉 만들기', sub: '게임의 한 줄 컨셉을 입력하세요. 참고 이미지(레퍼런스 게임 스크린샷·아트워크·UI 시안)를 첨부하면 AI 가 시각적 스타일과 시스템 구조를 참조합니다.' }
     : isLinked
     ? { h: '컨셉 기반 세부 기획서 생성', sub: '컨셉의 추천 기획서에서 시작합니다. 추가 설명이나 참고 자료를 더하세요.' }
     : { h: '새 기획서 만들기', sub: '어떤 기획을 작성할지 명령하세요. 이미지·텍스트는 붙여넣기 또는 드래그로 첨부할 수 있습니다.' };
@@ -150,9 +166,32 @@ function BriefComposer({ onClose, onSubmit, isGenerating, initialMode = 'ai', mo
               rows={5}
             />
             <div className="brief-prompt-meta">
+              <button
+                type="button"
+                className="pill pill-btn"
+                onClick={triggerFilePicker}
+                title="이미지·텍스트 파일을 첨부 (PNG/JPG/GIF/WEBP/TXT/MD)"
+                style={{ cursor: 'pointer', border: 'none', font: 'inherit' }}
+              >
+                📎 <span className="kbd">파일 선택</span>
+              </button>
               <span className="pill">⌘V <span className="kbd">붙여넣기</span></span>
-              <span className="pill">⇧ Drop <span className="kbd">파일</span></span>
+              <span className="pill">⇧ Drop <span className="kbd">드래그</span></span>
+              {isConcept && (
+                <span className="pill" style={{ background: 'rgba(76,194,255,0.12)', borderColor: 'rgba(76,194,255,0.35)', color: 'var(--accent)' }}>
+                  🎮 <span className="kbd">참고 이미지를 첨부하면 AI 가 분석합니다</span>
+                </span>
+              )}
               <span style={{ marginLeft: 'auto', color: 'var(--text-4)' }}>{brief.length} chars</span>
+              {/* hidden file input — 명시적 첨부 트리거. 단일/다중 선택 모두 허용. */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*,text/plain,text/markdown,.md,.txt"
+                style={{ display: 'none' }}
+                onChange={onPickFiles}
+              />
             </div>
           </div>
 

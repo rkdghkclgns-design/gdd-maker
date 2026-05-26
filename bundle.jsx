@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-26T23:51:17.892Z
+   생성 시각: 2026-05-26T23:55:16.931Z
 */
 
 // ============================================================
@@ -3733,6 +3733,7 @@ function BriefComposer({ onClose, onSubmit, isGenerating, initialMode = 'ai', mo
   const [dragging, setDragging] = React.useState(false);
   const taRef = React.useRef(null);
   const dragCounterRef = React.useRef(0);
+  const fileInputRef = React.useRef(null); // 숨겨진 file input — 버튼 클릭으로 트리거
 
   const isConcept = mode === 'concept';
   const isLinked = mode === 'gdd-linked';
@@ -3781,6 +3782,21 @@ function BriefComposer({ onClose, onSubmit, isGenerating, initialMode = 'ai', mo
 
   const removeAttachment = (id) => setAttachments(a => a.filter(x => x.id !== id));
 
+  // 명시적 파일 선택 — 모바일/터치 환경에서도 첨부 가능. paste/drag 보조.
+  const onPickFiles = async (e) => {
+    const files = Array.from(e.target.files || []);
+    for (const f of files) {
+      if (f.type.startsWith('image/')) await addImage(f);
+      else if (f.type.startsWith('text/')) {
+        const text = await f.text();
+        addTextBlock(text, f.name);
+      }
+    }
+    // 같은 파일을 다시 선택할 수 있도록 input 값 리셋
+    if (e.target) e.target.value = '';
+  };
+  const triggerFilePicker = () => fileInputRef.current && fileInputRef.current.click();
+
   const submit = () => {
     const text = (title.trim() ? title.trim() + ' — ' : '') + brief.trim();
     if (!text && attachments.length === 0) return;
@@ -3791,7 +3807,7 @@ function BriefComposer({ onClose, onSubmit, isGenerating, initialMode = 'ai', mo
   const txtCount = attachments.filter(a => a.kind === 'text').length;
 
   const headerCopy = isConcept
-    ? { h: '새 게임 컨셉 만들기', sub: '게임의 한 줄 컨셉을 입력하세요. AI가 1-Page GDD + 필요한 세부 기획서 목록을 생성합니다.' }
+    ? { h: '새 게임 컨셉 만들기', sub: '게임의 한 줄 컨셉을 입력하세요. 참고 이미지(레퍼런스 게임 스크린샷·아트워크·UI 시안)를 첨부하면 AI 가 시각적 스타일과 시스템 구조를 참조합니다.' }
     : isLinked
     ? { h: '컨셉 기반 세부 기획서 생성', sub: '컨셉의 추천 기획서에서 시작합니다. 추가 설명이나 참고 자료를 더하세요.' }
     : { h: '새 기획서 만들기', sub: '어떤 기획을 작성할지 명령하세요. 이미지·텍스트는 붙여넣기 또는 드래그로 첨부할 수 있습니다.' };
@@ -3837,9 +3853,32 @@ function BriefComposer({ onClose, onSubmit, isGenerating, initialMode = 'ai', mo
               rows={5}
             />
             <div className="brief-prompt-meta">
+              <button
+                type="button"
+                className="pill pill-btn"
+                onClick={triggerFilePicker}
+                title="이미지·텍스트 파일을 첨부 (PNG/JPG/GIF/WEBP/TXT/MD)"
+                style={{ cursor: 'pointer', border: 'none', font: 'inherit' }}
+              >
+                📎 <span className="kbd">파일 선택</span>
+              </button>
               <span className="pill">⌘V <span className="kbd">붙여넣기</span></span>
-              <span className="pill">⇧ Drop <span className="kbd">파일</span></span>
+              <span className="pill">⇧ Drop <span className="kbd">드래그</span></span>
+              {isConcept && (
+                <span className="pill" style={{ background: 'rgba(76,194,255,0.12)', borderColor: 'rgba(76,194,255,0.35)', color: 'var(--accent)' }}>
+                  🎮 <span className="kbd">참고 이미지를 첨부하면 AI 가 분석합니다</span>
+                </span>
+              )}
               <span style={{ marginLeft: 'auto', color: 'var(--text-4)' }}>{brief.length} chars</span>
+              {/* hidden file input — 명시적 첨부 트리거. 단일/다중 선택 모두 허용. */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*,text/plain,text/markdown,.md,.txt"
+                style={{ display: 'none' }}
+                onChange={onPickFiles}
+              />
             </div>
           </div>
 
@@ -4875,8 +4914,18 @@ function ColorDot({ color, onChange, title }) {
 /* ===== Concept AI prompt ===== */
 function buildConceptPrompt(command, attachments) {
   const textBlocks = (attachments || []).filter(a => a.kind === 'text').map((a, i) => `\n[첨부 텍스트 ${i+1}: ${a.name}]\n${a.value.slice(0, 1500)}`).join('\n');
-  const imageNote = (attachments || []).filter(a => a.kind === 'image').length > 0
-    ? `\n참고: ${(attachments || []).filter(a => a.kind === 'image').length}개의 참고 이미지가 함께 제공됩니다.`
+  const imageCount = (attachments || []).filter(a => a.kind === 'image').length;
+  // 이미지가 있다면 명시적으로 시각 분석 지시 — Gemini multimodal 강점 활용
+  const imageNote = imageCount > 0
+    ? `\n\n# 참고 이미지 분석 지시 (${imageCount}장)
+사용자가 ${imageCount}장의 참고 이미지를 첨부했다. 다음 항목을 **이미지에서 직접 관찰**하여 컨셉에 반영하라:
+1) **시각 스타일**: 아트 스타일(픽셀/3D/2D/카툰/리얼), 컬러 톤, 분위기, 카메라 앵글
+2) **UI/UX 구조**: 화면에 보이는 UI 패널·HUD·버튼 배치 → recommendedPlans 의 "UI/UX" 영역에 구체 반영
+3) **게임플레이 요소**: 캐릭터·적·아이템·환경 오브젝트 → coreLoop 및 keyUsp 에 반영
+4) **장르 신호**: 인벤토리/스킬창/맵/채팅 등의 UI 요소로 장르를 추론 (MMORPG / 액션 / 시뮬레이션 등)
+5) **팔레트**: 이미지의 지배적 색상 3~5색을 추출하여 palette 의 hex 값에 반영
+
+⚠ 첨부 이미지의 게임이나 IP 를 그대로 베끼지는 말 것. 시각·구조 패턴만 참조하고, 사용자의 명령("${(command || '').slice(0, 80)}")에 맞춰 독창적으로 재해석한다.`
     : '';
 
   return `${window.SENIOR_PERSONA || ''}
@@ -6334,7 +6383,10 @@ async function exportPptx(project, opts) {
         slide.addImage({ data: d.imageSrc, x: 0, y: 0, w: W, h: H, sizing: { type: 'cover', w: W, h: H } });
         slide.addShape('rect', { x: 0, y: 0, w: W, h: H, fill: { color: '0A0D12', transparency: 25 }, line: { color: '0A0D12', width: 0 } });
       }
-      slide.addText(d.num || '', { x: W - PAD_X - 6, y: 1.0, w: 6, h: 5.5, fontSize: 220, fontFace: MONO, color: 'FFFFFF22', align: 'right', valign: 'middle', bold: true });
+      // section-divider 큰 챕터 번호 — PptxGenJS 는 6자리 RGB 만 허용 (8자리 알파 금지).
+      // 화면상의 'FFFFFF22' (FFFFFF + 13% alpha) 의 효과는 어두운 배경 #0A0D12 위에서 #2D3037 같은 어두운 회색에 해당.
+      // OOXML 의 텍스트 알파는 별도 처리가 까다로워 어둠 회색 단색으로 근사.
+      slide.addText(d.num || '', { x: W - PAD_X - 6, y: 1.0, w: 6, h: 5.5, fontSize: 220, fontFace: MONO, color: '2D3037', align: 'right', valign: 'middle', bold: true });
       slide.addShape('rect', { x: PAD_X, y: 0.55, w: 0.25, h: 0.04, fill: { color: ACCENT } });
       slide.addText(`CHAPTER ${d.num || ''}`, { x: PAD_X + 0.35, y: 0.45, w: 5, h: 0.3, fontSize: 12, fontFace: MONO, color: ACCENT, charSpacing: 1.6 });
       slide.addText(d.title || '', { x: PAD_X, y: H - 2.2, w: W - 2 * PAD_X, h: 1.2, fontSize: 64, bold: true, fontFace: FONT, color: 'E6EDF3' });

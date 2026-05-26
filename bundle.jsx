@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-26T22:57:35.259Z
+   생성 시각: 2026-05-26T23:18:30.212Z
 */
 
 // ============================================================
@@ -6088,6 +6088,104 @@ function sanitizeProjectForExport(project) {
 }
 
 /**
+ * blob:URL 또는 idb-image:// ref 를 data:image/...;base64 로 변환.
+ * PptxGenJS 의 addImage 는 data URL 만 지원하므로 export 전에 모든 이미지 reference 를
+ * 데이터 URL 로 inline 화 해야 한다. (이전 버그: blob: URL 이 그대로 넘어와 addImage 가 skip)
+ *
+ * - 이미 data:image/ 면 그대로 반환
+ * - blob: URL → fetch → blob → FileReader.readAsDataURL
+ * - idb-image://uuid → window.gddStorage 로 blob 조회 → data URL 변환
+ * - 빈 값/null/실패 시 null
+ */
+async function resolveImageToDataUrl(src) {
+  if (!src || typeof src !== 'string') return null;
+  if (src.startsWith('data:image/')) return src; // already inline
+  // idb-image:// — gddStorage 의 내부 ref. blob 직접 조회 시도.
+  if (src.startsWith('idb-image://') && window.gddStorage && window.gddStorage.getImageBlobByRef) {
+    try {
+      const blob = await window.gddStorage.getImageBlobByRef(src);
+      if (blob) return await blobToDataUrl(blob);
+    } catch (_) {}
+    return null;
+  }
+  // blob: URL — fetch 로 blob 얻기
+  if (src.startsWith('blob:')) {
+    try {
+      const res = await fetch(src);
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      return await blobToDataUrl(blob);
+    } catch (_) { return null; }
+  }
+  // http(s):// 외부 URL — fetch (CORS 허용 시)
+  if (/^https?:\/\//.test(src)) {
+    try {
+      const res = await fetch(src, { mode: 'cors' });
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      return await blobToDataUrl(blob);
+    } catch (_) { return null; }
+  }
+  return null;
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(blob);
+  });
+}
+
+/**
+ * 프로젝트의 모든 슬라이드 imageSrc 를 data URL 로 변환.
+ * 같은 src 가 여러 슬라이드에서 사용돼도 1번만 fetch 하고 결과 캐시.
+ *
+ * 변환 대상 키: imageSrc (image-embed/ui-design/section-divider/cover의 backgroundImage)
+ *              + 향후 다른 이미지 키도 자동 처리되도록 walk-tree 방식.
+ */
+async function resolveAllImagesForExport(project) {
+  if (!project || !Array.isArray(project.slides)) return project;
+  const cache = new Map();
+  const resolve = async (src) => {
+    if (!src) return src;
+    if (cache.has(src)) return cache.get(src);
+    const data = await resolveImageToDataUrl(src);
+    cache.set(src, data);
+    return data;
+  };
+  // imageSrc 필드만 deep-walk 로 변환 (다른 필드는 그대로)
+  async function walkAndResolve(node) {
+    if (Array.isArray(node)) {
+      const out = [];
+      for (const x of node) out.push(await walkAndResolve(x));
+      return out;
+    }
+    if (node && typeof node === 'object') {
+      const out = {};
+      for (const k of Object.keys(node)) {
+        const v = node[k];
+        // imageSrc 키 또는 명시적 이미지 키만 resolve. 다른 필드는 그대로 walk.
+        if ((k === 'imageSrc' || k === 'src') && typeof v === 'string' &&
+            (v.startsWith('blob:') || v.startsWith('idb-image://') || v.startsWith('data:image/'))) {
+          out[k] = await resolve(v);
+        } else {
+          out[k] = await walkAndResolve(v);
+        }
+      }
+      return out;
+    }
+    return node;
+  }
+  const newSlides = [];
+  for (const s of project.slides) {
+    newSlides.push(await walkAndResolve(s));
+  }
+  return { ...project, slides: newSlides };
+}
+
+/**
  * exportPptx(project, opts?)
  *
  * opts.returnBlob === true → Blob 반환 (자동 다운로드 X). 일괄 다운로드/ZIP 패키징용.
@@ -6098,13 +6196,32 @@ async function exportPptx(project, opts) {
   opts = opts || {};
   // pan/zoom 상태 제거 — 사용자가 줌-인 한 채로 두면 캡처 결과에 그대로 박힘
   project = sanitizeProjectForExport(project);
+  // 사용자 요청: "슬라이드 분할이 안된 항목이 있다면 분할하여 적용" — 오버플로우 슬라이드를 자동 분할
+  if (window.gddSlideSplitter && typeof window.gddSlideSplitter.splitAllOverflowing === 'function') {
+    try {
+      const splitSlides = window.gddSlideSplitter.splitAllOverflowing(project.slides || []);
+      if (Array.isArray(splitSlides) && splitSlides.length > 0) {
+        project = { ...project, slides: splitSlides };
+      }
+    } catch (e) {
+      // splitter 실패해도 export 는 계속
+      if (window.gddToast) window.gddToast('슬라이드 분할 실패 — 원본으로 진행합니다', 'warn');
+    }
+  }
+  // 사용자 요청: "이미지도 미반영" — blob:/idb-image:// URL 을 data URL 로 inline 화
+  try {
+    project = await resolveAllImagesForExport(project);
+  } catch (e) {
+    if (window.gddToast) window.gddToast('이미지 해석 실패 — 일부 이미지가 누락될 수 있습니다', 'warn');
+  }
   const pptx = new window.PptxGenJS();
   pptx.layout = 'LAYOUT_WIDE'; // 13.33 x 7.5 inches (16:9)
   pptx.title = project.title;
   pptx.author = project.author || '';
   pptx.company = project.team || '';
 
-  // Korean-friendly font fallback. PowerPoint will substitute if not installed.
+  // Korean-friendly font fallback. PowerPoint substitutes if not installed.
+  // 맑은 고딕은 모든 Windows 한국어 환경에 기본 설치 — 가장 안전한 첫 번째 선택.
   const FONT = '맑은 고딕';
   const MONO = 'Consolas';
   const ACCENT = '4CC2FF';
@@ -6393,14 +6510,34 @@ async function exportPptx(project, opts) {
         });
       }
     } else if (s.type === 'ui-design') {
-      slide.addShape('roundRect', { x: PAD_X, y: 1.6, w: 6.5, h: 4.6, fill: { color: '0A0D12' }, line: { color: '0A0D12' }, rectRadius: 0.1 });
-      slide.addText('UI MOCKUP', { x: PAD_X + 1, y: 3.5, w: 4.5, h: 0.4, fontSize: 14, fontFace: MONO, color: ACCENT, align: 'center', charSpacing: 1.6 });
-      slide.addText('화면 시안 placeholder', { x: PAD_X + 1, y: 3.9, w: 4.5, h: 0.4, fontSize: 12, fontFace: FONT, color: 'B1BAC4', align: 'center' });
+      // 좌측: UI 시안 박스 (실제 이미지 또는 placeholder), 우측: 콜아웃 리스트
+      const imgX = PAD_X, imgY = 1.6, imgW = 6.5, imgH = 4.6;
+      slide.addShape('roundRect', { x: imgX, y: imgY, w: imgW, h: imgH, fill: { color: '0A0D12' }, line: { color: '0A0D12' }, rectRadius: 0.1 });
+      const hasImage = d.imageSrc && typeof d.imageSrc === 'string' && d.imageSrc.startsWith('data:image/');
+      if (hasImage) {
+        // 실제 UI 디자인 이미지 inline 삽입 (contain 으로 비율 유지)
+        slide.addImage({ data: d.imageSrc, x: imgX + 0.05, y: imgY + 0.05, w: imgW - 0.1, h: imgH - 0.1, sizing: { type: 'contain', w: imgW - 0.1, h: imgH - 0.1 } });
+      } else {
+        slide.addText('UI MOCKUP', { x: imgX + 1, y: imgY + 1.9, w: imgW - 2, h: 0.4, fontSize: 14, fontFace: MONO, color: ACCENT, align: 'center', charSpacing: 1.6 });
+        slide.addText('화면 시안 placeholder', { x: imgX + 1, y: imgY + 2.3, w: imgW - 2, h: 0.4, fontSize: 12, fontFace: FONT, color: 'B1BAC4', align: 'center' });
+      }
       // 화면 표시와 동일하게 (y, x) 시각 읽기 순서로 정렬 — 배지·리스트 번호 일치
       const callouts = [...(d.callouts || [])]
         .map((c) => ({ c, x: typeof c.x === 'number' ? c.x : 50, y: typeof c.y === 'number' ? c.y : 50 }))
         .sort((a, b) => Math.abs(a.y - b.y) > 8 ? a.y - b.y : a.x - b.x)
         .map(s => s.c);
+      // 이미지가 있다면 이미지 위에 배지 오버레이 (퍼센트 좌표 → inch 변환)
+      if (hasImage) {
+        callouts.forEach((c, idx) => {
+          const cx = typeof c.x === 'number' ? c.x : 50;
+          const cy = typeof c.y === 'number' ? c.y : 50;
+          const badgeX = imgX + (cx / 100) * imgW - 0.18;
+          const badgeY = imgY + (cy / 100) * imgH - 0.18;
+          slide.addShape('ellipse', { x: badgeX, y: badgeY, w: 0.36, h: 0.36, fill: { color: ACCENT }, line: { color: 'FFFFFF', width: 1.5 } });
+          slide.addText(String(idx + 1), { x: badgeX, y: badgeY, w: 0.36, h: 0.36, fontSize: 11, bold: true, fontFace: MONO, color: '061018', align: 'center', valign: 'middle' });
+        });
+      }
+      // 우측 콜아웃 리스트
       const coX = PAD_X + 7.0;
       const coW = W - PAD_X - coX;
       callouts.forEach((c, idx) => {

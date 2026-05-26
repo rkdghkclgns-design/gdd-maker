@@ -451,6 +451,39 @@
     };
   }
 
+  /* === Public: ref(idb-image://uuid) 또는 blob: URL → 원본 Blob 반환 ===
+   * PPTX/PDF export 시 blob URL/idb-ref 를 data URL 로 다시 inline 화하기 위해 필요.
+   * - 'idb-image://uuid' → IMAGES_STORE 에서 직접 조회
+   * - 'blob:...'         → _urlToUuid 역 매핑으로 uuid 찾은 뒤 IMAGES_STORE 조회
+   *                        (해당 매핑이 없을 수도 있는데, 그땐 fetch 로 마지막 시도)
+   * 실패 시 null. 동기 오류는 절대 throw 하지 않음.
+   */
+  async function getImageBlobByRef(refOrUrl) {
+    if (!refOrUrl || typeof refOrUrl !== 'string') return null;
+    try {
+      if (refOrUrl.startsWith(REF_PREFIX)) {
+        const id = refOrUrl.slice(REF_PREFIX.length);
+        const blob = await dbGet(IMAGES_STORE, id);
+        return blob || null;
+      }
+      if (refOrUrl.startsWith('blob:')) {
+        // 역 매핑이 있으면 우선 사용 (IndexedDB 에 보장된 원본)
+        const uuid = _urlToUuid.get(refOrUrl);
+        if (uuid) {
+          const blob = await dbGet(IMAGES_STORE, uuid);
+          if (blob) return blob;
+        }
+        // 매핑 없으면 fetch 로 직접 시도 (동일 origin/세션 blob URL 은 보통 fetch 가능)
+        try {
+          const res = await fetch(refOrUrl);
+          if (res.ok) return await res.blob();
+        } catch (_) {}
+        return null;
+      }
+    } catch (_) {}
+    return null;
+  }
+
   window.gddStorage = {
     saveState,
     loadState,
@@ -467,6 +500,7 @@
     getBackupStatus,
     autoBackup,
     estimateStorage,
+    getImageBlobByRef,
     // Emergency 슬롯 alias
     saveEmergency: (s) => saveState(s, 'emergency'),
     loadEmergency: () => loadState('emergency'),

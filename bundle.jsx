@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-26T01:01:13.169Z
+   생성 시각: 2026-05-26T01:27:38.905Z
 */
 
 // ============================================================
@@ -4397,9 +4397,29 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, isG
                     <button className="sc-del coreloop-del" onClick={() => removeLoop(i)} title="삭제">✕</button>
                   )}
                 </div>
-                {i < arr.length - 1 && <div className="coreloop-connector" style={{
-                  background: `repeating-linear-gradient(90deg, ${theme.main}66 0 6px, transparent 6px 10px)`,
-                }}></div>}
+                {i < arr.length - 1 && (
+                  /* 점선 연결선 — SVG 로 렌더링.
+                     이유: html2canvas 가 CSS repeating-linear-gradient 와 border-dashed 양쪽 모두
+                     불완전하게 렌더링하여 PNG 다운로드 시 점선이 사라짐.
+                     SVG stroke-dasharray 는 모든 환경에서 안정적으로 그려진다.
+                     컨테이너 div 는 flex 비율 유지용. SVG 가 preserveAspectRatio='none' 으로 늘어남. */
+                  <div className="coreloop-connector">
+                    <svg
+                      width="100%" height="10" viewBox="0 0 100 10"
+                      preserveAspectRatio="none"
+                      style={{ display: 'block', overflow: 'visible' }}
+                    >
+                      <line
+                        x1="0" y1="5" x2="100" y2="5"
+                        stroke={theme.main}
+                        strokeOpacity="0.85"
+                        strokeWidth="1.6"
+                        strokeDasharray="4 2"
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    </svg>
+                  </div>
+                )}
               </React.Fragment>
             ))}
             <button className="coreloop-add" onClick={addLoop} title="단계 추가">+</button>

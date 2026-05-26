@@ -3643,15 +3643,21 @@ input, textarea, select { font-family: inherit; color: inherit; }
   flex-shrink: 0;
   box-shadow: 0 0 20px rgba(136, 223, 176, 0.15) inset;
 }
-.coreloop-connector {
-  min-width: 32px;
-}
 .coreloop-node:last-child { border-color: #F5D94F; box-shadow: 0 0 20px rgba(245, 217, 79, 0.15) inset; }
+/* 연결선 — 내부 SVG 가 실제 점선을 그림. div 는 flex 비율과 화살표 배치만 담당.
+   SVG 는 html2canvas 가 안정적으로 캡처하므로 PNG export 에서도 점선이 그대로 보임. */
 .coreloop-connector {
   flex: 1;
-  height: 1px;
-  background: repeating-linear-gradient(90deg, rgba(136,223,176,0.4) 0 6px, transparent 6px 10px);
+  min-width: 32px;
+  height: 10px;
   position: relative;
+  display: flex;
+  align-items: center;
+}
+.coreloop-connector svg {
+  flex: 1;
+  height: 10px;
+  width: 100%;
 }
 .coreloop-connector::after {
   content: ''; position: absolute; right: -1px; top: 50%; transform: translate(0, -50%);
@@ -4133,6 +4139,11 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .concept-page.exporting .sc-add { visibility: hidden !important; }
 .concept-page.exporting .coreloop-del,
 .concept-page.exporting .coreloop-add { visibility: hidden !important; }
+/* coreloop-connector 는 내부 SVG 로 점선을 그리므로 export 시 별도 처리 불필요.
+   ::after 화살표 색상만 명시적으로 강제 (혹시 모를 환경 차이 대응). */
+.concept-page.exporting .coreloop-connector::after {
+  border-left-color: rgba(136, 223, 176, 0.6) !important;
+}
 /* 팔레트 chip wrap 의 hover transform 무력화 (캡처 시 위치 어긋남 방지) */
 .concept-page.exporting .palette-chip-wrap { transform: none !important; }
 

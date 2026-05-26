@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-26T07:27:23.633Z
+   생성 시각: 2026-05-26T07:46:25.478Z
 */
 
 // ============================================================
@@ -894,8 +894,23 @@ function TocSlide({ data, patch, page, totalPages }) {
     parts2[pi].entries[ei] = { ...parts2[pi].entries[ei], [field]: val };
     patch({ parts: parts2 });
   };
+  /* === 자동 밀도 산정 ===
+   * 한 슬라이드 안에서 entries 가 많을수록 폰트/간격을 줄여 모두 보이게.
+   * data-density 속성으로 CSS 가 단계별 스타일 적용.
+   *  - low:   최대 12 entries — 기본 큰 폰트 (보기 좋음)
+   *  - medium: 13-20 — 폰트 약간 축소
+   *  - high:  21-32 — 더 축소
+   *  - xhigh: 33+ — 최소 폰트 + 4단 grid
+   */
+  const totalEntries = parts.reduce((s, p) => s + ((p.entries && p.entries.length) || 0), 0);
+  const maxPartEntries = parts.reduce((mx, p) => Math.max(mx, (p.entries && p.entries.length) || 0), 0);
+  let density = 'low';
+  if (totalEntries > 32 || maxPartEntries > 12) density = 'xhigh';
+  else if (totalEntries > 20 || maxPartEntries > 9) density = 'high';
+  else if (totalEntries > 12 || maxPartEntries > 6) density = 'medium';
+
   return (
-    <div className="slide toc elegant-toc">
+    <div className="slide toc elegant-toc" data-density={density}>
       <div className="toc-elegant-head">
         <span className="toc-num-mark">00</span>
         <span className="toc-label-en">CONTENTS</span>
@@ -1003,6 +1018,9 @@ function ImageEmbedSlide({ data, patch, page, totalPages }) {
   const [generating, setGenerating] = React.useState(false);
   const [promptDraft, setPromptDraft] = React.useState('');
   const [dragging, setDragging] = React.useState(false);
+  // 영문 프롬프트 영역 — 기본 collapsed (이미지가 슬라이드 영역 최대치로 확장).
+  // 사용자가 ⌃ 아이콘 클릭으로 펼치면 편집 가능.
+  const [promptExpanded, setPromptExpanded] = React.useState(false);
   const transform = data.imageTransform || { scale: 1, x: 0, y: 0 };
 
   // 마우스 휠로 zoom — passive 리스너 회피를 위해 useEffect 로 직접 부착
@@ -1099,7 +1117,7 @@ function ImageEmbedSlide({ data, patch, page, totalPages }) {
   const hasPrompt = !!(data.imagePrompt && data.imagePrompt.trim());
 
   return (
-    <div className="slide">
+    <div className={'slide image-embed-slide' + (promptExpanded ? ' prompt-expanded' : ' prompt-collapsed')}>
       <TopTag section={data.section} sectionName={data.sectionName} />
       <div className="image-embed-headline">
         <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
@@ -1114,15 +1132,37 @@ function ImageEmbedSlide({ data, patch, page, totalPages }) {
         </div>
       </div>
       <Editable tag="div" className="image-embed-caption" value={data.caption} onChange={(v) => patch({ caption: v })} multiline markdown placeholder="이미지가 보여주는 핵심 시각 요소·참조 의도를 한 줄로" />
-      {/* imagePrompt 편집 — 영문 프롬프트 */}
-      <Editable
-        tag="div"
-        className="image-embed-prompt"
-        value={data.imagePrompt}
-        onChange={(v) => patch({ imagePrompt: v })}
-        multiline
-        placeholder="🍌 영문 이미지 프롬프트 (예: A frozen-in-time street scene with floating debris, cyan glow, cinematic lighting, ultra-detailed concept art)"
-      />
+      {/* imagePrompt 편집 — 영문 프롬프트.
+          기본 collapsed: 한 줄 ellipsis preview + ⌃ 펼치기 버튼. 클릭하면 multiline 편집 가능.
+          이렇게 하면 이미지가 슬라이드 세로 공간을 최대로 차지함. */}
+      <div className="image-embed-prompt-row">
+        <button
+          type="button"
+          className="image-embed-prompt-toggle"
+          onClick={() => setPromptExpanded(v => !v)}
+          title={promptExpanded ? '영문 프롬프트 접기' : '영문 프롬프트 펼치기'}
+        >
+          🍌 {promptExpanded ? '▼' : '▶'}
+        </button>
+        {promptExpanded ? (
+          <Editable
+            tag="div"
+            className="image-embed-prompt"
+            value={data.imagePrompt}
+            onChange={(v) => patch({ imagePrompt: v })}
+            multiline
+            placeholder="영문 이미지 프롬프트 (예: A frozen-in-time street scene with floating debris, cyan glow, cinematic lighting, ultra-detailed concept art)"
+          />
+        ) : (
+          <div
+            className="image-embed-prompt-preview"
+            onClick={() => setPromptExpanded(true)}
+            title="클릭하여 펼치기"
+          >
+            {(data.imagePrompt || '').trim() || <span className="muted">영문 이미지 프롬프트 — 클릭하여 편집</span>}
+          </div>
+        )}
+      </div>
       <div
         ref={wrapRef}
         className={'image-embed-wrap' + (dragging ? ' dragging' : '') + (data.imageSrc ? ' has-image' : '')}

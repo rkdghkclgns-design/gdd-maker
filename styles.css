@@ -1232,6 +1232,59 @@ input, textarea, select { font-family: inherit; color: inherit; }
 }
 .image-embed-prompt:focus { background: #fff; box-shadow: inset 0 0 0 1px var(--accent); }
 
+/* === 영문 프롬프트 토글 영역 ===
+   기본 collapsed: 한 줄 ellipsis preview + 토글 버튼.
+   펼치면 기존 multiline editable. 이미지가 슬라이드 세로 공간 최대 차지. */
+.image-embed-prompt-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+}
+.image-embed-prompt-toggle {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  background: var(--accent);
+  color: #fff;
+  border: 0;
+  padding: 4px 10px;
+  border-radius: 4px 0 0 4px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.image-embed-prompt-toggle:hover { background: var(--accent-strong, #2b88c4); }
+.image-embed-prompt-preview {
+  flex: 1;
+  font-size: 11.5px;
+  color: #586a75;
+  font-family: 'JetBrains Mono', monospace;
+  background: #f3f5f7;
+  border-left: 0;
+  padding: 6px 10px;
+  border-radius: 0 4px 4px 0;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  user-select: none;
+  max-height: 28px;
+}
+.image-embed-prompt-preview .muted {
+  color: #a0a8b2;
+  font-style: italic;
+}
+.image-embed-prompt-preview:hover { background: #eaeef0; }
+/* 펼친 상태에서는 row 가 multiline editable 을 감쌈 */
+.image-embed-prompt-row .image-embed-prompt {
+  flex: 1;
+  border-radius: 0 4px 4px 0;
+  border-left: 0;
+  margin-bottom: 0;
+}
+
 .image-embed-wrap { cursor: pointer; position: relative; }
 .image-embed-wrap:has(img) { cursor: default; }
 
@@ -3446,18 +3499,19 @@ input, textarea, select { font-family: inherit; color: inherit; }
 }
 .image-embed-wrap.has-image {
   cursor: grab;
-  /* 이미지가 있을 때는 체크무늬 배경 숨기고 단색 — 이미지가 letterbox 되어도 깔끔 */
+  /* 이미지가 있을 때는 체크무늬 배경 숨기고 단색 — letterbox 영역도 깔끔 */
   background: #0d1117;
 }
 .image-embed-wrap.has-image.dragging { cursor: grabbing; }
-/* 이미지를 컨테이너 전체에 cover 로 채움 — letterbox 없이 frame 을 가득 채움.
-   nano-banana 가 16:9 로 생성하도록 프롬프트에 강제했으므로 crop 최소.
-   사용자가 pan/zoom 으로 조정 가능 (transform 으로 미세 조정).
-   *최후 안전망*: aspect-ratio 가 안 맞아도 cover 가 채움 → 빈 공간 X. */
+/* contain: 이미지 전체를 잘림 없이 표시. 사용자 요청: "생성된 이미지는 전체가 모두 노출".
+   nano-banana 가 16:9 로 생성하도록 프롬프트로 강제하므로 letterbox 영역은 최소화.
+   사용자가 pan/zoom 으로 확대해서 letterbox 영역을 채울 수도 있음. */
 .image-embed-wrap img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
   object-position: center center;
   display: block;
   will-change: transform;
@@ -4639,6 +4693,47 @@ input, textarea, select { font-family: inherit; color: inherit; }
   min-width: 26px;
 }
 .elegant-toc .toc-part-entry .name { flex: 1; }
+
+/* === 밀도별 자동 축소 — entries 많을 때 모두 한 슬라이드에 보이도록 === */
+.elegant-toc[data-density="medium"] { padding: 44px 64px 36px; gap: 14px; }
+.elegant-toc[data-density="medium"] .toc-h1-ko { font-size: 52px !important; margin-bottom: 8px !important; }
+.elegant-toc[data-density="medium"] .toc-part-roman { font-size: 76px; }
+.elegant-toc[data-density="medium"] .toc-part-label { font-size: 28px; }
+.elegant-toc[data-density="medium"] .toc-part-meta { padding-top: 12px; }
+.elegant-toc[data-density="medium"] .toc-elegant-grid { gap: 22px 48px; }
+.elegant-toc[data-density="medium"] .toc-part-divider { margin: 6px 0 2px; }
+.elegant-toc[data-density="medium"] .toc-part-entry { font-size: 12px; padding: 5px 0; gap: 22px; }
+.elegant-toc[data-density="medium"] .toc-part-entry .num { font-size: 12.5px; min-width: 24px; }
+
+.elegant-toc[data-density="high"] { padding: 36px 56px 28px; gap: 10px; }
+.elegant-toc[data-density="high"] .toc-h1-ko { font-size: 42px !important; margin-bottom: 4px !important; line-height: 1; }
+.elegant-toc[data-density="high"] .toc-num-mark { font-size: 18px; }
+.elegant-toc[data-density="high"] .toc-part-roman { font-size: 60px; }
+.elegant-toc[data-density="high"] .toc-part-label { font-size: 22px; }
+.elegant-toc[data-density="high"] .toc-part-meta { padding-top: 8px; gap: 3px; }
+.elegant-toc[data-density="high"] .toc-part-block { grid-template-columns: 78px 1fr; gap: 0 12px; }
+.elegant-toc[data-density="high"] .toc-elegant-grid { gap: 16px 40px; }
+.elegant-toc[data-density="high"] .toc-part-divider { margin: 4px 0 2px; }
+.elegant-toc[data-density="high"] .toc-part-entry { font-size: 11px; padding: 3.5px 0; gap: 16px; }
+.elegant-toc[data-density="high"] .toc-part-entry .num { font-size: 11.5px; min-width: 22px; }
+.elegant-toc[data-density="high"] .toc-part-sub { font-size: 9px; }
+
+.elegant-toc[data-density="xhigh"] { padding: 28px 44px 22px; gap: 8px; }
+.elegant-toc[data-density="xhigh"] .toc-h1-ko { font-size: 34px !important; margin-bottom: 2px !important; line-height: 1; }
+.elegant-toc[data-density="xhigh"] .toc-num-mark { font-size: 14px; }
+.elegant-toc[data-density="xhigh"] .toc-label-en { font-size: 9px; }
+.elegant-toc[data-density="xhigh"] .toc-elegant-grid {
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px 30px;
+}
+.elegant-toc[data-density="xhigh"] .toc-part-roman { font-size: 46px; }
+.elegant-toc[data-density="xhigh"] .toc-part-label { font-size: 18px; }
+.elegant-toc[data-density="xhigh"] .toc-part-meta { padding-top: 4px; gap: 2px; }
+.elegant-toc[data-density="xhigh"] .toc-part-block { grid-template-columns: 60px 1fr; gap: 0 10px; }
+.elegant-toc[data-density="xhigh"] .toc-part-divider { margin: 2px 0 0; }
+.elegant-toc[data-density="xhigh"] .toc-part-entry { font-size: 9.5px; padding: 2px 0; gap: 12px; line-height: 1.25; }
+.elegant-toc[data-density="xhigh"] .toc-part-entry .num { font-size: 10px; min-width: 18px; }
+.elegant-toc[data-density="xhigh"] .toc-part-sub { font-size: 8.5px; letter-spacing: 0.25em; }
 
 /* ---- Section divider 간지 ---- */
 .slide.elegant-divider {

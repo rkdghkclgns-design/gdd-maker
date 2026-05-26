@@ -66,26 +66,73 @@
     return { dim: 'completeness', label: '완결성', max: 25, points, missing };
   }
 
+  /** 텍스트 정규화 — 정합성 매칭을 느슨하게 만들기 위한 전처리.
+   * - 모두 lowercase (영문)
+   * - 한국어 조사/공백 영향 줄이려 공백을 모두 제거하지는 않고 한 칸으로 통일
+   * - 특수문자(괄호/콤마/슬래시 등) 제거 → 매칭 더 잘 됨
+   */
+  function normalizeForMatch(s) {
+    return String(s || '')
+      .toLowerCase()
+      .replace(/[(){}\[\]<>,./|;:!?"'`~@#$%^&*+=]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  /** 토큰화 — 용어 안의 의미 있는 토큰을 추출 (한국어 한 글자 토큰은 제외) */
+  function tokenize(s) {
+    const norm = normalizeForMatch(s);
+    return norm.split(' ').filter(t => t.length >= 2);
+  }
+
   function scoreConsistency(project) {
     // 용어 (terms.rows[].term) 가 다른 슬라이드에서 사용되는 비율
     const termsSlide = (project.slides || []).find(s => s.type === 'terms');
+
+    // terms 슬라이드 없을 때도 다른 정합성 지표로 판정 (rules/flow 슬라이드 존재 여부 등)
     if (!termsSlide) {
-      return { dim: 'consistency', label: '정합성', max: 20, points: 10, note: 'terms 슬라이드 없음' };
+      // 자체 자료가 풍부하면 부분 점수 — terms 없어도 시스템/규칙 슬라이드가 있으면 인정
+      const hasRich = (project.slides || []).some(s => ['rules', 'flow', 'state-machine', 'data-table'].includes(s.type));
+      const points = hasRich ? 12 : 6;
+      return { dim: 'consistency', label: '정합성', max: 20, points, note: 'terms 슬라이드 없음 (시스템 슬라이드로 부분 인정)' };
     }
-    const terms = (termsSlide.data?.rows || []).map(r => (r.term || '').trim()).filter(Boolean);
+    const terms = (termsSlide.data?.rows || [])
+      .map(r => (r.term || '').trim())
+      .filter(Boolean);
     if (terms.length === 0) {
       return { dim: 'consistency', label: '정합성', max: 20, points: 10, note: 'terms 비어있음' };
     }
+
+    // 다른 슬라이드 텍스트 정규화하여 join
     const allText = [];
     for (const s of project.slides || []) {
       if (s.type === 'terms') continue;
       collectText(s.data, allText);
     }
-    const joined = allText.join(' ');
-    const used = terms.filter(t => joined.includes(t));
+    const joined = normalizeForMatch(allText.join(' '));
+
+    // 용어별 매칭 — 3가지 fallback:
+    // 1) 전체 용어 string 그대로 (정규화 후) 매칭 — 가장 강한 신호
+    // 2) 매칭 안 되면 용어를 토큰화하여, 토큰 절반 이상이 텍스트에 있으면 인정
+    // 3) 그래도 매칭 안 되면 0
+    const used = terms.filter(t => {
+      const norm = normalizeForMatch(t);
+      if (norm && joined.includes(norm)) return true;
+      const tokens = tokenize(t);
+      if (tokens.length === 0) return false;
+      const hit = tokens.filter(tok => joined.includes(tok)).length;
+      return hit / tokens.length >= 0.5;
+    });
+
     const pct = used.length / terms.length;
-    const points = Math.round(pct * 20);
-    return { dim: 'consistency', label: '정합성', max: 20, points, note: `${used.length}/${terms.length} 용어 재사용` };
+    // 최소 보장 점수 — terms 가 정의되어 있다는 사실만으로 5점 baseline
+    const baseline = 5;
+    const earned = Math.round(pct * (20 - baseline));
+    const points = Math.min(20, baseline + earned);
+    return {
+      dim: 'consistency', label: '정합성', max: 20, points,
+      note: `${used.length}/${terms.length} 용어 재사용 (느슨 매칭)`,
+    };
   }
 
   function scoreVagueness(project) {

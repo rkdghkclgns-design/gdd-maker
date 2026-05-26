@@ -38,10 +38,12 @@
   /** rules 내부 block 의 items 길이도 검사 — block 1개에 너무 많은 item 이면 분할 */
   const MAX_ITEMS_PER_BLOCK = 8;
   /** TOC 한 슬라이드에 들어갈 수 있는 part 수와 part 당 entry 수.
-   *  실제 레이아웃: 2x2 grid 4 parts × 각 part 6 entries = 슬라이드 1장에 24 entries 까지 안전.
-   *  TOC 가 이 값을 넘기면 N장으로 분할 (각 슬라이드도 2x2 grid 유지). */
-  const TOC_MAX_PARTS_PER_SLIDE = 4;
-  const TOC_MAX_ENTRIES_PER_PART = 6;
+   *  CSS data-density (low/medium/high/xhigh) 가 폰트/간격을 자동 축소하므로
+   *  엄청 많은 경우(xhigh 한계 초과)만 분할. 일반적인 16~30개는 분할 X.
+   *  실측 기준: xhigh 모드에서 한 슬라이드 32 entries / 한 part 12 entries 까지 fit. */
+  const TOC_MAX_PARTS_PER_SLIDE = 6;       // 4 → 6 (3x2 grid 도 허용)
+  const TOC_MAX_ENTRIES_PER_PART = 12;     // 6 → 12 (xhigh 한계까지)
+  const TOC_MAX_TOTAL_ENTRIES = 36;        // 한 슬라이드 총 entry 수 hard limit
 
   /** 슬라이드 type 별, 분할본 모두에 복사해야 할 메타 필드들 */
   const COPY_FIELDS = {
@@ -174,17 +176,19 @@
       if (blocks.length > 2) return true;
       return blocks.some(b => Array.isArray(b.items) && b.items.length > MAX_ITEMS_PER_BLOCK);
     }
-    // toc: parts 가 4개 초과 또는 한 part 의 entries 가 6개 초과
+    // toc: density CSS 로 대부분 fit 되므로 hard limit 초과만 분할
     if (t === 'toc') {
       const d = slide.data;
       const parts = Array.isArray(d.parts) ? d.parts : null;
       if (parts) {
         if (parts.length > TOC_MAX_PARTS_PER_SLIDE) return true;
-        return parts.some(p => Array.isArray(p.entries) && p.entries.length > TOC_MAX_ENTRIES_PER_PART);
+        if (parts.some(p => Array.isArray(p.entries) && p.entries.length > TOC_MAX_ENTRIES_PER_PART)) return true;
+        const total = parts.reduce((s, p) => s + ((p.entries && p.entries.length) || 0), 0);
+        return total > TOC_MAX_TOTAL_ENTRIES;
       }
-      // 평탄 entries 만 있는 경우 — 24개 초과면 분할
+      // 평탄 entries 만 있는 경우
       const flat = Array.isArray(d.entries) ? d.entries : [];
-      return flat.length > TOC_MAX_PARTS_PER_SLIDE * TOC_MAX_ENTRIES_PER_PART;
+      return flat.length > TOC_MAX_TOTAL_ENTRIES;
     }
     const rule = THRESHOLDS[t];
     if (!rule) return false;

@@ -33,9 +33,30 @@ function migrateLegacyValues(state) {
   }
 
   if (Array.isArray(state.projects)) {
+    // 기존 GDD 슬라이드 중 오버플로된 것을 자동 분할 (특히 TOC).
+    // slide-splitter 가 아직 로드되지 않았을 가능성 대비 — 없으면 건너뜀.
+    const splitter = (typeof window !== 'undefined' && window.gddSlideSplitter)
+      ? window.gddSlideSplitter
+      : null;
     next.projects = state.projects.map((p) => {
       if (!p || typeof p !== 'object') return p;
-      return { ...p, team: cleanBadge(p.team), author: cleanAuthor(p.author) };
+      let nextSlides = p.slides;
+      if (splitter && Array.isArray(p.slides) && p.slides.length > 0) {
+        try {
+          const before = p.slides.length;
+          const split = splitter.splitAllOverflowing(p.slides);
+          // 변경이 일어났을 때만 새 배열로 교체 (불필요한 reference 변경 방지)
+          if (split.length !== before || split.some((s, i) => s !== p.slides[i])) {
+            nextSlides = split;
+          }
+        } catch (_) { /* 분할 실패해도 원본 유지 */ }
+      }
+      return {
+        ...p,
+        team: cleanBadge(p.team),
+        author: cleanAuthor(p.author),
+        slides: nextSlides,
+      };
     });
   }
 

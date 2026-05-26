@@ -37,6 +37,11 @@
 
   /** rules 내부 block 의 items 길이도 검사 — block 1개에 너무 많은 item 이면 분할 */
   const MAX_ITEMS_PER_BLOCK = 8;
+  /** TOC 한 슬라이드에 들어갈 수 있는 part 수와 part 당 entry 수.
+   *  실제 레이아웃: 2x2 grid 4 parts × 각 part 6 entries = 슬라이드 1장에 24 entries 까지 안전.
+   *  TOC 가 이 값을 넘기면 N장으로 분할 (각 슬라이드도 2x2 grid 유지). */
+  const TOC_MAX_PARTS_PER_SLIDE = 4;
+  const TOC_MAX_ENTRIES_PER_PART = 6;
 
   /** 슬라이드 type 별, 분할본 모두에 복사해야 할 메타 필드들 */
   const COPY_FIELDS = {
@@ -169,6 +174,18 @@
       if (blocks.length > 2) return true;
       return blocks.some(b => Array.isArray(b.items) && b.items.length > MAX_ITEMS_PER_BLOCK);
     }
+    // toc: parts 가 4개 초과 또는 한 part 의 entries 가 6개 초과
+    if (t === 'toc') {
+      const d = slide.data;
+      const parts = Array.isArray(d.parts) ? d.parts : null;
+      if (parts) {
+        if (parts.length > TOC_MAX_PARTS_PER_SLIDE) return true;
+        return parts.some(p => Array.isArray(p.entries) && p.entries.length > TOC_MAX_ENTRIES_PER_PART);
+      }
+      // 평탄 entries 만 있는 경우 — 24개 초과면 분할
+      const flat = Array.isArray(d.entries) ? d.entries : [];
+      return flat.length > TOC_MAX_PARTS_PER_SLIDE * TOC_MAX_ENTRIES_PER_PART;
+    }
     const rule = THRESHOLDS[t];
     if (!rule) return false;
     return (slide.data[rule.field] || []).length > rule.max;
@@ -216,12 +233,91 @@
     }));
   }
 
+  /** TOC 슬라이드 특수 분할.
+   *
+   *  Cases:
+   *  A) parts 배열 사용 + 어떤 part 의 entries 가 너무 많음
+   *     → 각 part 의 entries 를 chunk 한 뒤, 슬라이드를 part 단위로 N장으로 분할
+   *  B) parts 가 4개 초과
+   *     → 4개씩 묶어서 슬라이드 분할
+   *  C) entries 평탄 배열만 있는 경우 → 적절히 그룹화하여 N장으로 분할
+   *
+   *  결과 슬라이드는 모두 toc type 유지 + title 에 (n/N) 접미사. */
+  function splitToc(slide) {
+    const d = slide.data || {};
+    const baseMeta = (extra) => copyMeta(d, { ...d, ...extra }, 'toc');
+
+    // 표준화: parts 형태로 통일.
+    let parts;
+    if (Array.isArray(d.parts) && d.parts.length > 0) {
+      parts = d.parts.map((p) => ({
+        roman: p.roman,
+        label: p.label || p.name || '',
+        sub: p.sub || p.subEn || '',
+        entries: Array.isArray(p.entries) ? p.entries : [],
+      }));
+    } else if (Array.isArray(d.entries) && d.entries.length > 0) {
+      // entries 평탄 배열 — 적절히 part 로 묶음 (TOC_MAX_ENTRIES_PER_PART 단위).
+      const flat = d.entries;
+      parts = [];
+      for (let i = 0; i < flat.length; i += TOC_MAX_ENTRIES_PER_PART) {
+        parts.push({ label: '', sub: '', entries: flat.slice(i, i + TOC_MAX_ENTRIES_PER_PART) });
+      }
+    } else {
+      return [slide]; // 분할할 데이터 없음
+    }
+
+    // Step 1: 각 part 의 entries 가 너무 많으면 sub-part 로 분할
+    const expanded = [];
+    parts.forEach((p) => {
+      const es = p.entries || [];
+      if (es.length <= TOC_MAX_ENTRIES_PER_PART) {
+        expanded.push(p);
+      } else {
+        for (let i = 0; i < es.length; i += TOC_MAX_ENTRIES_PER_PART) {
+          expanded.push({
+            roman: p.roman,
+            label: p.label + (i === 0 ? '' : ' (계속)'),
+            sub: p.sub,
+            entries: es.slice(i, i + TOC_MAX_ENTRIES_PER_PART),
+          });
+        }
+      }
+    });
+
+    // Step 2: parts 가 TOC_MAX_PARTS_PER_SLIDE 이내면 단일 슬라이드
+    if (expanded.length <= TOC_MAX_PARTS_PER_SLIDE) {
+      return [{
+        id: slide.id,
+        type: 'toc',
+        data: baseMeta({ parts: expanded, entries: undefined }),
+      }];
+    }
+
+    // Step 3: parts 가 많으면 슬라이드 chunk
+    const chunks = [];
+    for (let i = 0; i < expanded.length; i += TOC_MAX_PARTS_PER_SLIDE) {
+      chunks.push(expanded.slice(i, i + TOC_MAX_PARTS_PER_SLIDE));
+    }
+    return chunks.map((chunk, idx) => ({
+      id: idx === 0 ? slide.id : 'sl' + uid(),
+      type: 'toc',
+      data: baseMeta({
+        parts: chunk,
+        entries: undefined,
+        title: suffixTitle(d.title || 'CONTENTS', idx, chunks.length),
+        titleKo: suffixTitle(d.titleKo || d.title || '목차', idx, chunks.length),
+      }),
+    }));
+  }
+
   function splitSlide(slide) {
     if (!slide || !slide.data) return [slide];
     const t = slide.type;
     if (t === 'api-contract') return splitApiContract(slide);
     if (t === 'state-machine') return splitStateMachine(slide);
     if (t === 'rules') return splitRules(slide);
+    if (t === 'toc') return splitToc(slide);
     if (THRESHOLDS[t]) return splitByArrayField(slide);
     return [slide];
   }

@@ -1,6 +1,98 @@
 <!doctype html>
 <html lang="ko">
 <head>
+<!-- 확장 노이즈 필터는 다른 어떤 것보다 먼저 실행되어야 함 — meta/title 보다 위에 배치.
+     extensions 가 document_start 에서 실행되므로 우리도 가능한 한 빨리 등록. -->
+<script>
+/* 브라우저 확장(번역기/패스워드 매니저/애드블락 등)이 일으키는 노이즈를 5중 방어로 차단.
+   우리 앱의 진짜 에러는 그대로 콘솔에 노출됨.
+
+   1) unhandledrejection 이벤트 (capture) — Promise reject
+   2) rejectionhandled 이벤트 — handled 후의 잔여 노이즈
+   3) error 이벤트 (capture) — 동기 throw
+   4) 모든 console.* 메서드 패치 — Chrome V8 가 직접 출력하는 "Uncaught (in promise)" 차단
+   5) Promise.prototype 의 catch wrap (옵션) — 향후 reject 의 reason 도 패턴 검사
+*/
+(function () {
+  var EXT_NOISE_PATTERNS = [
+    /listener indicated an asynchronous response/i,
+    /message channel closed before a response was received/i,
+    /Extension context invalidated/i,
+    /The message port closed before a response was received/i,
+    /Unchecked runtime\.lastError/i,
+    /Uncaught \(in promise\)/i,
+    /chrome-extension:\/\//i,
+    /moz-extension:\/\//i,
+    /safari-extension:\/\//i,
+    /webkit-masked-url:\/\//i,
+    /A listener indicated/i,
+  ];
+  function matchesNoise(text) {
+    if (text == null) return false;
+    var str;
+    try {
+      if (typeof text === 'string') str = text;
+      else if (text && typeof text.message === 'string') str = text.message;
+      else str = String(text);
+    } catch (_) { return false; }
+    return EXT_NOISE_PATTERNS.some(function (re) { return re.test(str); });
+  }
+  function anyArgNoise(args) {
+    try {
+      for (var i = 0; i < args.length; i++) {
+        var a = args[i];
+        if (matchesNoise(a)) return true;
+        if (a && typeof a === 'object') {
+          if (matchesNoise(a.message)) return true;
+          if (matchesNoise(a.stack)) return true;
+        }
+      }
+    } catch (_) {}
+    return false;
+  }
+  function isExtensionNoise(reason) {
+    if (reason == null) return false;
+    var msg = '';
+    try {
+      if (typeof reason === 'string') msg = reason;
+      else if (reason && reason.message) msg = String(reason.message);
+      else msg = String(reason);
+      if (reason && reason.stack) msg += ' ' + String(reason.stack);
+    } catch (_) {}
+    return matchesNoise(msg);
+  }
+  // (1) Promise reject 이벤트 — capture 단계 + preventDefault
+  window.addEventListener('unhandledrejection', function (e) {
+    if (isExtensionNoise(e.reason)) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }
+  }, true);
+  // (2) 늦게 handled 된 rejection 도 추가 차단
+  window.addEventListener('rejectionhandled', function (e) {
+    if (isExtensionNoise(e.reason)) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }
+  }, true);
+  // (3) 동기 error 이벤트
+  window.addEventListener('error', function (e) {
+    if (isExtensionNoise(e.error || e.message) || matchesNoise(e.filename)) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }
+  }, true);
+  // (4) 모든 console 메서드 패치 — Chrome 의 자동 reporting 도 흡수
+  ['log', 'info', 'debug', 'warn', 'error', 'trace'].forEach(function (level) {
+    var orig = console[level];
+    if (!orig) return;
+    console[level] = function () {
+      if (anyArgNoise(arguments)) return; // 확장 노이즈 → drop
+      return orig.apply(console, arguments);
+    };
+  });
+})();
+</script>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=1280, initial-scale=1" />
 <!-- index.html 자체는 항상 새로 받음 — 자원의 ?v=<hash> cache-busting 이 즉시 반영되도록.
@@ -10,64 +102,6 @@
 <meta http-equiv="Expires" content="0" />
 <title>GDD 메이커 — 게임 기획서 빌더</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234cc2ff'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='ui-monospace,monospace' font-weight='800' font-size='20' fill='%23061018'%3EG%3C/text%3E%3C/svg%3E" />
-<script>
-/* 브라우저 확장(번역기/패스워드 매니저/애드블락 등)이 일으키는 노이즈만 정확히 swallow.
-   우리 앱의 진짜 에러는 그대로 콘솔에 노출됨.
-
-   3중 차단:
-   1) unhandledrejection 이벤트 — Promise 에서 throw 된 확장 오류
-   2) error 이벤트 (capture 단계) — 동기 throw
-   3) console.error / console.warn 패치 — Chrome 이 직접 출력하는 "Unchecked runtime.lastError"
-      메시지는 어떤 이벤트로도 잡히지 않으므로 console 자체를 wrapping
-*/
-(function () {
-  var EXT_NOISE_PATTERNS = [
-    /listener indicated an asynchronous response/i,
-    /message channel closed before a response was received/i,
-    /Extension context invalidated/i,
-    /The message port closed before a response was received/i,
-    /Unchecked runtime\.lastError/i,
-    /chrome-extension:\/\//i,
-    /moz-extension:\/\//i,
-  ];
-  function matchesNoise(text) {
-    if (!text) return false;
-    var str = String(text);
-    return EXT_NOISE_PATTERNS.some(function (re) { return re.test(str); });
-  }
-  function isExtensionNoise(reason) {
-    if (!reason) return false;
-    var msg = '';
-    if (typeof reason === 'string') msg = reason;
-    else if (reason && reason.message) msg = String(reason.message);
-    else { try { msg = String(reason); } catch (e) { msg = ''; } }
-    if (reason && reason.stack) msg += ' ' + String(reason.stack);
-    return matchesNoise(msg);
-  }
-  window.addEventListener('unhandledrejection', function (e) {
-    if (isExtensionNoise(e.reason)) e.preventDefault();
-  });
-  window.addEventListener('error', function (e) {
-    if (isExtensionNoise(e.error || e.message) || matchesNoise(e.filename)) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-    }
-  }, true);
-  // console.error / console.warn 패치 — Chrome 내부 메시지("Unchecked runtime.lastError" 등) 차단
-  ['error', 'warn'].forEach(function (level) {
-    var orig = console[level];
-    if (!orig) return;
-    console[level] = function () {
-      try {
-        for (var i = 0; i < arguments.length; i++) {
-          if (matchesNoise(arguments[i])) return; // 확장 노이즈 → 출력 안 함
-        }
-      } catch (_) {}
-      return orig.apply(console, arguments);
-    };
-  });
-})();
-</script>
 <link rel="stylesheet" href="styles.css?v=805f2138" />
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
@@ -93,6 +127,6 @@
 <script src="slide-splitter.js?v=6a1eafc3"></script>
 <!-- 모든 .jsx 파일을 단일 bundle.jsx로 합쳐 babel-standalone에 전달.
      빌드: node build.js — GitHub Actions에서도 자동 실행. -->
-<script type="text/babel" data-presets="react" src="bundle.jsx?v=a4ada07f"></script>
+<script type="text/babel" data-presets="react" src="bundle.jsx?v=aeba3e38"></script>
 </body>
 </html>

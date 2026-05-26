@@ -744,6 +744,30 @@ const SECTION_LABEL = {
 };
 
 function SectionCard({ num, title, locked, onToggleLock, onAi, busy, theme, aiLabel, children }) {
+  const bodyRef = React.useRef(null);
+  // 잠금 상태 변화 시 body 내부 모든 contenteditable 요소의 contenteditable 속성을 토글.
+  // CSS pointer-events:none 만으로는 키보드 포커스가 이미 들어가있는 경우 입력이 통과할 수 있음.
+  // 이 effect 가 DOM 속성을 직접 false 로 강제 → 키보드 입력까지 완전히 차단.
+  React.useEffect(() => {
+    if (!bodyRef.current) return;
+    const editables = bodyRef.current.querySelectorAll('[contenteditable]');
+    editables.forEach((el) => {
+      if (locked) {
+        // 원래 값을 data 속성에 저장하고 false 로 변경
+        if (!el.dataset.origContenteditable) {
+          el.dataset.origContenteditable = el.getAttribute('contenteditable') || 'true';
+        }
+        el.setAttribute('contenteditable', 'false');
+        if (document.activeElement === el) el.blur();
+      } else {
+        // 원래 값 복원 (없으면 true)
+        const orig = el.dataset.origContenteditable || 'true';
+        el.setAttribute('contenteditable', orig);
+        delete el.dataset.origContenteditable;
+      }
+    });
+  }, [locked, children]);
+
   return (
     <div className={'section-card ' + (locked ? 'locked' : '')}>
       <div className="sc-head">
@@ -767,7 +791,7 @@ function SectionCard({ num, title, locked, onToggleLock, onAi, busy, theme, aiLa
           </button>
         </div>
       </div>
-      <div className="sc-body">{children}</div>
+      <div className="sc-body" ref={bodyRef} aria-disabled={locked || undefined}>{children}</div>
     </div>
   );
 }

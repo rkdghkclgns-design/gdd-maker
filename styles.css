@@ -3935,6 +3935,28 @@ input, textarea, select { font-family: inherit; color: inherit; }
   overflow: visible;
 }
 .section-card.locked { opacity: 0.78; background: rgba(20, 40, 32, 0.25); }
+/* ===== 잠금 시 편집 차단 =====
+   .sc-body 전체에 pointer-events:none + user-select:none 적용.
+   - 텍스트 클릭, 드래그, 키보드 입력 모두 차단
+   - 카드 헤더(.sc-head)는 lock 토글/AI 재생성 버튼이 있어야 하므로 예외
+   - opacity 0.78 (이미 있음) + grayscale 으로 시각적 비활성화 표현
+*/
+.section-card.locked .sc-body {
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  filter: grayscale(0.4);
+}
+.section-card.locked .sc-body [contenteditable] {
+  caret-color: transparent;
+}
+.section-card.locked .sc-body button,
+.section-card.locked .sc-body input,
+.section-card.locked .sc-body textarea,
+.section-card.locked .sc-body [role='button'] {
+  /* 폼/버튼도 클릭 불가 */
+  pointer-events: none !important;
+}
 .section-card.locked::before {
   content: '';
   position: absolute;

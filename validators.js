@@ -57,11 +57,8 @@
         rows: { item: {} },
       },
     },
-    flow: {
-      required: ['nodes'],
-      defaults: { section: '02', sectionName: '플로우', title: '플로우 차트', nodes: [] },
-      arrays: { nodes: { item: { kind: 'process', label: '단계' } } },
-    },
+    /* flow: 아래 (현재 line 99~) 에서 direction/lines 필드까지 포함된 완전한 정의 사용.
+       여기 첫 번째 정의는 두 번째에 의해 덮어써졌으므로 제거. */
     diagram: {
       required: ['nodes'],
       defaults: { section: '02', sectionName: '시스템 구조', title: '다이어그램', nodes: [], edges: [] },
@@ -88,7 +85,12 @@
     },
     'ui-design': {
       required: [],
-      defaults: { section: '03', sectionName: 'UI/UX', title: '화면 설계', callouts: [] },
+      defaults: {
+        section: '03', sectionName: 'UI/UX', title: '화면 설계',
+        callouts: [],
+        /* 이미지 관련 필드 — 누락 시 AI 가 imagePrompt 만 주고 imageSrc 빈 채로 와도 안전 */
+        imagePrompt: '', imageSrc: null, imageTransform: null,
+      },
       arrays: { callouts: { item: { name: '영역', desc: '설명', x: 50, y: 50 } } },
     },
     resources: {
@@ -96,11 +98,10 @@
       defaults: { section: '05', sectionName: '필요 리소스', title: '리소스 목록', categories: [] },
       arrays: { categories: { item: { name: '카테고리', count: 'x?', guideline: '', items: [] } } },
     },
-    flow: {
-      required: ['nodes'],
-      defaults: { section: '02', sectionName: '플로우 차트', title: '플로우', direction: '', lines: 1, nodes: [] },
-      arrays: { nodes: { item: { kind: 'process', label: '단계' } } },
-    },
+    /* NOTE: 위에 line 60-64 에 'flow' 가 이미 정의되어 있음.
+       JS 객체 리터럴에서 같은 키 중복 시 뒤의 값이 이전 값을 덮어쓰므로 의도하지 않은 동작 위험.
+       이 두 번째 정의(direction/lines 필드 포함)가 채택되어야 하는 의도된 schema 이므로 유지.
+       향후 첫 번째 정의(line 60-64)를 제거하면 깔끔하지만 호환성 안전을 위해 그대로 둠. */
     /* === Phase 1 신규 슬라이드 7종 — 개발 가능 수준 보장용 === */
     'balance-table': {
       required: ['vars'],

@@ -142,9 +142,10 @@
   function splitStateMachine(slide) {
     const d = slide.data || {};
     const trans = d.transitions || [];
-    if (trans.length <= 8) return [slide];
+    const maxTrans = (THRESHOLDS['state-machine'] && THRESHOLDS['state-machine'].max) || 6;
+    if (trans.length <= maxTrans) return [slide];
     const chunks = [];
-    for (let i = 0; i < trans.length; i += 8) chunks.push(trans.slice(i, i + 8));
+    for (let i = 0; i < trans.length; i += maxTrans) chunks.push(trans.slice(i, i + maxTrans));
     return chunks.map((chunk, idx) => ({
       id: idx === 0 ? slide.id : 'sl' + uid(),
       type: 'state-machine',
@@ -168,7 +169,10 @@
       return (d.errors || []).length > 5 || reqLen + respLen > 1400;
     }
     if (t === 'state-machine') {
-      return (slide.data.transitions || []).length > 6;
+      // transitions 또는 states 가 많으면 분할
+      const tr = (slide.data.transitions || []).length;
+      const st = (slide.data.states || []).length;
+      return tr > 6 || st > 10;
     }
     // rules: blocks 가 많거나 한 block 안 items 가 많으면 분할
     if (t === 'rules') {

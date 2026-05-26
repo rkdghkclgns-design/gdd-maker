@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-26T01:34:11.454Z
+   생성 시각: 2026-05-26T01:44:55.480Z
 */
 
 // ============================================================
@@ -4511,28 +4511,49 @@ const SECTION_LABEL = {
 
 function SectionCard({ num, title, locked, onToggleLock, onAi, busy, theme, aiLabel, children }) {
   const bodyRef = React.useRef(null);
-  // 잠금 상태 변화 시 body 내부 모든 contenteditable 요소의 contenteditable 속성을 토글.
-  // CSS pointer-events:none 만으로는 키보드 포커스가 이미 들어가있는 경우 입력이 통과할 수 있음.
-  // 이 effect 가 DOM 속성을 직접 false 로 강제 → 키보드 입력까지 완전히 차단.
-  React.useEffect(() => {
+
+  /* ===== 잠금 시 편집 완전 차단 — 삼중 방어 =====
+   * 1) CSS: .section-card.locked .sc-body { pointer-events:none; user-select:none }
+   * 2) DOM 속성: contenteditable=false 강제 (mount 직후 + locked 변경 시)
+   * 3) Capture-phase 이벤트 차단: keydown/input/paste/cut/drop/click/mousedown
+   *    → 어떤 경로로 포커스가 진입해도 입력 자체가 처리 안 됨
+   */
+
+  // useLayoutEffect: paint 전에 contenteditable=false 적용 → 첫 프레임부터 잠김
+  React.useLayoutEffect(() => {
     if (!bodyRef.current) return;
-    const editables = bodyRef.current.querySelectorAll('[contenteditable]');
+    const body = bodyRef.current;
+    const editables = body.querySelectorAll('[contenteditable]');
     editables.forEach((el) => {
       if (locked) {
-        // 원래 값을 data 속성에 저장하고 false 로 변경
         if (!el.dataset.origContenteditable) {
           el.dataset.origContenteditable = el.getAttribute('contenteditable') || 'true';
         }
         el.setAttribute('contenteditable', 'false');
         if (document.activeElement === el) el.blur();
       } else {
-        // 원래 값 복원 (없으면 true)
         const orig = el.dataset.origContenteditable || 'true';
         el.setAttribute('contenteditable', orig);
         delete el.dataset.origContenteditable;
       }
     });
-  }, [locked, children]);
+  });
+
+  // 잠금 상태일 때만 capture-phase 이벤트 리스너 부착 — 모든 편집 시도 차단
+  React.useEffect(() => {
+    if (!locked || !bodyRef.current) return;
+    const body = bodyRef.current;
+    const block = (e) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      return false;
+    };
+    const events = ['keydown', 'keypress', 'beforeinput', 'input', 'paste', 'cut', 'drop', 'dragstart'];
+    events.forEach(ev => body.addEventListener(ev, block, { capture: true }));
+    return () => {
+      events.forEach(ev => body.removeEventListener(ev, block, { capture: true }));
+    };
+  }, [locked]);
 
   return (
     <div className={'section-card ' + (locked ? 'locked' : '')}>
@@ -4557,7 +4578,14 @@ function SectionCard({ num, title, locked, onToggleLock, onAi, busy, theme, aiLa
           </button>
         </div>
       </div>
-      <div className="sc-body" ref={bodyRef} aria-disabled={locked || undefined}>{children}</div>
+      <div
+        className="sc-body"
+        ref={bodyRef}
+        aria-disabled={locked || undefined}
+        /* inert: 가장 강력한 브라우저 네이티브 차단 (Chrome 102+, Firefox 112+).
+           포커스/클릭/키보드/탭 모두 차단. 지원 안 되는 브라우저는 위 layered 방어가 백업. */
+        {...(locked ? { inert: '' } : {})}
+      >{children}</div>
     </div>
   );
 }

@@ -26,6 +26,12 @@
     /safari-extension:\/\//i,
     /webkit-masked-url:\/\//i,
     /A listener indicated/i,
+    // babel-standalone 의 성능 안내 — 번들이 500KB 넘으면 코드 미화(pretty-print) 끄는
+    // 정보성 메시지. 동작에는 영향 없음.
+    /\[BABEL\].*deoptimised/i,
+    /exceeds the max of 500KB/i,
+    /precompile your scripts/i,
+    /in-browser Babel transformer/i,
   ];
   function matchesNoise(text) {
     if (text == null) return false;

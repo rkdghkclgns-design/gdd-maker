@@ -221,6 +221,40 @@
       const totalH = states.reduce((acc, s, i) => acc + (i > 0 ? GAP : 0) + BASE + ((s.invariants || []).length * PER_INV), 0);
       return totalH > SLIDE_BODY_H;
     }
+    // balance-table / acceptance-criteria / telemetry — 높이 기반
+    if (t === 'balance-table') {
+      const d = slide.data || {};
+      const vars = d.vars || [];
+      if (vars.length > 6) return true;
+      // splitBalanceTable 와 동일한 height 추정
+      const SLIDE_BODY_H = 440;
+      const formulaH = d.formula ? (50 + estimateTextHeight(d.formula)) : 0;
+      const curveH = d.curve && Array.isArray(d.curve.x) ? 150 : 0;
+      const availableH = Math.max(180, SLIDE_BODY_H - formulaH - curveH);
+      const totalH = vars.reduce((acc, v) => acc + 38 + ['name','formula','range','defaultValue','sensitivity','notes'].reduce((a, f) => a + estimateTextHeight(v[f]), 0), 0);
+      return totalH > availableH;
+    }
+    if (t === 'acceptance-criteria') {
+      const d = slide.data || {};
+      const cs = d.criteria || [];
+      if (cs.length > 3) return true;
+      const STORY_H = d.userStory ? 80 : 0;
+      const totalH = cs.reduce((acc, c) => {
+        const edges = (c.edgeCases || []).length;
+        return acc + 60 + estimateTextHeight(c.given) + estimateTextHeight(c.when) + estimateTextHeight(c.then) + (edges > 0 ? 24 + edges * 20 : 0);
+      }, 0);
+      return totalH > (420 - STORY_H);
+    }
+    if (t === 'telemetry') {
+      const d = slide.data || {};
+      const events = d.events || [];
+      if (events.length > 4) return true;
+      const totalH = events.reduce((acc, e) => {
+        const props = (e.props || []).length;
+        return acc + 70 + props * 22 + (props > 0 ? 18 : 0) + estimateTextHeight(e.when);
+      }, 0);
+      return totalH > 440;
+    }
     // rules: blocks 가 많거나 한 block 안 items 가 많으면 분할
     if (t === 'rules') {
       const blocks = slide.data.blocks || [];
@@ -366,11 +400,165 @@
     }));
   }
 
+  /** 텍스트의 추정 렌더 높이 (px) — 마크다운 헤더/개행/글자수 가중. */
+  function estimateTextHeight(text) {
+    if (!text) return 0;
+    const s = String(text);
+    let h = 0;
+    // 헤더 1개당 +28px
+    h += ((s.match(/^#{1,6}\s/gm) || []).length) * 28;
+    // 개행 1개당 +18px
+    h += ((s.match(/\n/g) || []).length) * 18;
+    // 글자수 — 200자당 +20px (wrap 고려)
+    h += Math.floor(s.length / 200) * 20;
+    // 기본 1줄
+    if (h === 0 && s.length > 0) h = 20;
+    return h;
+  }
+
+  /** balance-table — vars 행 높이 가변. 각 row 의 모든 텍스트 필드 누적 높이로 chunk. */
+  function splitBalanceTable(slide) {
+    const d = slide.data || {};
+    const vars = d.vars || [];
+    if (vars.length === 0) return [slide];
+
+    const SLIDE_BODY_H = 440;
+    const ROW_BASE = 38; // 1행 빈 텍스트 기준
+    const formulaH = d.formula ? (50 + estimateTextHeight(d.formula)) : 0;
+    const curveH = d.curve && Array.isArray(d.curve.x) ? 150 : 0;
+    const availableH = Math.max(180, SLIDE_BODY_H - formulaH - curveH);
+
+    const rowH = (v) => {
+      let h = ROW_BASE;
+      for (const f of ['name', 'formula', 'range', 'defaultValue', 'sensitivity', 'notes']) {
+        h += estimateTextHeight(v[f]);
+      }
+      return h;
+    };
+
+    const chunks = [];
+    let cur = [], curH = 0;
+    for (const v of vars) {
+      const h = rowH(v);
+      if (cur.length > 0 && curH + h > availableH) {
+        chunks.push(cur);
+        cur = [v]; curH = h;
+      } else {
+        cur.push(v); curH += h;
+      }
+    }
+    if (cur.length) chunks.push(cur);
+    if (chunks.length <= 1) return [slide];
+
+    return chunks.map((chunk, idx) => ({
+      id: idx === 0 ? slide.id : 'sl' + uid(),
+      type: 'balance-table',
+      data: {
+        ...d,
+        title: suffixTitle(d.title, idx, chunks.length),
+        vars: chunk,
+        // formula / curve 는 첫 슬라이드에만 — 분할본에서는 비워서 공간 확보
+        formula: idx === 0 ? d.formula : '',
+        curve: idx === 0 ? d.curve : null,
+      },
+    }));
+  }
+
+  /** acceptance-criteria — criterion 1개가 Given/When/Then + edgeCases 다해서 100~250px 가변. */
+  function splitAcceptanceCriteria(slide) {
+    const d = slide.data || {};
+    const criteria = d.criteria || [];
+    if (criteria.length === 0) return [slide];
+
+    const SLIDE_BODY_H = 420;
+    const STORY_H = d.userStory ? 80 : 0; // userStory 박스
+    const availableH = SLIDE_BODY_H - STORY_H;
+
+    const criterionH = (c) => {
+      let h = 60; // 헤더 + GIVEN/WHEN/THEN 라벨 영역
+      h += estimateTextHeight(c.given);
+      h += estimateTextHeight(c.when);
+      h += estimateTextHeight(c.then);
+      const edges = (c.edgeCases || []).length;
+      if (edges > 0) h += 24 + edges * 20;
+      return h;
+    };
+
+    const chunks = [];
+    let cur = [], curH = 0;
+    for (const c of criteria) {
+      const h = criterionH(c);
+      if (cur.length > 0 && curH + h > availableH) {
+        chunks.push(cur);
+        cur = [c]; curH = h;
+      } else {
+        cur.push(c); curH += h;
+      }
+    }
+    if (cur.length) chunks.push(cur);
+    if (chunks.length <= 1) return [slide];
+
+    return chunks.map((chunk, idx) => ({
+      id: idx === 0 ? slide.id : 'sl' + uid(),
+      type: 'acceptance-criteria',
+      data: {
+        ...d,
+        title: suffixTitle(d.title, idx, chunks.length),
+        criteria: chunk,
+        userStory: idx === 0 ? d.userStory : null,
+      },
+    }));
+  }
+
+  /** telemetry — event 1개당 props 개수 만큼 높이 가변. */
+  function splitTelemetry(slide) {
+    const d = slide.data || {};
+    const events = d.events || [];
+    if (events.length === 0) return [slide];
+
+    const SLIDE_BODY_H = 440;
+    const eventH = (e) => {
+      let h = 70; // 헤더 + when
+      const props = (e.props || []).length;
+      h += props * 22 + (props > 0 ? 18 : 0);
+      h += estimateTextHeight(e.when);
+      return h;
+    };
+
+    const chunks = [];
+    let cur = [], curH = 0;
+    for (const e of events) {
+      const h = eventH(e);
+      if (cur.length > 0 && curH + h > SLIDE_BODY_H) {
+        chunks.push(cur);
+        cur = [e]; curH = h;
+      } else {
+        cur.push(e); curH += h;
+      }
+    }
+    if (cur.length) chunks.push(cur);
+    if (chunks.length <= 1) return [slide];
+
+    return chunks.map((chunk, idx) => ({
+      id: idx === 0 ? slide.id : 'sl' + uid(),
+      type: 'telemetry',
+      data: {
+        ...d,
+        title: suffixTitle(d.title, idx, chunks.length),
+        events: chunk,
+        funnels: idx === 0 ? d.funnels : [],
+      },
+    }));
+  }
+
   function splitSlide(slide) {
     if (!slide || !slide.data) return [slide];
     const t = slide.type;
     if (t === 'api-contract') return splitApiContract(slide);
     if (t === 'state-machine') return splitStateMachine(slide);
+    if (t === 'balance-table') return splitBalanceTable(slide);
+    if (t === 'acceptance-criteria') return splitAcceptanceCriteria(slide);
+    if (t === 'telemetry') return splitTelemetry(slide);
     if (t === 'rules') return splitRules(slide);
     if (t === 'toc') return splitToc(slide);
     if (THRESHOLDS[t]) return splitByArrayField(slide);

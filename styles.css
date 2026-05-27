@@ -2616,6 +2616,40 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .slide-frame .slide > *:not(.footer):not(.top-tag) {
   /* 기본 — placeholder 시 자식 숨김 아님 (편집 가능 유지) */
 }
+
+/* ===== 슬라이드 영역 완전 클리핑 =====
+ * 슬라이드 frame 은 1280x720 고정. 그 안의 어떤 자식도 footer 영역(하단 76px)을
+ * 침범하거나 좌우로 넘쳐선 안 됨. data-wrap / overflow:auto 가 적용된 직속 자식이
+ * 부모 padding-bottom 보다 큰 경우, 자체 스크롤이 발동하기 전에 max-height 로
+ * 클리핑되어야 함. */
+.slide-frame {
+  contain: layout paint;
+  overflow: hidden !important;
+}
+.slide-frame .slide {
+  width: 100%;
+  max-width: var(--slide-w, 1280px);
+  height: 100%;
+  max-height: var(--slide-h, 720px);
+  overflow: hidden;
+}
+/* multiline editable / markdown rendered content — 가로 wrap 강제 */
+.slide-frame .slide .md-rendered,
+.slide-frame .slide [contenteditable=true],
+.slide-frame .slide pre,
+.slide-frame .slide code,
+.slide-frame .slide table {
+  max-width: 100%;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+/* balance-table 의 formula 박스 — 너무 길면 자체 max-height + ellipsis 처리.
+ * splitter 가 splitBalanceTable 단계에서 분할본의 formula 를 비우므로 첫 슬라이드만
+ * 영향. 안전망으로 최대 높이 제한. */
+.slide-frame .slide .balance-formula {
+  max-height: 140px;
+  overflow: hidden;
+}
 .stage-veil + .slide-frame .slide,
 .slide-frame .slide.is-placeholder {
   position: relative;

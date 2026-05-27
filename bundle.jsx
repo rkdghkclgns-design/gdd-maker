@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-27T09:23:21.565Z
+   생성 시각: 2026-05-27T09:25:42.507Z
 */
 
 // ============================================================
@@ -616,7 +616,65 @@ function MarkdownText({ text }) {
   if (!text) return null;
   const lines = String(text).split('\n');
   const nodes = [];
+  let inCodeBlock = false;
+  let codeBlockBuf = [];
+  let codeBlockLang = '';
+
+  const flushCodeBlock = (key) => {
+    if (codeBlockBuf.length) {
+      nodes.push(React.createElement('pre', { key: `cb-${key}`, className: 'md-codeblock', 'data-lang': codeBlockLang || undefined },
+        React.createElement('code', null, codeBlockBuf.join('\n'))
+      ));
+    }
+    codeBlockBuf = [];
+    codeBlockLang = '';
+    inCodeBlock = false;
+  };
+
   lines.forEach((line, i) => {
+    // 코드 블록 ```lang ... ```
+    const fenceMatch = /^```(\w*)\s*$/.exec(line);
+    if (fenceMatch) {
+      if (inCodeBlock) {
+        flushCodeBlock(i);
+      } else {
+        inCodeBlock = true;
+        codeBlockLang = fenceMatch[1] || '';
+      }
+      return;
+    }
+    if (inCodeBlock) {
+      codeBlockBuf.push(line);
+      return;
+    }
+
+    // 헤더 # / ## / ### / #### / ##### / ######
+    const headerMatch = /^(#{1,6})\s+(.*)$/.exec(line);
+    if (headerMatch) {
+      const level = headerMatch[1].length;
+      const headerText = headerMatch[2];
+      nodes.push(React.createElement(`h${Math.min(6, level + 2)}`, // 슬라이드 h1 과 충돌 피해 h3~h6 매핑
+        { key: `h-${i}`, className: `md-h md-h${level}` },
+        ...parseInlineMd(headerText)
+      ));
+      return;
+    }
+
+    // 인용 > ...
+    const quoteMatch = /^>\s?(.*)$/.exec(line);
+    if (quoteMatch) {
+      nodes.push(React.createElement('blockquote', { key: `q-${i}`, className: 'md-quote' },
+        ...parseInlineMd(quoteMatch[1])
+      ));
+      return;
+    }
+
+    // 수평선 --- 또는 ***
+    if (/^[-*_]{3,}\s*$/.test(line)) {
+      nodes.push(React.createElement('hr', { key: `hr-${i}`, className: 'md-hr' }));
+      return;
+    }
+
     // 줄머리의 "- " / "* " / "1. " / "2. " 같은 리스트 마커는 시각화
     const bulletMatch = /^(\s*)([-*•])\s+(.*)$/.exec(line);
     const numMatch = /^(\s*)(\d+\.)\s+(.*)$/.exec(line);
@@ -632,11 +690,16 @@ function MarkdownText({ text }) {
         React.createElement('span', { className: 'md-bullet-marker md-num' }, numMatch[2]),
         ...parseInlineMd(numMatch[3])
       ));
+    } else if (line === '') {
+      nodes.push(React.createElement('div', { key: `bl-${i}`, className: 'md-blank' }));
+      return;
     } else {
       nodes.push(React.createElement(React.Fragment, { key: `l-${i}` }, ...parseInlineMd(line)));
     }
     if (i < lines.length - 1) nodes.push(React.createElement('br', { key: `br-${i}` }));
   });
+  // 닫히지 않은 코드 블록 flush
+  if (inCodeBlock) flushCodeBlock('end');
   return React.createElement(React.Fragment, null, ...nodes);
 }
 

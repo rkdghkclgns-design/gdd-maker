@@ -2679,6 +2679,71 @@ input, textarea, select { font-family: inherit; color: inherit; }
   font-style: italic;
 }
 .md-strong { font-weight: 700; color: inherit; }
+
+/* 블록 마크다운 — 헤더 / 인용 / 수평선 / 코드 블록 */
+.md-h {
+  display: block;
+  margin: 10px 0 4px;
+  font-weight: 700;
+  color: inherit;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+.md-h1 { font-size: 1.45em; padding-bottom: 4px; border-bottom: 2px solid currentColor; opacity: 0.95; }
+.md-h2 { font-size: 1.28em; }
+.md-h3 { font-size: 1.14em; color: var(--accent, #4cc2ff); }
+.md-h4 { font-size: 1.05em; }
+.md-h5 { font-size: 0.96em; font-weight: 600; color: var(--text-2, #b1bac4); }
+.md-h6 { font-size: 0.9em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3, #7d8590); }
+/* 슬라이드(밝은 배경) 컨텍스트에서 h3 강조색을 진한 청록으로 */
+.slide .md-h3 { color: #1c4d70; }
+
+.md-quote {
+  display: block;
+  margin: 6px 0;
+  padding: 6px 10px;
+  border-left: 3px solid var(--accent, #4cc2ff);
+  background: rgba(76, 194, 255, 0.06);
+  border-radius: 0 4px 4px 0;
+  font-style: italic;
+  color: inherit;
+}
+.slide .md-quote { background: rgba(28, 77, 112, 0.05); border-left-color: #1c4d70; }
+
+.md-hr {
+  display: block;
+  border: 0;
+  border-top: 1px solid currentColor;
+  opacity: 0.2;
+  margin: 8px 0;
+}
+
+.md-codeblock {
+  display: block;
+  margin: 6px 0;
+  padding: 10px 12px;
+  background: #1c222b;
+  color: #e6edf3;
+  border-radius: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.88em;
+  line-height: 1.55;
+  white-space: pre;
+  overflow-x: auto;
+  position: relative;
+}
+.md-codeblock[data-lang]::before {
+  content: attr(data-lang);
+  position: absolute;
+  top: 4px; right: 8px;
+  font-size: 9px;
+  color: #7d8590;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.md-codeblock code { background: transparent; padding: 0; color: inherit; border: 0; }
+
+.md-blank { height: 0.5em; }
 .md-em { font-style: italic; }
 .md-strike { text-decoration: line-through; opacity: 0.6; }
 .md-code {

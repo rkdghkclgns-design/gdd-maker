@@ -5104,8 +5104,9 @@ input, textarea, select { font-family: inherit; color: inherit; }
 }
 .coreloop-add:hover { background: rgba(136, 223, 176, 0.1); border-color: #88DFB0; border-style: solid; }
 
-/* ==== ConceptBrief modal ==== */
-.brief-composer.concept-brief { max-width: 720px; }
+/* ==== ConceptBrief modal ==== 78종 기능 카탈로그 노출을 위해 820px 로 확장.
+   max-height: 90vh + 내부 brief-body 의 overflow-y: auto 가 전체 스크롤을 처리. */
+.brief-composer.concept-brief { max-width: 820px; }
 .concept-brief .brief-body { gap: 18px; }
 
 .cb-section {
@@ -5258,19 +5259,19 @@ input, textarea, select { font-family: inherit; color: inherit; }
   font-size: 11px;
 }
 
+/* 카탈로그 컨테이너 — 자연 높이로 전개하고 외부 .brief-body 의 스크롤에 맡김.
+   flex 축약 + max-height 조합은 chip-grid 를 0 으로 squish 하므로 사용하지 않음. */
 .cb-feat-catalog {
   display: flex; flex-direction: column;
   gap: 14px;
-  max-height: 360px;
-  overflow-y: auto;
-  padding-right: 6px;
 }
-/* 카테고리 박스 */
+/* 카테고리 박스 — flex-shrink: 0 으로 부모 squish 차단. */
 .cb-feat-cat {
   border: 1px solid rgba(136, 223, 176, 0.12);
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.18);
-  overflow: hidden;
+  overflow: visible;
+  flex-shrink: 0;
 }
 .cb-feat-cat-head {
   display: flex; align-items: center; gap: 8px;
@@ -5364,14 +5365,8 @@ input, textarea, select { font-family: inherit; color: inherit; }
   word-break: keep-all;
 }
 
-/* 스크롤바 스타일 */
-.cb-feat-catalog::-webkit-scrollbar { width: 6px; }
-.cb-feat-catalog::-webkit-scrollbar-track { background: transparent; }
-.cb-feat-catalog::-webkit-scrollbar-thumb {
-  background: rgba(136, 223, 176, 0.2);
-  border-radius: 3px;
-}
-.cb-feat-catalog::-webkit-scrollbar-thumb:hover { background: rgba(136, 223, 176, 0.4); }
+/* (이전: .cb-feat-catalog 내부 스크롤바 — max-height 제거하면서 함께 제거됨.
+   외부 .brief-body 의 스크롤이 전체 모달 콘텐츠를 한 번에 처리.) */
 
 /* ============================================================
    Elegant TOC + Section Divider — 다크 톤 + 세리프 레이아웃

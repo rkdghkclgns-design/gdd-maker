@@ -31,7 +31,7 @@
     'risk-register': { field: 'risks', max: 6 },  // 7 → 6 (텍스트 wrap 안전)
     'balance-table': { field: 'vars', max: 8 },
     'roadmap': { field: 'phases', max: 4 },       // 5 → 4 (가로 컬럼)
-    'state-machine': { field: 'transitions', max: 4 }, // 6 → 4 (state 카드 ~190px × 4 = ~760px 한계)
+    'state-machine': { field: 'transitions', max: 3 }, // 4 → 3 (transitions 표 row ~32px × 3 = ~96px + 헤더 = ~130px)
     // api-contract 은 특수 — errors 길이가 길거나 request/response 가 크면 분할
   };
 
@@ -68,8 +68,11 @@
   }
 
   function suffixTitle(title, idx, total) {
-    if (total <= 1) return title || '';
-    return `${title || ''} (${idx + 1}/${total})`;
+    // 기존 (N/M) suffix 가 있으면 모두 제거 → 누적 ("X (2/3) (1/2)") 방지.
+    // 분할 임계값이 바뀌어 재분할될 때마다 같은 suffix 가 또 붙던 문제.
+    const stripped = String(title || '').replace(/\s*\(\d+\s*\/\s*\d+\)\s*/g, ' ').replace(/\s+/g, ' ').trim();
+    if (total <= 1) return stripped;
+    return `${stripped} (${idx + 1}/${total})`;
   }
 
   /** 표준 배열 분할 — type 의 THRESHOLDS[type] 으로 chunk */
@@ -138,30 +141,51 @@
     return [main, errsSlide];
   }
 
-  /** state-machine 특수 — states 와 transitions 양쪽이 모두 많은 경우 양쪽을 chunk.
-   * 한 슬라이드 안에서 내부 스크롤이 일어나지 않도록 states 도 한 슬라이드에 최대 N개로 제한.
-   * 슬라이드 = (states chunk) × (transitions chunk) 의 cartesian product 가 아니라,
-   * 더 많은 쪽 기준으로 페이지 수를 정한 뒤 같은 인덱스끼리 매칭. */
+  /** state-machine 특수 — states 와 transitions 양쪽 chunk + invariants 가 많은 카드는
+   * 1장이 차지하는 "비용" 을 더 크게 계산. 카드 한 장 기본 ~180px, invariant 줄당 +24px.
+   * 슬라이드 콘텐츠 영역(~474px) 안에 들어가도록 누적 비용으로 chunk.
+   */
   function splitStateMachine(slide) {
     const d = slide.data || {};
     const states = d.states || [];
     const trans = d.transitions || [];
-    const maxTrans = (THRESHOLDS['state-machine'] && THRESHOLDS['state-machine'].max) || 4;
-    const maxStates = 4; // 카드 한 장 높이 ~190px × 4 ≈ 760px — 슬라이드 콘텐츠 영역에 fit
-    const needStateSplit = states.length > maxStates;
-    const needTransSplit = trans.length > maxTrans;
-    if (!needStateSplit && !needTransSplit) return [slide];
+    const maxTrans = (THRESHOLDS['state-machine'] && THRESHOLDS['state-machine'].max) || 3;
 
-    // chunk 함수
-    const chunk = (arr, size) => {
-      if (!arr.length) return [[]];
-      const out = [];
-      for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-      return out;
-    };
-    const stateChunks = needStateSplit ? chunk(states, maxStates) : [states];
-    const transChunks = needTransSplit ? chunk(trans, maxTrans) : [trans];
+    // 각 state 의 추정 높이 (px)
+    const SLIDE_BODY_H = 460; // 콘텐츠 가용 높이
+    const BASE_CARD_H = 180;  // header + onEnter + onExit + INVARIANTS 라벨 + add 버튼
+    const PER_INVARIANT = 24; // 각 invariant 줄
+    const GAP = 10;
+    const cardHeight = (s) => BASE_CARD_H + (Array.isArray(s.invariants) ? s.invariants.length : 0) * PER_INVARIANT;
+
+    // states 를 누적 높이 기반으로 chunk
+    const stateChunks = [];
+    let cur = [], curH = 0;
+    for (const s of states) {
+      const h = cardHeight(s);
+      const projected = curH + (cur.length > 0 ? GAP : 0) + h;
+      if (cur.length > 0 && projected > SLIDE_BODY_H) {
+        stateChunks.push(cur);
+        cur = [s];
+        curH = h;
+      } else {
+        cur.push(s);
+        curH = projected;
+      }
+    }
+    if (cur.length) stateChunks.push(cur);
+    if (stateChunks.length === 0) stateChunks.push([]);
+
+    // transitions chunk
+    const transChunks = [];
+    if (trans.length === 0) {
+      transChunks.push([]);
+    } else {
+      for (let i = 0; i < trans.length; i += maxTrans) transChunks.push(trans.slice(i, i + maxTrans));
+    }
+
     const total = Math.max(stateChunks.length, transChunks.length);
+    if (total <= 1) return [slide];
 
     return Array.from({ length: total }, (_, idx) => ({
       id: idx === 0 ? slide.id : 'sl' + uid(),
@@ -185,11 +209,16 @@
       return (d.errors || []).length > 5 || reqLen + respLen > 1400;
     }
     if (t === 'state-machine') {
-      // 내부 스크롤 없이 한 슬라이드에 들어가는 한계 — 양쪽 모두 엄격하게
-      const tr = (slide.data.transitions || []).length;
-      const st = (slide.data.states || []).length;
-      const maxTrans = (THRESHOLDS['state-machine'] && THRESHOLDS['state-machine'].max) || 4;
-      return tr > maxTrans || st > 4;
+      // 내부 스크롤 없이 한 슬라이드에 들어가는 한계 — height 기반 추정
+      const d = slide.data || {};
+      const tr = (d.transitions || []).length;
+      const states = d.states || [];
+      const maxTrans = (THRESHOLDS['state-machine'] && THRESHOLDS['state-machine'].max) || 3;
+      if (tr > maxTrans) return true;
+      // states 누적 높이 추정 — splitStateMachine 의 계산과 동일한 임계치
+      const SLIDE_BODY_H = 460, BASE = 180, PER_INV = 24, GAP = 10;
+      const totalH = states.reduce((acc, s, i) => acc + (i > 0 ? GAP : 0) + BASE + ((s.invariants || []).length * PER_INV), 0);
+      return totalH > SLIDE_BODY_H;
     }
     // rules: blocks 가 많거나 한 block 안 items 가 많으면 분할
     if (t === 'rules') {

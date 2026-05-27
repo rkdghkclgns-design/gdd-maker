@@ -1484,6 +1484,7 @@ function AddSlideMenu({ onAdd, onClose }) {
     { type: 'sequence-diagram', label: '시퀀스 다이어그램', icon: '⇄', group: '시스템' },
     { type: 'class-diagram', label: '클래스 다이어그램', icon: '▤', group: '시스템' },
     { type: 'state-machine', label: '상태 머신', icon: '◎', group: '시스템' },
+    { type: 'behavior-tree', label: '행동 트리 (BT)', icon: '⌥', group: '시스템' },
     // 데이터 / 밸런싱
     { type: 'data-table', label: '데이터 테이블', icon: '▦', group: '데이터' },
     { type: 'balance-table', label: '수치 밸런싱', icon: '∿', group: '데이터' },
@@ -1817,6 +1818,23 @@ function App({ onStateChange }) {
           { from: 's2', to: 's3', event: 'CAST_COMPLETE', guard: '', action: '`spawnProjectile()`' },
           { from: 's3', to: 's1', event: 'COOLDOWN_END', guard: '', action: '' },
           { from: 's1', to: 's4', event: 'HP_ZERO', guard: '`hp <= 0`', action: '`emit(death)`' },
+        ],
+      },
+      'behavior-tree': {
+        section: '02', sectionName: 'AI 행동 트리', title: '몬스터 AI 행동 트리',
+        rootId: 'bt1',
+        nodes: [
+          { id: 'bt1', kind: 'selector', name: 'Root Selector', parentId: null },
+          { id: 'bt2', kind: 'sequence', name: '공격 시퀀스', parentId: 'bt1' },
+          { id: 'bt3', kind: 'condition', name: '`Player_In_Attack_Range`', parentId: 'bt2' },
+          { id: 'bt4', kind: 'action', name: '`Attack(player)`', parentId: 'bt2', note: '쿨다운: 1.5s' },
+          { id: 'bt5', kind: 'sequence', name: '추격 시퀀스', parentId: 'bt1' },
+          { id: 'bt6', kind: 'condition', name: '`Player_In_Sight`', parentId: 'bt5' },
+          { id: 'bt7', kind: 'action', name: '`MoveTo(player)`', parentId: 'bt5' },
+          { id: 'bt8', kind: 'sequence', name: '순찰 시퀀스', parentId: 'bt1' },
+          { id: 'bt9', kind: 'action', name: '`SelectRandomPatrolPoint()`', parentId: 'bt8' },
+          { id: 'bt10', kind: 'action', name: '`MoveToPatrolPoint()`', parentId: 'bt8' },
+          { id: 'bt11', kind: 'action', name: '`WaitFor(2s)`', parentId: 'bt8' },
         ],
       },
       'api-contract': {

@@ -116,6 +116,13 @@
         transitions: { item: { from: '', to: '', event: '', guard: '', action: '' } },
       },
     },
+    'behavior-tree': {
+      required: ['nodes'],
+      defaults: { section: '02', sectionName: 'AI 행동 트리', title: '행동 트리 (BT)', rootId: 'n1', nodes: [] },
+      arrays: {
+        nodes: { item: { id: 'n1', kind: 'sequence', name: '노드', parentId: null, note: '', decoratorType: '' } },
+      },
+    },
     'api-contract': {
       required: ['endpoint'],
       defaults: { section: '02', sectionName: 'API 계약', title: 'API 계약', endpoint: '/api/...', method: 'POST', auth: 'bearer', request: '', response: '', errors: [], idempotencyKey: '', slaMs: 200, notes: '' },

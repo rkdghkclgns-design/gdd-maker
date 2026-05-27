@@ -832,6 +832,12 @@ ${contextBlock}
     }]} },
     { "type": "balance-table", "data": { "section":"04", "sectionName":"밸런싱", "title":"수치 밸런싱 공식", "formula":"\`damage = base × (1 + str/100) × elem_mod\`", "vars":[{"name":"base","formula":"카드 등급별 기본값","range":"50~200","defaultValue":"100","sensitivity":"±10% → 평균 매치 시간 ±15초"}], "curve":{"x":[1,2,3,4,5,6,7,8,9,10],"y":[100,220,380,580,820,1100,1420,1780,2180,2620],"xLabel":"레벨","yLabel":"강화 비용"} } },
     { "type": "state-machine", "data": { "section":"02", "sectionName":"상태 머신", "title":"플레이어 상태 머신", "states":[{"id":"s1","name":"IDLE","kind":"initial","onEnter":"\`enableInput()\`","onExit":"\`disableInput()\`","invariants":["\`input_locked == false\`"]}], "transitions":[{"from":"s1","to":"s2","event":"CAST_INPUT","guard":"\`mana >= cost\`","action":"\`consumeMana(cost)\`"}] } },
+    { "type": "behavior-tree", "data": { "section":"02", "sectionName":"AI 행동 트리", "title":"몬스터 AI 행동 트리", "rootId":"bt1", "nodes":[
+      {"id":"bt1","kind":"selector","name":"Root Selector","parentId":null},
+      {"id":"bt2","kind":"sequence","name":"공격 시퀀스","parentId":"bt1"},
+      {"id":"bt3","kind":"condition","name":"\`Player_In_Attack_Range\`","parentId":"bt2"},
+      {"id":"bt4","kind":"action","name":"\`Attack(player)\`","parentId":"bt2","note":"쿨다운 1.5s"}
+    ] } },
     { "type": "api-contract", "data": { "section":"02", "sectionName":"API 계약", "title":"POST /api/match/create", "endpoint":"/api/match/create", "method":"POST", "auth":"bearer", "slaMs":200, "request":"{\\n  \\"userId\\": \\"uuid\\",\\n  \\"mode\\": \\"casual|ranked\\"\\n}", "response":"{\\n  \\"matchId\\": \\"uuid\\",\\n  \\"gameServer\\": \\"host:port\\"\\n}", "errors":[{"code":"400","message":"INVALID_MODE","when":"mode 가 enum 외 값"}], "idempotencyKey":"\`X-Idempotency-Key\` 헤더 권장. 24h TTL.", "notes":"" } },
     { "type": "acceptance-criteria", "data": { "section":"03", "sectionName":"수락 기준", "title":"매칭 시작 수락 기준", "userStory":{"as":"신규 유저","want":"첫 매치를 빠르게 시작","soThat":"D1 리텐션 60% 유지"}, "criteria":[{"id":"AC-1","given":"메인 로비 진입","when":"\`매칭\` 탭","then":"3초 이내 매칭 모달 표시","edgeCases":["네트워크 단절 시 5초 후 재시도"]}] } },
     { "type": "telemetry", "data": { "section":"04", "sectionName":"텔레메트리", "title":"매칭 이벤트", "events":[{"name":"match_button_tapped","when":"매칭 버튼 탭","props":[{"key":"mode","type":"enum","required":true,"note":"casual/ranked"}],"kpi":"매칭 시도율"}], "funnels":[{"name":"매칭 펀넬","steps":["match_button_tapped","match_found"],"goal":"전환율 95%"}] } },
@@ -923,6 +929,14 @@ ${contextBlock}
 - **image-embed**: 텍스트로만 설명하면 모호한 시각 요소(카드 디자인 무드, 캐릭터 룩, 게임 장면, 아이콘 세트)에 한해 사용. imagePrompt 는 카메라 앵글·조명·재질·스타일 키워드 포함. caption 은 한국어로, "왜 이 이미지를 참조 자료로 두었는지"를 한 줄로 적는다.
 - **balance-table** (Phase 1 — 개발 가능 수준 필수): vars 6~12개. 각 var 에 \`name\` (snake_case), \`formula\` (마크다운 코드로 공식), \`range\` (예: "0~9999"), \`defaultValue\`, \`sensitivity\` ("±10% → 매치 시간 ±15초" 같은 영향 분석). \`curve\` 는 레벨/등급별 수치 곡선이 필요한 경우 x[1..N], y[...] 배열로 채움.
 - **state-machine** (Phase 1 — 필수): states 4~8개. 각 state 에 \`id\` (snake), \`name\` (UPPER_CASE), \`kind\` (initial/normal/final/error 중 1), \`onEnter\`/\`onExit\` 동작, \`invariants\` 배열 (해당 상태에서 항상 참인 조건). transitions 6~12개 — from/event/guard/to/action 모두 명시. **모든 final 상태로 들어오는 transition 1개 이상.**
+- **behavior-tree** (BT — AI/몬스터/봇 의사결정이 있는 시스템에 필수): \`nodes\` 8~16개, parentId 로 트리 구성. \`rootId\` 명시. 각 node 의 \`kind\` 는 다음 중 하나:
+  - \`selector\` (?) — 자식을 순서대로 시도, 하나라도 성공 시 성공
+  - \`sequence\` (→) — 자식 순차 실행, 하나라도 실패 시 실패
+  - \`parallel\` (||) — 모든 자식 동시 실행 (성공 조건 명시 권장)
+  - \`decorator\` — 자식 1개 결과 가공 (\`decoratorType\`: Inverter / Repeater(N) / Timeout(ms) / Cooldown 등)
+  - \`condition\` ([?]) — 리프, 영문 PascalCase 또는 백틱 코드 (예: \`Player_In_Range\`, \`HasAmmo\`)
+  - \`action\` ([▶]) — 리프, 동사형 영문 (예: \`Attack(target)\`, \`MoveTo(point)\`, \`PlayAnim("howl")\`)
+  - 리프(condition/action) 외에는 반드시 children 1개 이상. note 필드는 쿨다운·우선순위·블랙보드 키 등 메타 정보.
 - **api-contract** (Phase 1 — 시스템 통신 있는 GDD 필수): 각 슬라이드는 1개 endpoint 만 다룸. \`method\` (HTTP), \`endpoint\`, \`auth\`, \`slaMs\`, \`request\`/\`response\` 는 실제 JSON 스키마 문자열 (필드/타입 명확), \`errors\` 3~6개 (code+message+when), \`idempotencyKey\` 정책. **여러 API 가 있으면 여러 슬라이드로 분리.**
 - **acceptance-criteria** (Phase 1 — 핵심 기능 필수): \`userStory\` (As/I want/So that), \`criteria\` 3~6개. 각 criterion 은 Given/When/Then + \`edgeCases\` 2~4개. **테스트 자동화로 그대로 옮길 수 있는 수준의 구체성.**
 - **telemetry** (Phase 1 — 라이브 운영 필수): \`events\` 5~10개. 각 event 에 \`name\` (snake), \`when\` (정확한 발생 시점), \`props\` (key/type/required/note), \`kpi\` (이 이벤트가 추적하는 KPI). \`funnels\` 1~3개 (이벤트 시퀀스 + 목표 전환율).

@@ -32,6 +32,7 @@
     'balance-table': { field: 'vars', max: 8 },
     'roadmap': { field: 'phases', max: 4 },       // 5 → 4 (가로 컬럼)
     'state-machine': { field: 'transitions', max: 3 }, // 4 → 3 (transitions 표 row ~32px × 3 = ~96px + 헤더 = ~130px)
+    'behavior-tree': { field: 'nodes', max: 18 }, // 한 슬라이드 노드 18개 정도 fit (row ~32px × 18 = ~576px)
     // api-contract 은 특수 — errors 길이가 길거나 request/response 가 크면 분할
   };
 

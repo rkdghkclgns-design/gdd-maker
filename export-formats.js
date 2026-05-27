@@ -340,6 +340,34 @@
       }
       return parts.join('\n');
     }
+    if (T === 'behavior-tree') {
+      const nodes = d.nodes || [];
+      const rootId = d.rootId || (nodes[0] && nodes[0].id);
+      const KIND_PFX = {
+        selector: '?', sequence: '→', parallel: '||',
+        decorator: '◇', condition: '[?]', action: '[▶]',
+      };
+      // parent → children 매핑 (등장 순서)
+      const childrenBy = {};
+      for (const n of nodes) {
+        const p = n.parentId || null;
+        (childrenBy[p] = childrenBy[p] || []).push(n);
+      }
+      const lines = [header(3, `${sectionLabel ? '[' + sectionLabel + '] ' : ''}${d.title || '행동 트리'}`), ''];
+      const walk = (id, depth) => {
+        const n = nodes.find(x => x.id === id);
+        if (!n) return;
+        const indent = '  '.repeat(depth);
+        const pfx = KIND_PFX[n.kind] || '·';
+        const deco = n.decoratorType ? ` *(${n.decoratorType})*` : '';
+        lines.push(`${indent}- **${pfx}** ${n.name || ''}${deco}`);
+        if (n.note) lines.push(`${indent}  > ${n.note}`);
+        for (const c of (childrenBy[id] || [])) walk(c.id, depth + 1);
+      };
+      if (rootId) walk(rootId, 0);
+      lines.push('');
+      return lines.join('\n');
+    }
     if (T === 'api-contract') {
       const parts = [
         header(3, `${sectionLabel ? '[' + sectionLabel + '] ' : ''}\`${d.method || 'POST'} ${d.endpoint || ''}\``),

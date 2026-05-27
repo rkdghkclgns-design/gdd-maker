@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-27T09:32:20.659Z
+   생성 시각: 2026-05-27T09:38:16.585Z
 */
 
 // ============================================================
@@ -2461,6 +2461,149 @@ function RoadmapSlide({ data, patch, page, totalPages }) {
   );
 }
 
+/* ------ 19. Behavior Tree (AI 행동 트리) ------
+ * 노드 종류:
+ *  - selector(?)  : 자식을 순서대로 시도, 하나라도 성공하면 종료
+ *  - sequence(→)  : 자식을 순서대로 실행, 하나라도 실패하면 종료
+ *  - parallel(||) : 모든 자식 동시 실행
+ *  - decorator    : 자식 1개의 결과를 가공 (Inverter, Repeater, Timeout 등)
+ *  - condition([?]) : 리프, true/false 반환 (e.g. Player_In_Range?)
+ *  - action([▶])    : 리프, 실제 행동 (e.g. Attack, MoveTo)
+ *
+ * 데이터: { nodes: [{ id, kind, name, parentId, decoratorType?, note? }], rootId }
+ * children 의 순서는 nodes 배열 안에서의 등장 순서로 결정.
+ */
+function BehaviorTreeSlide({ data, patch, page, totalPages }) {
+  const nodes = data.nodes || [];
+  const rootId = data.rootId || (nodes[0] && nodes[0].id) || null;
+
+  // parent → children 매핑 (등장 순서 보존)
+  const childrenByParent = {};
+  for (const n of nodes) {
+    const p = n.parentId || null;
+    if (!childrenByParent[p]) childrenByParent[p] = [];
+    childrenByParent[p].push(n);
+  }
+
+  const KIND_ICON = {
+    selector: '?', sequence: '→', parallel: '||',
+    decorator: '◇', condition: '?', action: '▶',
+  };
+  const KIND_LABEL = {
+    selector: 'Selector', sequence: 'Sequence', parallel: 'Parallel',
+    decorator: 'Decorator', condition: 'Condition', action: 'Action',
+  };
+
+  const updateNode = (id, key, val) => {
+    const next = nodes.map(n => n.id === id ? { ...n, [key]: val } : n);
+    patch({ nodes: next });
+  };
+  const genId = () => 'n' + (typeof uid === 'function' ? uid().slice(0, 4) : Math.random().toString(36).slice(2, 6));
+  const addChild = (parentId) => {
+    const id = genId();
+    patch({ nodes: [...nodes, { id, kind: 'action', name: '새 노드', parentId, note: '' }] });
+  };
+  const removeNode = (id) => {
+    // 해당 노드 + 모든 후손 제거
+    const toRemove = new Set([id]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const n of nodes) {
+        if (toRemove.has(n.parentId) && !toRemove.has(n.id)) {
+          toRemove.add(n.id);
+          grew = true;
+        }
+      }
+    }
+    patch({ nodes: nodes.filter(n => !toRemove.has(n.id)) });
+  };
+  const moveNode = (id, delta) => {
+    // 같은 형제 안에서만 위/아래
+    const idx = nodes.findIndex(n => n.id === id);
+    if (idx < 0) return;
+    const parentId = nodes[idx].parentId || null;
+    const siblings = nodes.filter(n => (n.parentId || null) === parentId);
+    const sibIdx = siblings.findIndex(n => n.id === id);
+    const target = siblings[sibIdx + delta];
+    if (!target) return;
+    const targetIdx = nodes.findIndex(n => n.id === target.id);
+    const next = [...nodes];
+    [next[idx], next[targetIdx]] = [next[targetIdx], next[idx]];
+    patch({ nodes: next });
+  };
+
+  // 재귀 렌더 — 깊이별 들여쓰기
+  const renderNode = (id, depth) => {
+    const node = nodes.find(n => n.id === id);
+    if (!node) return null;
+    const kids = childrenByParent[id] || [];
+    const isLeaf = node.kind === 'condition' || node.kind === 'action';
+    return (
+      <div key={id} className={'bt-node bt-kind-' + (node.kind || 'sequence')}>
+        <div className="bt-node-row" style={{ paddingLeft: depth * 24 + 8 }}>
+          {depth > 0 && <span className="bt-branch" aria-hidden />}
+          <span className={'bt-icon bt-icon-' + node.kind}>{KIND_ICON[node.kind] || '·'}</span>
+          <select
+            className="bt-kind-select"
+            value={node.kind || 'sequence'}
+            onChange={(e) => updateNode(id, 'kind', e.target.value)}
+            title={KIND_LABEL[node.kind]}
+          >
+            <option value="selector">? Selector</option>
+            <option value="sequence">→ Sequence</option>
+            <option value="parallel">|| Parallel</option>
+            <option value="decorator">◇ Decorator</option>
+            <option value="condition">[?] Condition</option>
+            <option value="action">[▶] Action</option>
+          </select>
+          <Editable tag="div" className="bt-name" value={node.name} onChange={(v) => updateNode(id, 'name', v)} markdown placeholder={isLeaf ? '`Player_In_Range`' : '시퀀스 이름'} />
+          {node.kind === 'decorator' && (
+            <Editable tag="div" className="bt-deco" value={node.decoratorType} onChange={(v) => updateNode(id, 'decoratorType', v)} placeholder="Inverter / Repeater(N) / Timeout(ms)" />
+          )}
+          <div className="bt-controls">
+            {!isLeaf && <button onClick={() => addChild(id)} title="자식 추가">+</button>}
+            <button onClick={() => moveNode(id, -1)} title="위로">↑</button>
+            <button onClick={() => moveNode(id, 1)} title="아래로">↓</button>
+            <button onClick={() => removeNode(id)} className="del" title="삭제 (후손 포함)">✕</button>
+          </div>
+        </div>
+        {node.note && (
+          <div className="bt-note" style={{ paddingLeft: depth * 24 + 56 }}>
+            <Editable tag="span" value={node.note} onChange={(v) => updateNode(id, 'note', v)} markdown placeholder="메모" />
+          </div>
+        )}
+        {kids.map(c => renderNode(c.id, depth + 1))}
+      </div>
+    );
+  };
+
+  const insertRoot = () => {
+    const id = genId();
+    patch({ nodes: [{ id, kind: 'selector', name: 'Root Selector', parentId: null }], rootId: id });
+  };
+
+  return (
+    <div className="slide">
+      <TopTag section={data.section} sectionName={data.sectionName} />
+      <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
+      <div className="bt-tree" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+        {nodes.length === 0 ? (
+          <div className="bt-empty">
+            <button className="sc-add" onClick={insertRoot}>+ 루트 노드 생성</button>
+            <div style={{ fontSize: 11, color: 'var(--text-3, #7d8590)', marginTop: 8 }}>
+              ? Selector / → Sequence / [▶] Action 등으로 AI 의사결정을 트리로 모델링
+            </div>
+          </div>
+        ) : (
+          renderNode(rootId, 0)
+        )}
+      </div>
+      <SlideFooter section={data.section} sectionName={data.sectionName} page={page} totalPages={totalPages} />
+    </div>
+  );
+}
+
 /* ------ Type registry ------ */
 const SLIDE_RENDERERS = {
   'cover': CoverSlide,
@@ -2478,6 +2621,7 @@ const SLIDE_RENDERERS = {
   // Phase 1 신규 7종 (engineer-ready)
   'balance-table': BalanceTableSlide,
   'state-machine': StateMachineSlide,
+  'behavior-tree': BehaviorTreeSlide,
   'api-contract': ApiContractSlide,
   'acceptance-criteria': AcceptanceCriteriaSlide,
   'telemetry': TelemetrySlide,
@@ -2501,9 +2645,10 @@ const SLIDE_LABELS = {
   'diagram': '다이어그램',
   'sequence-diagram': '시퀀스 다이어그램',
   'class-diagram': '클래스 다이어그램',
-  // Phase 1 신규 7종
+  // Phase 1 신규 7종 + BT
   'balance-table': '수치 밸런싱',
   'state-machine': '상태 머신',
+  'behavior-tree': '행동 트리 (BT)',
   'api-contract': 'API 계약',
   'acceptance-criteria': '수락 기준',
   'telemetry': '텔레메트리',
@@ -9009,6 +9154,7 @@ function AddSlideMenu({ onAdd, onClose }) {
     { type: 'sequence-diagram', label: '시퀀스 다이어그램', icon: '⇄', group: '시스템' },
     { type: 'class-diagram', label: '클래스 다이어그램', icon: '▤', group: '시스템' },
     { type: 'state-machine', label: '상태 머신', icon: '◎', group: '시스템' },
+    { type: 'behavior-tree', label: '행동 트리 (BT)', icon: '⌥', group: '시스템' },
     // 데이터 / 밸런싱
     { type: 'data-table', label: '데이터 테이블', icon: '▦', group: '데이터' },
     { type: 'balance-table', label: '수치 밸런싱', icon: '∿', group: '데이터' },
@@ -9342,6 +9488,23 @@ function App({ onStateChange }) {
           { from: 's2', to: 's3', event: 'CAST_COMPLETE', guard: '', action: '`spawnProjectile()`' },
           { from: 's3', to: 's1', event: 'COOLDOWN_END', guard: '', action: '' },
           { from: 's1', to: 's4', event: 'HP_ZERO', guard: '`hp <= 0`', action: '`emit(death)`' },
+        ],
+      },
+      'behavior-tree': {
+        section: '02', sectionName: 'AI 행동 트리', title: '몬스터 AI 행동 트리',
+        rootId: 'bt1',
+        nodes: [
+          { id: 'bt1', kind: 'selector', name: 'Root Selector', parentId: null },
+          { id: 'bt2', kind: 'sequence', name: '공격 시퀀스', parentId: 'bt1' },
+          { id: 'bt3', kind: 'condition', name: '`Player_In_Attack_Range`', parentId: 'bt2' },
+          { id: 'bt4', kind: 'action', name: '`Attack(player)`', parentId: 'bt2', note: '쿨다운: 1.5s' },
+          { id: 'bt5', kind: 'sequence', name: '추격 시퀀스', parentId: 'bt1' },
+          { id: 'bt6', kind: 'condition', name: '`Player_In_Sight`', parentId: 'bt5' },
+          { id: 'bt7', kind: 'action', name: '`MoveTo(player)`', parentId: 'bt5' },
+          { id: 'bt8', kind: 'sequence', name: '순찰 시퀀스', parentId: 'bt1' },
+          { id: 'bt9', kind: 'action', name: '`SelectRandomPatrolPoint()`', parentId: 'bt8' },
+          { id: 'bt10', kind: 'action', name: '`MoveToPatrolPoint()`', parentId: 'bt8' },
+          { id: 'bt11', kind: 'action', name: '`WaitFor(2s)`', parentId: 'bt8' },
         ],
       },
       'api-contract': {

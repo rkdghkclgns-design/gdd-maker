@@ -2308,10 +2308,22 @@ function App({ onStateChange }) {
     setShowBrief(true);
   };
 
-  /* 일괄 생성: 컨셉의 미작성 recommendedPlans 전체를 AI로 시리얼 생성 */
+  /* 일괄 생성: 컨셉의 미작성 recommendedPlans 전체를 AI로 시리얼 생성.
+   * priority(1~10) 오름차순 — 선행 작성 필요한 코어부터, 후공정 마케팅·QA 는 마지막.
+   * 이전 단계 산출물이 prior context 로 누적되도록 순서가 정합성에 직접 영향. */
   const bulkCreatePlansForConcept = async () => {
     if (!concept) return;
-    const pending = (concept.recommendedPlans || []).filter(p => !p.linkedGddId);
+    const pending = (concept.recommendedPlans || [])
+      .map((p, idx) => ({
+        p,
+        idx,
+        prio: (typeof p.priority === 'number' && isFinite(p.priority))
+          ? Math.max(1, Math.min(10, Math.round(p.priority)))
+          : (window.inferPlanPriority ? window.inferPlanPriority(p.title, p.description) : 5),
+      }))
+      .filter(({ p }) => !p.linkedGddId)
+      .sort((a, b) => (a.prio - b.prio) || (a.idx - b.idx))
+      .map(({ p }) => p);
     if (!pending.length) {
       toast('미작성 기획서가 없습니다.', 'ok');
       return;

@@ -784,7 +784,7 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, onB
           </div>
         </SectionCard>
 
-        {/* Recommended detailed plans */}
+        {/* Recommended detailed plans — priority 오름차순(=선행 작성 우선)으로 정렬해 노출. */}
         <div className="concept-recs">
           <div className="concept-recs-head">
             <h3>필요 기획서</h3>
@@ -792,6 +792,7 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, onB
               {(concept.recommendedPlans || []).filter(p => p.linkedGddId).length}
               {' / '}
               {(concept.recommendedPlans || []).length} 작성됨
+              <span className="meta-order"> · 선행 단계 순으로 정렬</span>
             </div>
             {(() => {
               const pending = (concept.recommendedPlans || []).filter(p => !p.linkedGddId).length;
@@ -800,7 +801,7 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, onB
                   className="bulk-create-btn"
                   onClick={() => onBulkCreate?.()}
                   disabled={isGenerating || pending === 0}
-                  title={pending === 0 ? '미작성 기획서가 없습니다' : `미작성 ${pending}개를 AI로 일괄 생성`}
+                  title={pending === 0 ? '미작성 기획서가 없습니다' : `미작성 ${pending}개를 선행 단계 순으로 AI 생성`}
                 >
                   {isGenerating ? '생성 중…' : `✦ 미작성 전체 생성 ${pending > 0 ? `(${pending})` : ''}`}
                 </button>
@@ -808,41 +809,64 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, onB
             })()}
           </div>
           <div className="concept-rec-grid">
-            {(concept.recommendedPlans || []).map(p => (
-              <div
-                key={p.id}
-                className={'concept-rec-card ' + (p.linkedGddId ? 'created' : '')}
-                onClick={() => p.linkedGddId ? onOpenGdd(p.linkedGddId) : onCreateGdd(p)}
-              >
-                <button
-                  className="rec-del"
-                  title={p.linkedGddId ? '항목 삭제 (연결된 기획서는 사이드바에서 삭제)' : '항목 삭제'}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const msg = p.linkedGddId
-                      ? `"${p.title}" 항목을 컨셉에서 제거할까요?\n(연결된 기획서 자체는 사이드바에 그대로 남습니다)`
-                      : `"${p.title}" 항목을 삭제할까요?`;
-                    if (!confirm(msg)) return;
-                    patchField('recommendedPlans', (concept.recommendedPlans || []).filter(x => x.id !== p.id));
-                    toast?.('항목이 삭제되었습니다', 'ok');
-                  }}
-                >✕</button>
-                <div className="rec-head">
-                  <span>#{p.id}</span>
-                  <span className="rec-status">{p.linkedGddId ? '✓ 작성됨' : '대기'}</span>
-                </div>
-                <div className="rec-title">{p.title}</div>
-                <div className="rec-desc">{p.description}</div>
-                <div className="rec-action">
-                  <span></span>
-                  <span className="arr">→</span>
-                </div>
-              </div>
-            ))}
+            {(() => {
+              // priority 기준 안정 정렬 — priority 가 없거나 동률이면 원래 입력 순서 유지.
+              // 단계 라벨(이전 카드와 priority 가 다르면 'N단계' divider 같은 작은 표시) 도 함께 부여.
+              const arr = (concept.recommendedPlans || []).map((p, idx) => ({
+                p,
+                idx,
+                prio: (typeof p.priority === 'number' && isFinite(p.priority))
+                  ? Math.max(1, Math.min(10, Math.round(p.priority)))
+                  : (window.inferPlanPriority ? window.inferPlanPriority(p.title, p.description) : 5),
+              }));
+              arr.sort((a, b) => (a.prio - b.prio) || (a.idx - b.idx));
+              let prevPrio = null;
+              return arr.map(({ p, prio }) => {
+                const showStageDivider = prio !== prevPrio;
+                prevPrio = prio;
+                return (
+                  <React.Fragment key={p.id}>
+                    {showStageDivider && <PlanStageDivider priority={prio} />}
+                    <div
+                      className={'concept-rec-card ' + (p.linkedGddId ? 'created' : '')}
+                      onClick={() => p.linkedGddId ? onOpenGdd(p.linkedGddId) : onCreateGdd(p)}
+                    >
+                      <button
+                        className="rec-del"
+                        title={p.linkedGddId ? '항목 삭제 (연결된 기획서는 사이드바에서 삭제)' : '항목 삭제'}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const msg = p.linkedGddId
+                            ? `"${p.title}" 항목을 컨셉에서 제거할까요?\n(연결된 기획서 자체는 사이드바에 그대로 남습니다)`
+                            : `"${p.title}" 항목을 삭제할까요?`;
+                          if (!confirm(msg)) return;
+                          patchField('recommendedPlans', (concept.recommendedPlans || []).filter(x => x.id !== p.id));
+                          toast?.('항목이 삭제되었습니다', 'ok');
+                        }}
+                      >✕</button>
+                      <div className="rec-head">
+                        <span className="rec-priority" title={`작성 우선순위 ${prio} 단계 — ${PLAN_STAGE_LABEL[prio] || ''}`}>
+                          {prio}단계
+                        </span>
+                        <span className="rec-status">{p.linkedGddId ? '✓ 작성됨' : '대기'}</span>
+                      </div>
+                      <div className="rec-title">{p.title}</div>
+                      <div className="rec-desc">{p.description}</div>
+                      <div className="rec-action">
+                        <span></span>
+                        <span className="arr">→</span>
+                      </div>
+                    </div>
+                  </React.Fragment>
+                );
+              });
+            })()}
             <div
               className="concept-rec-card"
               style={{ borderStyle: 'dashed', cursor: 'pointer', alignItems: 'center', justifyContent: 'center', minHeight: 110, color: 'var(--text-3)' }}
               onClick={() => {
+                // 새로 추가하는 항목은 priority 미지정 → validator 가 휴리스틱으로 보강.
+                // 사용자가 후에 제목/설명을 채우면 다음 patchField 호출 시 재정렬됨.
                 const newPlan = { id: 'rp' + uid().slice(0,4), title: '새 기획서', description: '설명을 입력하세요', linkedGddId: null };
                 patchField('recommendedPlans', [...(concept.recommendedPlans || []), newPlan]);
               }}
@@ -866,6 +890,34 @@ const SECTION_LABEL = {
   usp: '주요 특징',
   coreLoop: '순환 구조',
 };
+
+/* === 필요 기획서 priority(1~10) 단계 라벨 ===
+ * concept.jsx 의 필요 기획서 카드 헤더 + 단계 divider 에서 사용. */
+const PLAN_STAGE_LABEL = {
+  1: '핵심 게임플레이',
+  2: '코어 시스템',
+  3: '데이터·진행',
+  4: '콘텐츠·라이브',
+  5: '메타·소셜',
+  6: '온보딩·튜토리얼',
+  7: '경제·BM',
+  8: 'UX·아트·사운드',
+  9: '기술·인프라',
+  10: '운영·QA·런칭',
+};
+
+/** 같은 priority 그룹 사이에 시각적 구분선 — 가로 폭 100% 확보를 위해
+ * grid 의 column 을 모두 차지하도록 inline style 로 grid-column: 1 / -1 설정. */
+function PlanStageDivider({ priority }) {
+  const label = PLAN_STAGE_LABEL[priority] || '';
+  return (
+    <div className="plan-stage-divider" data-prio={priority} style={{ gridColumn: '1 / -1' }}>
+      <span className="plan-stage-num" data-prio={priority}>{priority}단계</span>
+      <span className="plan-stage-label">{label}</span>
+      <span className="plan-stage-rule" />
+    </div>
+  );
+}
 
 function SectionCard({ num, title, locked, onToggleLock, onAi, busy, theme, aiLabel, children }) {
   const bodyRef = React.useRef(null);
@@ -1012,7 +1064,7 @@ ${imageNote}
     "promptKo": "<위 영문 프롬프트의 한국어 번역. 의역 가능. 50~120자 정도. 사용자가 읽고 수정하기 쉽도록 자연스러운 한국어로>"
   },
   "recommendedPlans": [
-    { "title": "기획서 제목 (예: 인게임 데스매치 규칙 기획)", "description": "이 기획서가 다룰 핵심 내용 + 의존 시스템 1줄" }
+    { "title": "기획서 제목 (예: 인게임 데스매치 규칙 기획)", "description": "이 기획서가 다룰 핵심 내용 + 의존 시스템 1줄", "priority": 1 }
   ]
 }
 
@@ -1022,19 +1074,23 @@ ${imageNote}
 - **overview**: 4개 필드 모두 "?" 금지. 합리적 디폴트로 채운다.
 - **keyUsp**: 3~5개. 경쟁작 대비 차별점을 명확히. 단순 기능 나열 금지, "X가 가능하다 → 그래서 Y한 체감을 준다" 구조.
 - **palette**: 5색 모두 게임 무드와 정합. 5색이 함께 놓였을 때 충돌 없이 어울리도록 (보색 무분별 사용 X).
-- **recommendedPlans**: **장르·플랫폼·BM 모델에 따라 필요한 모든 기획서를 빠짐없이 나열한다. 상한 없음 (보통 20~40개, 대형 LiveOps 게임은 50개 이상도 허용).** 의식적으로 포함해야 할 영역:
-  1) **코어 게임플레이**: 메인 루프, 전투/이동/조작, 카메라/입력, 성장/레벨, 진행/스테이지, 난이도/밸런스
-  2) **메타 시스템**: 로비/매칭/매치메이커, 친구/길드/소셜, 채팅, 리더보드/랭킹, 시즌/패스
-  3) **온보딩·튜토리얼**: 첫 플레이 플로우, 단계별 가이드, 신규 유저 리텐션 후크, FTUE
-  4) **콘텐츠·라이브**: 모드(예: 듀얼, 팀, 솔로), 이벤트, 시즌 콘텐츠, 한정 보상, 패치 노트
-  5) **경제·BM**: 재화 체계(소프트/하드/프리미엄), 상점 구조, 인앱결제 SKU, 광고 통합, 패스권/구독, 환율/가격 전략, 인플레이션 관리
-  6) **운영·CS**: 공지 시스템, CS 도구, 환불/보상 정책, 신고/제재, GM 권한
-  7) **기술·인프라**: 서버 아키텍처, 네트워크 프로토콜, DB 스키마, 안티치트, 빌드/배포, 모니터링/로그, 데이터 분석 파이프라인
-  8) **UX·아트·사운드**: UI 와이어/시안, 디자인 시스템, 아트 가이드, 캐릭터/배경 아트, 모션/이펙트, BGM/SFX, 보이스
-  9) **품질·QA**: 테스트 플랜, 자동화, 출시 체크리스트, 인증 대응 (스토어 정책/등급)
-  10) **마케팅·런칭**: 키비주얼, 트레일러 가이드, 스토어 페이지, 사전등록, 인플루언서 운영
+- **recommendedPlans**: **장르·플랫폼·BM 모델에 따라 필요한 모든 기획서를 빠짐없이 나열한다. 상한 없음 (보통 20~40개, 대형 LiveOps 게임은 50개 이상도 허용).**
+
+  **각 항목에 \`priority\` (1~10) 필드를 반드시 부여하고, 배열 자체도 priority 오름차순으로 정렬해서 출력**. priority 는 "다른 기획서가 이 문서를 참조하는가" 기준의 작성 선행 순서.
+
+  - **1 — 핵심 게임플레이**: 메인 루프, 코어 게임플레이 (모든 기획의 출발점)
+  - **2 — 코어 시스템**: 전투/이동/조작, 카메라/입력, 성장/레벨, 난이도/밸런스
+  - **3 — 데이터·진행**: DB 스키마, 데이터 테이블, 진행/스테이지/챕터, 보상 테이블
+  - **4 — 콘텐츠·라이브**: 모드(듀얼/팀/솔로), 이벤트, 시즌 콘텐츠, 패스, 던전/보스
+  - **5 — 메타·소셜**: 로비/매칭/매치메이커, 친구/길드/소셜, 채팅, 리더보드/랭킹
+  - **6 — 온보딩·튜토리얼**: 첫 플레이 플로우, 단계별 가이드, FTUE, 신규 유저 리텐션
+  - **7 — 경제·BM**: 재화 체계, 상점 구조, IAP SKU, 광고 통합, 패스/구독, 가격/인플레이션
+  - **8 — UX·아트·사운드**: UI 와이어/시안, 디자인 시스템, 아트 가이드, 캐릭터/배경, 모션, BGM/SFX
+  - **9 — 기술·인프라**: 서버 아키텍처, 네트워크 프로토콜, 안티치트, 빌드/배포, 모니터링/분석
+  - **10 — 운영·QA·마케팅·런칭**: 공지/CS/GM, 신고/제재, 테스트 플랜/자동화/인증, 키비주얼/트레일러/스토어/사전등록
 
   **누락 금지** — 위 영역 중 게임 특성상 명백히 불필요한 것만 제외. 동일 도메인이라도 시스템이 크면 잘게 쪼개 별도 기획서로 (예: "상점 시스템"과 "상점 UI/UX"는 분리). **description은 30~80자**, 무엇을 다루는지 + 의존성 1개 명시.
+  **순서 규칙**: priority 가 같으면 코어 → 메타 → 후공정 순. 같은 priority 안에서도 의존도 낮은 것 우선.
 - **visual.prompt**: 반드시 영문. 추상어 금지, 명사·형용사·동사 모두 구체적으로.
 
 # 출력 규칙
@@ -1115,6 +1171,8 @@ async function aiGenerateConcept(command, attachments, opts) {
       id: 'rp' + uid().slice(0, 4),
       title: p.title || '기획서',
       description: p.description || '',
+      // priority 는 validator 가 누락 시 inferPlanPriority 로 자동 보강 — 여기서는 raw 그대로 전달.
+      priority: (typeof p.priority === 'number' && isFinite(p.priority)) ? p.priority : undefined,
       linkedGddId: null,
     })),
   };

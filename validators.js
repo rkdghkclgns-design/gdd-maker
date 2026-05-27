@@ -10,6 +10,60 @@
   const isArr = Array.isArray;
   const isNum = (v) => typeof v === 'number' && isFinite(v);
 
+  /* === 기획서 작성 선행 단계 추정 (priority 1~10) ===
+   *
+   * 게임 개발 표준 순서:
+   *   1 = 코어 게임플레이/메인 루프 (모든 기획의 출발점)
+   *   2 = 시스템 (전투/이동/조작/카메라/성장/난이도/밸런스)
+   *   3 = 데이터 스키마/진행/스테이지 (시스템 정의에 의존)
+   *   4 = 콘텐츠 (모드/이벤트/시즌/패스/던전/챕터)
+   *   5 = 메타·소셜 (매칭/로비/길드/채팅/리더보드)
+   *   6 = 온보딩·튜토리얼 (위 시스템들이 정의되어야 작성 가능)
+   *   7 = 경제·BM (재화/상점/IAP/광고/패스)
+   *   8 = UI·UX·아트·사운드
+   *   9 = 기술·인프라 (서버/네트워크/안티치트/배포)
+   *  10 = 운영·QA·마케팅·런칭 (모든 시스템 의존)
+   *
+   * priority 가 없는 legacy 데이터에 대한 fallback. title + description 의 키워드로 추정.
+   */
+  function inferPlanPriority(title, description) {
+    const t = ((title || '') + ' ' + (description || '')).toLowerCase();
+    // 매칭 순서가 곧 우선순위 — 가장 명확한 시그널부터 검사하여 단어 중복 충돌 회피.
+    // ex) "키비주얼 가이드" 는 마케팅(10) 이지 온보딩(6) 의 '가이드' 가 아니므로 10 을 먼저 확인.
+
+    // 10: 운영/QA/마케팅/런칭 (후공정 — '가이드' 같은 일반 어휘보다 명확한 후공정 키워드 먼저)
+    if (/운영|operation|customer\s*support|환불|refund|보상\s*정책|신고|제재|moderation|테스트\s*플랜|test\s*plan|\bqa\b|품질\s*보증|자동화\s*테스트|출시\s*체크|인증|등급\s*심의|마케팅|marketing|트레일러|trailer|스토어\s*페이지|store\s*page|사전등록|키비주얼|키\s*비주얼|key\s*visual|런칭|launch|cbt|obt/.test(t)) return 10;
+
+    // 9: 기술/인프라
+    if (/서버\s|server|네트워크|network|프로토콜|protocol|안티치트|anti-?cheat|빌드\s|build\s|배포|deploy|모니터링|monitoring|\s로그\b|logging|분석\s*파이프라인|analytics|인프라|infra|아키텍처/.test(t)) return 9;
+
+    // 1: 핵심 게임플레이
+    if (/코어\s*루프|core\s*loop|메인\s*루프|main\s*loop|핵심\s*게임플레이|핵심\s*컨셉|게임\s*디자인\s*핵심|core\s*gameplay/.test(t)) return 1;
+
+    // 2: 코어 시스템
+    if (/전투|battle|combat|조작|컨트롤|control|카메라|이동\s*시스템|movement|성장\s|레벨링|레벨\s*업|leveling|progression\s|난이도|밸런스|balance|difficulty/.test(t)) return 2;
+
+    // 3: 데이터/진행
+    if (/데이터\s*스키마|db\s*스키마|database|데이터\s*모델|데이터\s*테이블|data\s*table|스테이지|stage|진행도|챕터|chapter/.test(t)) return 3;
+
+    // 6: 온보딩 (튜토리얼 핵심 시그널 — '가이드' 단독은 제외, 너무 광범위)
+    if (/튜토리얼|tutorial|온보딩|onboarding|\bftue\b|첫\s*플레이|신규\s*유저|new\s*user|첫\s*경험|신규\s*가이드|초보\s*가이드/.test(t)) return 6;
+
+    // 7: 경제/BM
+    if (/경제\s|economy|재화|currency|상점|샵\b|\bshop\b|\bstore\b|결제|\biap\b|인앱|in-?app|광고\s*수익|ad\s*monet|구독|subscription|\bbm\b|환율|가격|pricing|monetiz/.test(t)) return 7;
+
+    // 8: UI/UX/아트/사운드
+    if (/\bui\b|\bux\b|와이어|wireframe|디자인\s*시스템|design\s*system|아트\s|art\s|캐릭터\s*아트|배경\s*아트|모션|motion|이펙트|effect|\bvfx\b|사운드|sound|\bbgm\b|\bsfx\b|음향|보이스|voice/.test(t)) return 8;
+
+    // 4: 콘텐츠 (모드/이벤트/시즌)
+    if (/콘텐츠|content|게임\s*모드|game\s*mode|이벤트|event\s|시즌|season|패스\s|battle\s*pass|던전|월드|world\s|보스|\braid\b/.test(t)) return 4;
+
+    // 5: 메타/소셜
+    if (/매칭|matchmaking|로비|lobby|매치메이커|소셜|social|친구|friend|길드|클랜|guild|clan|채팅|\bchat\b|리더보드|랭킹|ranking|leaderboard/.test(t)) return 5;
+
+    return 5; // 기본값 — 중반
+  }
+
   /* === 개별 슬라이드 schema === */
   const SLIDE_SCHEMAS = {
     cover: {
@@ -334,14 +388,24 @@
     if (!isArr(merged.keyUsp)) merged.keyUsp = [];
     merged.keyUsp = merged.keyUsp.map(u => isStr(u) ? u : String(u || ''));
 
-    // recommendedPlans
+    // recommendedPlans — priority 1(가장 먼저 작성) ~ 10(맨 나중) 부여.
+    // AI 가 직접 넣지 않았더라도 휴리스틱으로 보강해 정렬 가능하도록 함.
     if (!isArr(merged.recommendedPlans)) merged.recommendedPlans = [];
-    merged.recommendedPlans = merged.recommendedPlans.map((p, i) => ({
-      id: p?.id || ('rp' + Math.random().toString(36).slice(2, 6)),
-      title: p?.title || `기획서 ${i + 1}`,
-      description: p?.description || '',
-      linkedGddId: p?.linkedGddId || null,
-    }));
+    merged.recommendedPlans = merged.recommendedPlans.map((p, i) => {
+      const rawPriority = (p && (p.priority || p.order || p.stage));
+      const numPriority = (typeof rawPriority === 'number' && isFinite(rawPriority))
+        ? Math.max(1, Math.min(10, Math.round(rawPriority)))
+        : (typeof rawPriority === 'string' && /^\d+$/.test(rawPriority.trim())
+            ? Math.max(1, Math.min(10, parseInt(rawPriority, 10)))
+            : null);
+      return {
+        id: p?.id || ('rp' + Math.random().toString(36).slice(2, 6)),
+        title: p?.title || `기획서 ${i + 1}`,
+        description: p?.description || '',
+        priority: numPriority !== null ? numPriority : inferPlanPriority(p?.title, p?.description),
+        linkedGddId: p?.linkedGddId || null,
+      };
+    });
 
     if (!merged.id) {
       merged.id = 'concept-' + Math.random().toString(36).slice(2, 10);
@@ -358,4 +422,6 @@
   };
   window.injectRealDates = injectRealDates;
   window.todayShortYYMMDD = todayShortYYMMDD;
+  // concept.jsx UI 에서 priority 미지정 항목의 단계 추정에 재사용.
+  window.inferPlanPriority = inferPlanPriority;
 })();

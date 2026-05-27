@@ -114,6 +114,32 @@
       if (typeof prevHandler === 'function') return prevHandler.apply(this, arguments);
     };
   } catch (_) {}
+
+  // (6) chrome.runtime.onMessage / chrome.runtime.sendMessage 패치 시도 —
+  // 확장이 직접 등록하는 채널이 메시지 채널 close 에러를 일으키는 케이스만 흡수.
+  // sendMessage 의 callback 이 "the message port closed" reject 를 던지는 것을 잡음.
+  // 우리 코드는 chrome.* API 를 사용하지 않으므로 안전.
+  try {
+    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+      var origSend = chrome.runtime.sendMessage.bind(chrome.runtime);
+      chrome.runtime.sendMessage = function () {
+        try {
+          var result = origSend.apply(null, arguments);
+          // 반환값이 Promise 인 경우 (MV3) silent catch
+          if (result && typeof result.then === 'function') {
+            return result.catch(function (err) {
+              if (isExtensionNoise(err)) return undefined;
+              throw err;
+            });
+          }
+          return result;
+        } catch (e) {
+          if (isExtensionNoise(e)) return undefined;
+          throw e;
+        }
+      };
+    }
+  } catch (_) {}
 })();
 </script>
 <meta charset="utf-8" />
@@ -152,6 +178,6 @@
 <script src="slide-splitter.js?v=ffe6b6ee"></script>
 <!-- 모든 .jsx 파일을 단일 bundle.jsx로 합쳐 babel-standalone에 전달.
      빌드: node build.js — GitHub Actions에서도 자동 실행. -->
-<script type="text/babel" data-presets="react" src="bundle.jsx?v=b13db619"></script>
+<script type="text/babel" data-presets="react" src="bundle.jsx?v=eb1c99de"></script>
 </body>
 </html>

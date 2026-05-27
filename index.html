@@ -162,33 +162,34 @@
      가 일부 Chrome 환경(특히 한국어 시크릿 모드의 내장 번역기)에서
      "A listener indicated an asynchronous response..." 노이즈를 일으킴. 운영 빌드는
      이런 hook 이 비활성화되어 콘솔이 깨끗하고 번들 크기도 작음(~35% 감소).
-     integrity 는 React 18.3.1 production min 의 실제 SRI 가 변경될 수 있어 제거. -->
-<script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/gh/gitbrent/PptxGenJS@v3.12.0/dist/pptxgen.bundle.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+     ⚠ 모든 외부 CDN 스크립트는 SRI integrity 해시로 변조 차단 — CDN 탈취/캐시 포이즈닝 방어.
+        해시 갱신: scripts/compute-sri.js 또는 README 의 SRI 컴퓨팅 가이드 참조. -->
+<script crossorigin="anonymous" src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" integrity="sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z"></script>
+<script crossorigin="anonymous" src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1"></script>
+<script crossorigin="anonymous" src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y"></script>
+<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/gh/gitbrent/PptxGenJS@v3.12.0/dist/pptxgen.bundle.js" integrity="sha384-Cck14aA9cifjYolcnjebXRfWGkz5ltHMBiG4px/j8GS+xQcb7OhNQWZYyWjQ+UwQ"></script>
+<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H"></script>
+<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/"></script>
 <!-- 일괄 다운로드용 ZIP 패키저 -->
-<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG"></script>
 </head>
 <body>
 <div id="root"></div>
 <script src="storage.js?v=79f41436"></script>
 <script src="usage.js?v=88277757"></script>
-<script src="validators.js?v=e1e9d637"></script>
+<script src="validators.js?v=e0de5f12"></script>
 <script src="export-formats.js?v=78b78cc5"></script>
 <script src="consistency-check.js?v=26711146"></script>
 <script src="stats.js?v=35a7dfd6"></script>
 <script src="gemini-adapter.js?v=4f7f28ec"></script>
 
-<script src="data.js?v=f2be2538"></script>
+<script src="data.js?v=c4ca9ac6"></script>
 <script src="quality-gate.js?v=71dd725b"></script>
 <script src="export-adapters.js?v=2d252805"></script>
 <script src="genres.js?v=40917588"></script>
 <script src="slide-splitter.js?v=d75fbc8b"></script>
 <!-- 모든 .jsx 파일을 단일 bundle.jsx로 합쳐 babel-standalone에 전달.
      빌드: node build.js — GitHub Actions에서도 자동 실행. -->
-<script type="text/babel" data-presets="react" src="bundle.jsx?v=ba1a9d0c"></script>
+<script type="text/babel" data-presets="react" src="bundle.jsx?v=1dac70a4"></script>
 </body>
 </html>

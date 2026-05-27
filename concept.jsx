@@ -227,14 +227,15 @@ const GAME_FEATURE_CATALOG = [
   },
 ];
 
-/** id → { categoryId, label, desc } lookup. AI 프롬프트 빌드 시 사용. */
+/** id → { categoryId, categoryLabel, label, desc } lookup.
+ * 모듈 로드 시 1회 Map 구축 → O(1) 조회. 78개 항목 * 다중선택 시 매번 선형 스캔하지 않도록. */
+const FEATURE_MAP = new Map(
+  GAME_FEATURE_CATALOG.flatMap(cat =>
+    cat.features.map(f => [f.id, { categoryId: cat.id, categoryLabel: cat.label, ...f }])
+  )
+);
 function lookupFeatureById(id) {
-  for (const cat of GAME_FEATURE_CATALOG) {
-    for (const f of cat.features) {
-      if (f.id === id) return { categoryId: cat.id, categoryLabel: cat.label, ...f };
-    }
-  }
-  return null;
+  return FEATURE_MAP.get(id) || null;
 }
 
 /* ===== 이미지 리사이즈 유틸 =====
@@ -365,7 +366,6 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, onB
         toast?.(`${SECTION_LABEL[section] || section} 재생성 완료`, 'ok');
       }
     } catch (e) {
-      console.error(e);
       toast?.('재생성 실패: ' + (e.message || e), 'err');
     } finally {
       setBusySection(null);
@@ -390,7 +390,6 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, onB
       });
       toast?.('🍌 이미지 생성 완료', 'ok');
     } catch (e) {
-      console.error(e);
       toast?.('이미지 생성 실패: ' + (e.message || e), 'err');
     } finally {
       setBusySection(null);
@@ -442,7 +441,6 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, onB
       patchPath('visual.prompt', en);
       toast?.('한국어 → 영문 프롬프트 반영 완료', 'ok');
     } catch (e) {
-      console.error(e);
       toast?.('번역 실패: ' + (e.message || e), 'err');
     } finally {
       setApplyingKo(false);
@@ -513,7 +511,6 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, onB
       link.click();
       toast?.('PNG 다운로드 완료', 'ok');
     } catch (e) {
-      console.error(e);
       toast?.('PNG 생성 실패: ' + e.message, 'err');
     } finally {
       pageEl.classList.remove('exporting');
@@ -543,7 +540,6 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, onB
       patchField('authorAvatar', resized);
       toast?.('아바타 적용 완료', 'ok');
     } catch (err) {
-      console.error(err);
       toast?.('이미지 처리 실패: ' + (err.message || err), 'err');
     } finally {
       // 같은 파일을 다시 선택해도 onChange 가 다시 발화하도록 value 리셋
@@ -963,19 +959,18 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, onB
           <div className="concept-rec-grid">
             {(() => {
               // priority 기준 안정 정렬 — priority 가 없거나 동률이면 원래 입력 순서 유지.
-              // 단계 라벨(이전 카드와 priority 가 다르면 'N단계' divider 같은 작은 표시) 도 함께 부여.
+              // 단계 라벨(이전 카드와 priority 가 다르면 'N단계' divider) 도 함께 부여.
+              // resolvePlanPriority 는 validators.js 의 단일 진실 공급원 — DRY 보장.
+              const resolve = window.resolvePlanPriority || ((p) => 5);
               const arr = (concept.recommendedPlans || []).map((p, idx) => ({
-                p,
-                idx,
-                prio: (typeof p.priority === 'number' && isFinite(p.priority))
-                  ? Math.max(1, Math.min(10, Math.round(p.priority)))
-                  : (window.inferPlanPriority ? window.inferPlanPriority(p.title, p.description) : 5),
+                p, idx, prio: resolve(p),
               }));
               arr.sort((a, b) => (a.prio - b.prio) || (a.idx - b.idx));
-              let prevPrio = null;
-              return arr.map(({ p, prio }) => {
-                const showStageDivider = prio !== prevPrio;
-                prevPrio = prio;
+              // map 안에서 외부 `let` 을 변이하면 Strict Mode 의 double-invoke 에서 divider
+              // 가 두 배 붙는 등 비결정적이 됨. 정렬된 배열에서 'priority 가 직전과 다른가' 는
+              // 인덱스 기반으로 순수 계산 가능.
+              return arr.map(({ p, prio }, displayIdx) => {
+                const showStageDivider = displayIdx === 0 || arr[displayIdx - 1].prio !== prio;
                 return (
                   <React.Fragment key={p.id}>
                     {showStageDivider && <PlanStageDivider priority={prio} />}
@@ -1187,13 +1182,18 @@ function buildConceptPrompt(command, attachments, opts) {
       .map(id => lookupFeatureById(id))
       .filter(Boolean);
     if (resolved.length > 0) {
-      // 카테고리별로 묶어 보기 좋게 표시.
-      const byCat = {};
-      resolved.forEach(f => {
-        if (!byCat[f.categoryLabel]) byCat[f.categoryLabel] = [];
-        byCat[f.categoryLabel].push(f);
-      });
-      const lines = Object.entries(byCat).map(([cat, items]) => {
+      // 카테고리별 그룹핑 + 카탈로그 순서 보존 — Map 으로 mutation 없이 reduce.
+      // (이전: Object.entries 순서가 카테고리 정의 순서와 일치한다는 보장이 약함)
+      const byCat = resolved.reduce(
+        (acc, f) => acc.set(f.categoryLabel, [...(acc.get(f.categoryLabel) || []), f]),
+        new Map()
+      );
+      // GAME_FEATURE_CATALOG 정의 순서대로 정렬해서 출력 (코어부터 후공정 순).
+      const orderedCats = GAME_FEATURE_CATALOG
+        .map(c => c.label)
+        .filter(label => byCat.has(label));
+      const lines = orderedCats.map(cat => {
+        const items = byCat.get(cat) || [];
         const itemLines = items.map(i => `  - **${i.label}**: ${i.desc}`).join('\n');
         return `[${cat}]\n${itemLines}`;
       }).join('\n\n');
@@ -1404,10 +1404,22 @@ function ConceptBrief({ onClose, onSubmit, isGenerating, initialMode = 'ai' }) {
   const dragCounterRef = React.useRef(0);
   // 필수 포함 기능 — 사용자가 다중선택. AI 프롬프트의 "MUST-HAVE" 블록으로 들어감.
   const [selectedFeatures, setSelectedFeatures] = React.useState([]);
-  const toggleFeature = (id) => {
+  // useCallback: FeatureCatalogPicker 의 78개 chip 에 새 함수 참조가 매 렌더 흐르지 않도록.
+  const toggleFeature = React.useCallback((id) => {
     setSelectedFeatures(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  };
-  const clearFeatures = () => setSelectedFeatures([]);
+  }, []);
+  const setMultipleFeatures = React.useCallback((ids, add) => {
+    // 카테고리 전체 토글용 — 단일 setState 로 N개 항목을 일괄 변경. 다중 setState 회피.
+    setSelectedFeatures(prev => {
+      if (add) {
+        const next = new Set(prev);
+        ids.forEach(id => next.add(id));
+        return Array.from(next);
+      }
+      const idSet = new Set(ids);
+      return prev.filter(x => !idSet.has(x));
+    });
+  }, []);
 
   /* Attachments */
   const addImage = async (file) => {
@@ -1537,7 +1549,7 @@ function ConceptBrief({ onClose, onSubmit, isGenerating, initialMode = 'ai' }) {
               <div className="cb-feat-meta">
                 <span className="cb-feat-count">{selectedFeatures.length}개 선택</span>
                 {selectedFeatures.length > 0 && (
-                  <button className="cb-feat-clear" onClick={clearFeatures} title="선택 초기화">초기화</button>
+                  <button className="cb-feat-clear" onClick={() => setSelectedFeatures([])} title="선택 초기화">초기화</button>
                 )}
               </div>
             }
@@ -1550,6 +1562,7 @@ function ConceptBrief({ onClose, onSubmit, isGenerating, initialMode = 'ai' }) {
               catalog={GAME_FEATURE_CATALOG}
               selected={selectedFeatures}
               onToggle={toggleFeature}
+              onBulkToggle={setMultipleFeatures}
             />
           </CbSection>
 
@@ -1644,24 +1657,27 @@ function CbColorField({ label, value, onChange }) {
  * - 카테고리별 그리드. 카테고리 헤더 클릭 → 카테고리 내 전체 선택/해제 토글.
  * - 각 chip 은 체크박스 + 라벨 + (호버 시) 설명 툴팁.
  * - 정렬: 카탈로그 정의 순서 그대로 (이미 priority 우선순위에 맞춰 정렬돼 있음).
+ *
+ * 성능:
+ * - selected 배열을 Set 으로 메모이즈하여 isSelected 가 O(1).
+ * - 카테고리 전체 토글은 단일 setState (onBulkToggle) 로 8회 → 1회 리렌더 단축.
  */
-function FeatureCatalogPicker({ catalog, selected, onToggle }) {
-  const isSelected = (id) => selected.includes(id);
+function FeatureCatalogPicker({ catalog, selected, onToggle, onBulkToggle }) {
+  const selectedSet = React.useMemo(() => new Set(selected), [selected]);
   const toggleCategory = (cat) => {
     const ids = cat.features.map(f => f.id);
-    const allSelected = ids.every(id => selected.includes(id));
-    // 모두 선택돼 있으면 모두 해제, 아니면 미선택분만 추가 선택
-    ids.forEach(id => {
-      const has = selected.includes(id);
-      if (allSelected && has) onToggle(id);
-      else if (!allSelected && !has) onToggle(id);
-    });
+    const allSelected = ids.every(id => selectedSet.has(id));
+    // allSelected → 카테고리 전체 해제, 아니면 미선택분 일괄 추가.
+    onBulkToggle(ids, !allSelected);
   };
 
   return (
     <div className="cb-feat-catalog">
       {catalog.map(cat => {
-        const catSelectedCount = cat.features.filter(f => selected.includes(f.id)).length;
+        const catSelectedCount = cat.features.reduce(
+          (acc, f) => acc + (selectedSet.has(f.id) ? 1 : 0),
+          0
+        );
         const allSelected = catSelectedCount === cat.features.length && cat.features.length > 0;
         return (
           <div className="cb-feat-cat" key={cat.id}>
@@ -1679,7 +1695,7 @@ function FeatureCatalogPicker({ catalog, selected, onToggle }) {
             </div>
             <div className="cb-feat-chip-grid">
               {cat.features.map(f => {
-                const on = isSelected(f.id);
+                const on = selectedSet.has(f.id);
                 return (
                   <button
                     key={f.id}
@@ -1687,6 +1703,8 @@ function FeatureCatalogPicker({ catalog, selected, onToggle }) {
                     className={'cb-feat-chip ' + (on ? 'on' : '')}
                     onClick={() => onToggle(f.id)}
                     title={f.desc}
+                    aria-label={`${f.label}${on ? ' (선택됨)' : ''} — ${f.desc}`}
+                    aria-pressed={on}
                   >
                     <span className="cb-feat-chip-check" aria-hidden>{on ? '✓' : '+'}</span>
                     <span className="cb-feat-chip-label">{f.label}</span>

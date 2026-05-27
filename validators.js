@@ -111,14 +111,22 @@
         rows: { item: {} },
       },
     },
-    /* flow: 아래 (현재 line 99~) 에서 direction/lines 필드까지 포함된 완전한 정의 사용.
-       여기 첫 번째 정의는 두 번째에 의해 덮어써졌으므로 제거. */
     diagram: {
       required: ['nodes'],
       defaults: { section: '02', sectionName: '시스템 구조', title: '다이어그램', nodes: [], edges: [] },
       arrays: {
         nodes: { item: { id: 'n1', label: '노드', kind: 'process', col: 0, row: 0 } },
         edges: { item: { from: '', to: '', label: '' } },
+      },
+    },
+    flow: {
+      required: ['nodes'],
+      defaults: {
+        section: '02', sectionName: '플로우 차트', title: '플로우 차트',
+        direction: 'vertical', lines: 1, nodes: [],
+      },
+      arrays: {
+        nodes: { item: { id: 'n1', label: '단계', kind: 'process' } },
       },
     },
     'sequence-diagram': {
@@ -152,10 +160,6 @@
       defaults: { section: '05', sectionName: '필요 리소스', title: '리소스 목록', categories: [] },
       arrays: { categories: { item: { name: '카테고리', count: 'x?', guideline: '', items: [] } } },
     },
-    /* NOTE: 위에 line 60-64 에 'flow' 가 이미 정의되어 있음.
-       JS 객체 리터럴에서 같은 키 중복 시 뒤의 값이 이전 값을 덮어쓰므로 의도하지 않은 동작 위험.
-       이 두 번째 정의(direction/lines 필드 포함)가 채택되어야 하는 의도된 schema 이므로 유지.
-       향후 첫 번째 정의(line 60-64)를 제거하면 깔끔하지만 호환성 안전을 위해 그대로 둠. */
     /* === Phase 1 신규 슬라이드 7종 — 개발 가능 수준 보장용 === */
     'balance-table': {
       required: ['vars'],
@@ -422,6 +426,18 @@
     return { concept: merged, fixes };
   }
 
+  /** 단일 진실 공급원: plan 객체의 priority 를 1~10 범위로 강제.
+   * - number 면 clamp + round
+   * - 누락이면 inferPlanPriority 휴리스틱으로 추정
+   * 호출처: validateConcept, concept.jsx UI 정렬, app.jsx bulkCreate 정렬. */
+  function resolvePlanPriority(plan) {
+    const raw = plan && plan.priority;
+    if (typeof raw === 'number' && isFinite(raw)) {
+      return Math.max(1, Math.min(10, Math.round(raw)));
+    }
+    return inferPlanPriority(plan && plan.title, plan && plan.description);
+  }
+
   window.validateGdd = validateGdd;
   window.validateConcept = validateConcept;
   window.validateSlide = (s) => {
@@ -430,6 +446,7 @@
   };
   window.injectRealDates = injectRealDates;
   window.todayShortYYMMDD = todayShortYYMMDD;
-  // concept.jsx UI 에서 priority 미지정 항목의 단계 추정에 재사용.
+  // concept.jsx UI 와 app.jsx bulkCreate 양쪽에서 재사용.
   window.inferPlanPriority = inferPlanPriority;
+  window.resolvePlanPriority = resolvePlanPriority;
 })();

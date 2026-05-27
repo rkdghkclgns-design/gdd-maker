@@ -118,7 +118,7 @@ async function loadStateAsync() {
         return migrateLegacyValues(loaded);
       }
     } catch (e) {
-      console.error('IndexedDB 로드 실패, localStorage 폴백', e);
+      // IndexedDB 실패 — localStorage 폴백이 아래에서 처리. 프로덕션 console 금지(CLAUDE.md).
     }
   }
   // 4) 최종 폴백: 기존 localStorage 직접
@@ -141,7 +141,7 @@ function saveStateDebounced(state) {
         await window.gddStorage.saveState(state, 'main');
         return;
       } catch (e) {
-        console.error('IndexedDB 저장 실패, localStorage 폴백', e);
+        // IndexedDB 실패 — 아래 localStorage 폴백이 처리. 프로덕션 console 금지.
       }
     }
     try {
@@ -1970,7 +1970,6 @@ function App({ onStateChange }) {
         setProject(_ => updated);
         toast(`수정 완료 (${opsCount}개 변경) — ${summary}`, 'ok');
       } catch (e) {
-        console.error(e);
         toast('수정 실패: ' + (e.message || e), 'err');
       } finally {
         setIsGenerating(false);
@@ -2068,7 +2067,6 @@ function App({ onStateChange }) {
       }
       toast(`"${result.title}" 생성 완료 (${result.slides.length} slides)`, 'ok');
     } catch (e) {
-      console.error(e);
       toast('생성 실패: ' + (e.message || e), 'err');
     } finally {
       setIsGenerating(false);
@@ -2106,7 +2104,6 @@ function App({ onStateChange }) {
         }));
         toast(`"${result.title}" 컨셉 생성 완료`, 'ok');
       } catch (e) {
-        console.error(e);
         toast('컨셉 생성 실패: ' + (e.message || e), 'err');
       } finally {
         setIsGenerating(false);
@@ -2219,7 +2216,6 @@ function App({ onStateChange }) {
         }
         toast(`"${result.title}" 생성 완료 (${result.slides.length} slides)`, 'ok');
       } catch (e) {
-        console.error(e);
         toast('생성 실패: ' + (e.message || e), 'err');
       } finally {
         setIsGenerating(false);
@@ -2285,7 +2281,6 @@ function App({ onStateChange }) {
       }));
       toast(`"${result.title}" 컨셉 생성 완료`, 'ok');
     } catch (e) {
-      console.error(e);
       toast('컨셉 생성 실패: ' + (e.message || e), 'err');
     } finally {
       setIsGenerating(false);
@@ -2313,17 +2308,13 @@ function App({ onStateChange }) {
 
   /* 일괄 생성: 컨셉의 미작성 recommendedPlans 전체를 AI로 시리얼 생성.
    * priority(1~10) 오름차순 — 선행 작성 필요한 코어부터, 후공정 마케팅·QA 는 마지막.
-   * 이전 단계 산출물이 prior context 로 누적되도록 순서가 정합성에 직접 영향. */
+   * 이전 단계 산출물이 prior context 로 누적되도록 순서가 정합성에 직접 영향.
+   * priority resolution 은 validators.js 의 resolvePlanPriority 단일 진실 공급원 사용. */
   const bulkCreatePlansForConcept = async () => {
     if (!concept) return;
+    const resolve = window.resolvePlanPriority || (() => 5);
     const pending = (concept.recommendedPlans || [])
-      .map((p, idx) => ({
-        p,
-        idx,
-        prio: (typeof p.priority === 'number' && isFinite(p.priority))
-          ? Math.max(1, Math.min(10, Math.round(p.priority)))
-          : (window.inferPlanPriority ? window.inferPlanPriority(p.title, p.description) : 5),
-      }))
+      .map((p, idx) => ({ p, idx, prio: resolve(p) }))
       .filter(({ p }) => !p.linkedGddId)
       .sort((a, b) => (a.prio - b.prio) || (a.idx - b.idx))
       .map(({ p }) => p);
@@ -2394,7 +2385,7 @@ function App({ onStateChange }) {
         });
         success++;
       } catch (e) {
-        console.error('bulk fail', plan.title, e);
+        // bulk 생성 실패 — 카운터로 집계, 마지막에 사용자에게 합산 알림.
         failed++;
       }
     }
@@ -2765,7 +2756,6 @@ function App({ onStateChange }) {
       await exportPptx(project);
       toast('PPTX 다운로드 완료', 'ok');
     } catch (e) {
-      console.error(e);
       toast('PPTX 생성 실패: ' + (e.message || e), 'err');
     } finally {
       setIsDownloading(false);
@@ -2825,7 +2815,6 @@ function App({ onStateChange }) {
         'ok'
       );
     } catch (e) {
-      console.error(e);
       toast('일괄 다운로드 실패: ' + (e.message || e), 'err');
     } finally {
       setIsDownloading(false);
@@ -3727,12 +3716,11 @@ function synthesizeImagePrompt(slide, parsedRoot, contextOpt) {
   return parts.join('. ');
 }
 
-/** 사용자/AI 가 입력한 imagePrompt 가 한글을 포함하면 strip + 영문 보강.
- * nano-banana 입력 직전에 호출 — 슬라이드 데이터의 imagePrompt 는 그대로 두고 송신 값만 정제. */
 /** 슬라이드 imagePrompt 를 nano-banana 호출 직전에 정제 + 컨셉 톤 결합.
- * 영문/한글 무관하게 concept.visual.prompt 가 있으면 dominant anchor 로 prepend 하여
- * 모든 이미지가 통일된 톤앤매너 유지. 한글 부분은 strip + 너무 짧으면 합성으로 대체.
- */
+ * - 영문/한글 무관하게 concept.visual.prompt 가 있으면 dominant anchor 로 prepend 하여
+ *   모든 이미지가 통일된 톤앤매너 유지.
+ * - 한글 부분은 strip 후 라틴 글자가 너무 적으면 synthesizeImagePrompt 로 재합성.
+ * - 슬라이드 데이터의 imagePrompt 는 그대로 두고 송신 값만 정제. */
 function sanitizeImagePromptForGen(prompt, slide, context) {
   if (!prompt) return synthesizeImagePrompt(slide, null, context);
 
@@ -3813,9 +3801,8 @@ async function aiGenerateGdd(command, existingTitles, attachments, context) {
   });
   if (allFixes.length && window.gddToast) {
     try { window.gddToast(`AI 응답 ${allFixes.length}개 항목 자동 보정`, 'ok'); } catch {}
-  } else if (allFixes.length) {
-    console.warn('AI 응답 자동 보정:', allFixes);
   }
+  // (toast 없을 때 fallback console.warn 제거 — CLAUDE.md 프로덕션 console 금지)
 
   // nano-banana: 참고 이미지 자동 생성
   // - cover 슬라이드: 표지 배경

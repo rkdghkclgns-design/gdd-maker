@@ -980,6 +980,11 @@ ${contextBlock}
 function parseAiJson(raw) {
   if (raw == null) throw new Error('AI 응답이 비어있습니다.');
   let s = String(raw).trim();
+  // 보안: 비정상적으로 큰 입력은 복구 체인의 정규식 백트래킹으로 long-running 가능.
+  // Gemini 의 단일 응답 한계가 ~1M 토큰 (~4MB) 이므로 4MB 를 한계로 설정.
+  if (s.length > 4 * 1024 * 1024) {
+    throw new Error('AI 응답이 너무 큽니다 (4MB 초과) — 분할 생성 권장.');
+  }
 
   // 1) 코드 펜스 제거 (```json ... ``` 또는 ``` ... ```)
   if (s.startsWith('```')) {

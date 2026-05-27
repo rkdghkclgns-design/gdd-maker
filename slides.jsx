@@ -21,7 +21,17 @@ function parseInlineMd(line) {
     if (m[1]) out.push(React.createElement('strong', { key: key++, className: 'md-strong' }, m[2]));
     else if (m[3]) out.push(React.createElement('code', { key: key++, className: 'md-code' }, m[4]));
     else if (m[5]) out.push(React.createElement('span', { key: key++, className: 'md-strike' }, m[6]));
-    else if (m[7]) out.push(React.createElement('a', { key: key++, className: 'md-link', href: m[9], target: '_blank', rel: 'noopener noreferrer', onClick: (e) => e.stopPropagation() }, m[8]));
+    else if (m[7]) {
+      // 보안: href 스킴 화이트리스트. javascript:/data:/vbscript: 등은 클릭 시 코드 실행.
+      // target="_blank" 만으로는 javascript: 스킴을 막을 수 없으므로 별도 검증 필요.
+      const rawHref = m[9] || '';
+      const safeHref = /^(https?:|mailto:|#|\/)/i.test(rawHref) ? rawHref : '#';
+      out.push(React.createElement('a', {
+        key: key++, className: 'md-link', href: safeHref,
+        target: '_blank', rel: 'noopener noreferrer',
+        onClick: (e) => e.stopPropagation(),
+      }, m[8]));
+    }
     else if (m[10]) out.push(React.createElement('em', { key: key++, className: 'md-em' }, m[11]));
     else if (m[12]) out.push(React.createElement('em', { key: key++, className: 'md-em' }, m[13]));
     last = RE.lastIndex;

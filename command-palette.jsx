@@ -156,7 +156,7 @@ function CommandPalette({ open, onClose, state, onGoto, actions }) {
 
   const pick = (item) => {
     if (item.action) {
-      try { item.action(); } catch (e) { console.error(e); }
+      try { item.action(); } catch (e) { /* silent — UI 가 멈추지 않도록. CLAUDE.md console 금지 */ }
     } else if (item.goto) {
       onGoto(item.goto);
     }

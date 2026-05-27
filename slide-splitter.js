@@ -255,6 +255,17 @@
       }, 0);
       return totalH > 440;
     }
+    if (t === 'roadmap') {
+      const d = slide.data || {};
+      const phases = d.phases || [];
+      if (phases.length > 4) return true;
+      const ganttH = 30 + phases.length * 38;
+      const totalH = phases.reduce((acc, p) => {
+        const deliv = (p.deliverables || []);
+        return acc + 60 + deliv.length * 22 + deliv.reduce((a, dd) => a + estimateTextHeight(dd), 0) + ((p.dependsOn || []).length ? 20 : 0);
+      }, 0);
+      return ganttH + totalH > 500;
+    }
     // rules: blocks 가 많거나 한 block 안 items 가 많으면 분할
     if (t === 'rules') {
       const blocks = slide.data.blocks || [];
@@ -551,6 +562,54 @@
     }));
   }
 
+  /** roadmap — phase 별 deliverables 길이 가변. 첫 슬라이드만 gantt 표시, 나머지는 phase 카드만. */
+  function splitRoadmap(slide) {
+    const d = slide.data || {};
+    const phases = d.phases || [];
+    if (phases.length === 0) return [slide];
+
+    const SLIDE_BODY_H = 500;
+    const GANTT_H = 30 + phases.length * 38; // gantt 영역 (모든 phase 가 한 줄씩)
+    const phaseH = (p) => {
+      let h = 60; // 헤더 (name, start, end, ✕)
+      const deliv = (p.deliverables || []);
+      h += deliv.length * 22; // 각 산출물 라인
+      h += deliv.reduce((acc, d) => acc + estimateTextHeight(d), 0);
+      if ((p.dependsOn || []).length) h += 20;
+      return h;
+    };
+
+    // chunk by height — gantt 는 첫 슬라이드에만 (분할본은 phase 카드만)
+    const chunks = [];
+    let cur = [], curH = 0;
+    const firstAvail = SLIDE_BODY_H - GANTT_H;
+    for (let i = 0; i < phases.length; i++) {
+      const p = phases[i];
+      const h = phaseH(p);
+      const limit = chunks.length === 0 ? firstAvail : SLIDE_BODY_H;
+      if (cur.length > 0 && curH + h > limit) {
+        chunks.push(cur);
+        cur = [p]; curH = h;
+      } else {
+        cur.push(p); curH += h;
+      }
+    }
+    if (cur.length) chunks.push(cur);
+    if (chunks.length <= 1) return [slide];
+
+    return chunks.map((chunk, idx) => ({
+      id: idx === 0 ? slide.id : 'sl' + uid(),
+      type: 'roadmap',
+      data: {
+        ...d,
+        title: suffixTitle(d.title, idx, chunks.length),
+        phases: chunk,
+        // 첫 슬라이드에만 gantt 가 보이도록 메타 hint — 렌더러가 _hideGantt 를 참고
+        _hideGantt: idx > 0,
+      },
+    }));
+  }
+
   function splitSlide(slide) {
     if (!slide || !slide.data) return [slide];
     const t = slide.type;
@@ -559,6 +618,7 @@
     if (t === 'balance-table') return splitBalanceTable(slide);
     if (t === 'acceptance-criteria') return splitAcceptanceCriteria(slide);
     if (t === 'telemetry') return splitTelemetry(slide);
+    if (t === 'roadmap') return splitRoadmap(slide);
     if (t === 'rules') return splitRules(slide);
     if (t === 'toc') return splitToc(slide);
     if (THRESHOLDS[t]) return splitByArrayField(slide);

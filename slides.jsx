@@ -1833,7 +1833,7 @@ function RoadmapSlide({ data, patch, page, totalPages }) {
       <TopTag section={data.section} sectionName={data.sectionName} />
       <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
       <div className="roadmap-wrap" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-        {phases.length > 0 && (
+        {phases.length > 0 && !data._hideGantt && (
           <div className="roadmap-gantt">
             {phases.map((p, i) => {
               const start = toMonth(p.start), end = toMonth(p.end);

@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-27T10:01:28.955Z
+   생성 시각: 2026-05-27T10:03:57.558Z
 */
 
 // ============================================================
@@ -2415,7 +2415,7 @@ function RoadmapSlide({ data, patch, page, totalPages }) {
       <TopTag section={data.section} sectionName={data.sectionName} />
       <Editable tag="h1" className="h-title" value={data.title} onChange={(v) => patch({ title: v })} />
       <div className="roadmap-wrap" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-        {phases.length > 0 && (
+        {phases.length > 0 && !data._hideGantt && (
           <div className="roadmap-gantt">
             {phases.map((p, i) => {
               const start = toMonth(p.start), end = toMonth(p.end);

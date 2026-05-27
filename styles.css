@@ -2796,8 +2796,10 @@ input, textarea, select { font-family: inherit; color: inherit; }
   padding-bottom: 6px;
   border-bottom: 1px solid #e3e7eb;
 }
-.sm-states-col { flex: 0 0 42%; min-width: 0; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
-.sm-trans-col { flex: 1; min-width: 0; overflow-y: auto; }
+/* 슬라이드 내부 스크롤 금지 — slide-splitter 가 항목 수를 제한해서 한 슬라이드에 fit 시키므로
+ * overflow:auto 가 발동하면 분할 로직이 실패한 신호. hidden 으로 강제. */
+.sm-states-col { flex: 0 0 42%; min-width: 0; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+.sm-trans-col { flex: 1; min-width: 0; overflow: hidden; }
 .sm-state {
   border: 1px solid #d0d7de;
   border-left: 4px solid #303a45;

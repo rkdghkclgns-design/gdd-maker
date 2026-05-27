@@ -359,6 +359,7 @@
       overview: { genre: '', platform: '', target: '', engine: '' },
       keyUsp: [],
       recommendedPlans: [],
+      mustHaveFeatures: [],   // 사용자가 ConceptBrief 에서 선택한 기능 ID 배열
       locked: {},
       snapshots: [],
     };
@@ -406,6 +407,13 @@
         linkedGddId: p?.linkedGddId || null,
       };
     });
+
+    // mustHaveFeatures — 사용자가 선택한 기능 id 의 문자열 배열. 모르는 id 는 제거하지 않음
+    // (카탈로그가 확장되어도 hostable). UI 에서 lookupFeatureById 로 누락 항목은 자연 무시됨.
+    if (!isArr(merged.mustHaveFeatures)) merged.mustHaveFeatures = [];
+    merged.mustHaveFeatures = merged.mustHaveFeatures
+      .filter(id => typeof id === 'string' && id.length > 0)
+      .map(id => id.trim());
 
     if (!merged.id) {
       merged.id = 'concept-' + Math.random().toString(36).slice(2, 10);

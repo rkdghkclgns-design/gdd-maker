@@ -81,9 +81,161 @@ const CONCEPT_BLANK = () => ({
   overview: { genre: '?', platform: '?', target: '?', engine: '?' },
   keyUsp: ['핵심 USP 1', '핵심 USP 2', '핵심 USP 3'],
   recommendedPlans: [],
+  mustHaveFeatures: [],   // 사용자가 ConceptBrief 에서 선택한 필수 기능 ID 배열.
   locked: { title: false, overview: false, visual: false, usp: false, coreLoop: false },
   snapshots: [],
 });
+
+/* === 게임 기능 카탈로그 === 현존 라이브 서비스 게임에서 자주 채택되는 기능 모음.
+ * ConceptBrief 의 "필수 포함 기능" 다중선택 UI 와 AI 프롬프트의 "MUST-HAVE" 블록에서 사용.
+ *
+ * 카테고리 분류 기준:
+ *  - 필요 기획서 priority 단계(1~10) 와 느슨하게 매칭
+ *  - 각 feature 는 { id, label, desc } 로 구성
+ *  - id 는 영문 snake_case (안정적 키), label/desc 는 한국어 (UI 표시)
+ *  - desc 는 30~50자, "무엇을 하는가" + "유사 게임" 짧게
+ */
+const GAME_FEATURE_CATALOG = [
+  {
+    id: 'growth', icon: '⬆️', label: '성장·진행',
+    features: [
+      { id: 'rebirth', label: '환생/리셋', desc: '캐릭터 초기화 후 영구 보너스 — 리니지·디아블로식' },
+      { id: 'class_advancement', label: '전직/전직 분기', desc: '레벨 도달 시 직업 분화 — MMORPG 표준' },
+      { id: 'transcendence', label: '초월/각성', desc: '레벨 상한 돌파 단계별 진화 — 모바일 RPG 표준' },
+      { id: 'potential', label: '잠재능력', desc: '장비/캐릭터 숨겨진 옵션 — 메이플스토리' },
+      { id: 'endless_tower', label: '무한의 탑', desc: '층별 난이도 상승 영구 콘텐츠' },
+      { id: 'skill_tree', label: '스킬 트리', desc: '분기형 스킬 빌드 — POE·디아블로' },
+      { id: 'constellation', label: '별자리/장기 성장', desc: '느린 영구 성장 트리 — 원신' },
+      { id: 'mount_growth', label: '탑승물 성장', desc: '말/드래곤 등 탈것 단계 성장' },
+    ],
+  },
+  {
+    id: 'combat', icon: '⚔️', label: '전투',
+    features: [
+      { id: 'auto_battle', label: '자동 전투', desc: '범위 자동 사냥/스킬 사용 — 한국식 모바일 MMO 필수' },
+      { id: 'action_combat', label: '액션 콤보', desc: '입력 기반 콤보·연계기 — 검은사막' },
+      { id: 'turn_based', label: '턴제 전투', desc: '턴 기반 명령 입력 — 원더러스·서머너즈워' },
+      { id: 'auto_hunt', label: '자동 사냥', desc: '지정 영역 무인 파밍 — MMO 표준' },
+      { id: 'dodge_parry', label: '회피/패링', desc: '타이밍 기반 방어 메커니즘' },
+      { id: 'cooldown', label: '스킬 쿨다운', desc: '스킬별 재사용 대기시간 — MOBA·MMORPG' },
+      { id: 'combo_meter', label: '콤보 미터', desc: '연속 처치 시 보너스 — 데빌메이크라이' },
+      { id: 'aggro', label: '어그로 시스템', desc: '몹 어그로 관리 — 탱커/딜러/힐러 트리니티' },
+    ],
+  },
+  {
+    id: 'content', icon: '📜', label: 'PvE 콘텐츠',
+    features: [
+      { id: 'main_quest', label: '메인 퀘스트', desc: '스토리 진행 퀘스트 라인' },
+      { id: 'daily_quest', label: '일일·주간 퀘스트', desc: '리텐션용 반복 미션' },
+      { id: 'dungeon', label: '던전(인스턴스)', desc: '파티 4~5인 인스턴스 던전' },
+      { id: 'raid', label: '레이드', desc: '8/16/24인 대규모 파티 콘텐츠' },
+      { id: 'world_boss', label: '월드 보스', desc: '정해진 시간 전 서버 참여 보스' },
+      { id: 'field_boss', label: '필드 보스', desc: '오픈 필드 등장 네임드 몬스터' },
+      { id: 'story_chapter', label: '스토리 챕터', desc: '챕터·에피소드 구성 컷씬' },
+      { id: 'seasonal_content', label: '시즌 콘텐츠', desc: '시즌별 한정 던전/이벤트' },
+    ],
+  },
+  {
+    id: 'pvp', icon: '🛡️', label: 'PvP·경쟁',
+    features: [
+      { id: 'arena_1v1', label: '1v1 결투(아레나)', desc: '개인 랭킹 결투장 — 와우' },
+      { id: 'team_pvp', label: '팀 PvP', desc: '3v3·5v5 단체 매치' },
+      { id: 'siege_war', label: '공성전', desc: '길드 거점 공격·방어 — 리니지·라그나로크' },
+      { id: 'territory_war', label: '점령전', desc: '필드 거점 점유율 경쟁' },
+      { id: 'guild_war', label: '길드전', desc: '길드 vs 길드 정규 매치' },
+      { id: 'faction_war', label: '진영전', desc: '연합·진영 단위 대규모 전투' },
+      { id: 'open_pk', label: '자유 PK', desc: '오픈필드 자유 전투·악성 시스템' },
+      { id: 'ranked_match', label: '랭킹전', desc: '시즌별 점수 등급 — 로켓리그식' },
+    ],
+  },
+  {
+    id: 'social', icon: '🤝', label: '사회·길드',
+    features: [
+      { id: 'guild', label: '길드/클랜', desc: '항상 켜있는 멤버 그룹 + 길드 콘텐츠' },
+      { id: 'party_friend', label: '친구/파티', desc: '친구 목록·파티 매칭' },
+      { id: 'marriage', label: '결혼 시스템', desc: '플레이어 간 결혼 + 부부 버프 — 마비노기' },
+      { id: 'mentor', label: '사제(스승-제자)', desc: '신규 유저 멘토링 시스템 — 한국 MMO' },
+      { id: 'family', label: '가문/가족', desc: '캐릭터 묶음 가족 단위 진영' },
+      { id: 'multi_chat', label: '다채널 채팅', desc: '귓속말/지역/세계/길드 분리' },
+      { id: 'auction_house', label: '거래소(경매장)', desc: '플레이어 간 자유 거래' },
+      { id: 'guild_vault', label: '길드 창고', desc: '공용 인벤토리·기여도 관리' },
+    ],
+  },
+  {
+    id: 'collection', icon: '🎒', label: '수집·제작',
+    features: [
+      { id: 'pet', label: '펫 시스템', desc: '동반 펫 수집·육성·전투 보조' },
+      { id: 'mount', label: '탈것 시스템', desc: '말·비행체·드래곤 등 탑승물' },
+      { id: 'costume', label: '코스튬·외형', desc: '외형 변경·외형 슬롯' },
+      { id: 'enhancement', label: '장비 강화·조합', desc: '+1~+15 등 단계 강화 — 디아블로·메이플' },
+      { id: 'crafting', label: '제작(크래프팅)', desc: '재료 → 장비/소모품 제작' },
+      { id: 'gathering', label: '채집(낚시/벌목/요리)', desc: '생활 콘텐츠 — 마비노기·파판14' },
+      { id: 'gem_rune', label: '보석·룬 슬롯', desc: '장비 슬롯 보석 끼우기' },
+      { id: 'codex', label: '도감(컬렉션)', desc: '몬스터/아이템/엔딩 수집 도감' },
+    ],
+  },
+  {
+    id: 'retention', icon: '📅', label: '메타·리텐션',
+    features: [
+      { id: 'daily_login', label: '출석 보상', desc: '일일 접속 보상 — 한국 모바일 표준' },
+      { id: 'mailbox', label: '우편함', desc: 'GM 발송·플레이어 간 우편' },
+      { id: 'daily_mission', label: '일일 미션', desc: '하루 단위 체크리스트 미션' },
+      { id: 'battle_pass', label: '시즌 패스(Battle Pass)', desc: '시즌별 보상 트랙 — 포트나이트' },
+      { id: 'daily_free_roll', label: '일일 무료 뽑기', desc: '매일 1회 무료 가챠' },
+      { id: 'vip_system', label: 'VIP 시스템', desc: '누적 결제액 기반 등급 보상' },
+      { id: 'subscription', label: '멤버십·구독', desc: '월정액 패키지 — 패스 패시브 보상' },
+      { id: 'invite_reward', label: '친구 초대 보상', desc: '추천인 코드·신규 영입 보상' },
+    ],
+  },
+  {
+    id: 'monetization', icon: '💰', label: '경제·BM',
+    features: [
+      { id: 'gacha', label: '가챠(확률형 뽑기)', desc: '확률형 아이템 뽑기 — 모바일 RPG 표준' },
+      { id: 'pity', label: '천장 시스템(Pity)', desc: '확정 보장 카운터 — 원신' },
+      { id: 'multi_currency', label: '다단계 재화', desc: '소프트·하드·프리미엄 분리' },
+      { id: 'player_trade', label: '플레이어 거래', desc: '직거래·거래소 수수료 모델' },
+      { id: 'rewarded_ad', label: '광고 보상', desc: '광고 시청 후 보상 — 캐주얼 표준' },
+      { id: 'cosmetic_shop', label: '외형 상점', desc: '능력치 없는 외형만 판매 — 윤리적 BM' },
+      { id: 'limited_pack', label: '한정 패키지', desc: '시즌·이벤트 한정 결제 상품' },
+      { id: 'auto_hunt_ticket', label: '자동 사냥권', desc: '오프라인 자동 사냥 시간권' },
+    ],
+  },
+  {
+    id: 'convenience', icon: '⚙️', label: '편의·UX',
+    features: [
+      { id: 'auto_path', label: '자동 이동/네비', desc: '목표지점 자동 길찾기 — 한국 MMO 표준' },
+      { id: 'auto_quest', label: '자동 퀘스트', desc: '퀘스트 수락·완료 자동화' },
+      { id: 'fast_travel', label: '빠른 이동·귀환서', desc: '텔레포트·귀환 스크롤' },
+      { id: 'auto_loot', label: '자동 줍기', desc: '드롭 자동 획득 — 디아블로3' },
+      { id: 'inventory_sort', label: '인벤토리 자동 정리', desc: '카테고리별 자동 분류' },
+      { id: 'multi_slot', label: '다중 캐릭터 슬롯', desc: '계정당 여러 캐릭터 보유' },
+      { id: 'cross_save', label: '크로스 플레이·세이브', desc: 'PC·모바일 동기화' },
+      { id: 'ui_custom', label: 'UI 커스터마이징', desc: '핫바·창 위치 자유 배치' },
+    ],
+  },
+  {
+    id: 'ops_social', icon: '📣', label: '운영·소셜 액션',
+    features: [
+      { id: 'clip_share', label: '클립 녹화·공유', desc: '하이라이트 클립 SNS 공유' },
+      { id: 'screenshot_share', label: '스크린샷 공유', desc: '게임 내 카메라·필터·공유' },
+      { id: 'event_notice', label: '이벤트 공지/푸시', desc: '인앱 배너·푸시 알림' },
+      { id: 'report_system', label: '신고·제재', desc: '욕설/매크로 신고 + 자동 검출' },
+      { id: 'guild_recruit', label: '길드 모집 게시판', desc: '길드 모집·구직 매칭' },
+      { id: 'in_game_survey', label: '인게임 설문', desc: '운영 피드백 수집' },
+      { id: 'streamer_mode', label: '스트리머 모드', desc: '닉네임 가리기·소음 차단' },
+    ],
+  },
+];
+
+/** id → { categoryId, label, desc } lookup. AI 프롬프트 빌드 시 사용. */
+function lookupFeatureById(id) {
+  for (const cat of GAME_FEATURE_CATALOG) {
+    for (const f of cat.features) {
+      if (f.id === id) return { categoryId: cat.id, categoryLabel: cat.label, ...f };
+    }
+  }
+  return null;
+}
 
 /* ===== 이미지 리사이즈 유틸 =====
  * dataURL 입력 → 정사각형 dataURL 출력 (object-fit: cover 의 캔버스 버전).
@@ -1009,7 +1161,9 @@ function ColorDot({ color, onChange, title }) {
 }
 
 /* ===== Concept AI prompt ===== */
-function buildConceptPrompt(command, attachments) {
+function buildConceptPrompt(command, attachments, opts) {
+  opts = opts || {};
+  const mustHaveFeatures = Array.isArray(opts.mustHaveFeatures) ? opts.mustHaveFeatures : [];
   const textBlocks = (attachments || []).filter(a => a.kind === 'text').map((a, i) => `\n[첨부 텍스트 ${i+1}: ${a.name}]\n${a.value.slice(0, 1500)}`).join('\n');
   const imageCount = (attachments || []).filter(a => a.kind === 'image').length;
   // 이미지가 있다면 명시적으로 시각 분석 지시 — Gemini multimodal 강점 활용
@@ -1025,6 +1179,36 @@ function buildConceptPrompt(command, attachments) {
 ⚠ 첨부 이미지의 게임이나 IP 를 그대로 베끼지는 말 것. 시각·구조 패턴만 참조하고, 사용자의 명령("${(command || '').slice(0, 80)}")에 맞춰 독창적으로 재해석한다.`
     : '';
 
+  // 사용자가 ConceptBrief 에서 다중선택한 "필수 포함 기능" — AI 가 USP / coreLoop / recommendedPlans
+  // 에 누락 없이 반영하도록 강한 톤으로 명시. id 가 GAME_FEATURE_CATALOG 에 없으면 무시.
+  let mustHaveBlock = '';
+  if (mustHaveFeatures.length > 0) {
+    const resolved = mustHaveFeatures
+      .map(id => lookupFeatureById(id))
+      .filter(Boolean);
+    if (resolved.length > 0) {
+      // 카테고리별로 묶어 보기 좋게 표시.
+      const byCat = {};
+      resolved.forEach(f => {
+        if (!byCat[f.categoryLabel]) byCat[f.categoryLabel] = [];
+        byCat[f.categoryLabel].push(f);
+      });
+      const lines = Object.entries(byCat).map(([cat, items]) => {
+        const itemLines = items.map(i => `  - **${i.label}**: ${i.desc}`).join('\n');
+        return `[${cat}]\n${itemLines}`;
+      }).join('\n\n');
+      mustHaveBlock = `\n\n# MUST-HAVE 필수 포함 기능 (${resolved.length}개) — 사용자가 명시적으로 선택
+${lines}
+
+⚠ 위 기능들은 **반드시** 다음 영역에 반영하라:
+1) **keyUsp**: 위 기능 중 1~2개를 게임의 핵심 차별점(USP) 으로 격상시켜 표현.
+2) **coreLoop**: 위 기능들이 자연스럽게 발동되는 순환 구조로 설계.
+3) **recommendedPlans**: 각 기능마다 최소 1개의 기획서를 별도 항목으로 추가. 누락 금지.
+4) **overview.genre**: 위 기능들과 정합되는 장르 선택 (예: 공성전이 선택되면 MMORPG / 자동전투 + 가챠는 모바일 RPG).
+5) 기능 간 시너지·충돌을 고려 — 자동전투 + 액션 콤보는 둘 다 켜진 게임이 흔치 않으니 둘 다 선택됐다면 "자동/수동 전환" 형태로 통합 설계.`;
+    }
+  }
+
   return `${window.SENIOR_PERSONA || ''}
 
 # 임무
@@ -1032,7 +1216,7 @@ function buildConceptPrompt(command, attachments) {
 
 요청: "${command}"
 ${textBlocks}
-${imageNote}
+${imageNote}${mustHaveBlock}
 
 # 출력 형식 (JSON만, 코드블록 없이)
 {
@@ -1104,13 +1288,16 @@ ${imageNote}
  *
  * opts.onProgress({ stage, message, percent }) — 진행 상황 콜백.
  *  stages: 'prompt' → 'ai-call' → 'parsing' → 'image' → 'validating' → 'done'
+ * opts.mustHaveFeatures — 사용자가 ConceptBrief 에서 다중선택한 기능 ID 배열.
+ *  AI 프롬프트의 MUST-HAVE 블록으로 들어가 USP/coreLoop/recommendedPlans 에 강제 반영.
  */
 async function aiGenerateConcept(command, attachments, opts) {
   opts = opts || {};
   const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : () => {};
+  const mustHaveFeatures = Array.isArray(opts.mustHaveFeatures) ? opts.mustHaveFeatures : [];
 
   onProgress({ stage: 'prompt', message: '프롬프트 준비 중…', percent: 5 });
-  const prompt = buildConceptPrompt(command, attachments);
+  const prompt = buildConceptPrompt(command, attachments, { mustHaveFeatures });
 
   onProgress({ stage: 'ai-call', message: 'AI 가 컨셉을 작성 중…', percent: 15 });
   let raw;
@@ -1175,6 +1362,8 @@ async function aiGenerateConcept(command, attachments, opts) {
       priority: (typeof p.priority === 'number' && isFinite(p.priority)) ? p.priority : undefined,
       linkedGddId: null,
     })),
+    // 사용자가 선택한 필수 기능을 컨셉에 영속 — 후속 기획서 생성/재생성 시 다시 참조 가능.
+    mustHaveFeatures: mustHaveFeatures.slice(),
   };
   onProgress({ stage: 'validating', message: '스키마 검증 + 자동 보정 중…', percent: 92 });
   // Schema 검증 + 자동 보정
@@ -1195,6 +1384,7 @@ Object.assign(window, {
   ConceptView, ConceptBrief,
   buildConceptPrompt, aiGenerateConcept,
   aiPartialRegen,
+  GAME_FEATURE_CATALOG, lookupFeatureById,
 });
 
 /* ===== ConceptBrief modal (1PGDD-style initial form) ===== */
@@ -1212,6 +1402,12 @@ function ConceptBrief({ onClose, onSubmit, isGenerating, initialMode = 'ai' }) {
   const [submissionMode, setSubmissionMode] = React.useState(initialMode);
   const [dragging, setDragging] = React.useState(false);
   const dragCounterRef = React.useRef(0);
+  // 필수 포함 기능 — 사용자가 다중선택. AI 프롬프트의 "MUST-HAVE" 블록으로 들어감.
+  const [selectedFeatures, setSelectedFeatures] = React.useState([]);
+  const toggleFeature = (id) => {
+    setSelectedFeatures(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+  const clearFeatures = () => setSelectedFeatures([]);
 
   /* Attachments */
   const addImage = async (file) => {
@@ -1263,6 +1459,7 @@ function ConceptBrief({ onClose, onSubmit, isGenerating, initialMode = 'ai' }) {
       theme: { bg: bgStart, main: colorMain, accent: colorAccent },
       attachments,
       mode: submissionMode,
+      mustHaveFeatures: selectedFeatures,
     });
   };
 
@@ -1330,6 +1527,30 @@ function ConceptBrief({ onClose, onSubmit, isGenerating, initialMode = 'ai' }) {
                 ))}
               </div>
             )}
+          </CbSection>
+
+          {/* 1.5 필수 포함 기능 — 다중선택. 환생/자동전투/공성전 등 현존 라이브 서비스 게임 기능. */}
+          <CbSection
+            icon="🧩"
+            title="필수 포함 기능"
+            trailing={
+              <div className="cb-feat-meta">
+                <span className="cb-feat-count">{selectedFeatures.length}개 선택</span>
+                {selectedFeatures.length > 0 && (
+                  <button className="cb-feat-clear" onClick={clearFeatures} title="선택 초기화">초기화</button>
+                )}
+              </div>
+            }
+          >
+            <div className="cb-feat-hint">
+              현존 라이브 서비스 게임에서 자주 채택되는 기능 모음. 선택한 기능은 컨셉의 USP·Core Loop·필요 기획서에 자동으로 반영됩니다.
+              <span className="cb-feat-hint-em">선택 없으면 AI 가 장르에 맞춰 자유롭게 구성합니다.</span>
+            </div>
+            <FeatureCatalogPicker
+              catalog={GAME_FEATURE_CATALOG}
+              selected={selectedFeatures}
+              onToggle={toggleFeature}
+            />
           </CbSection>
 
           {/* 2. 테마 디자인 조절 */}
@@ -1415,6 +1636,67 @@ function CbColorField({ label, value, onChange }) {
         <input type="color" value={value} onChange={e => onChange(e.target.value)} />
         <span className="cb-color-hex">{value.toUpperCase()}</span>
       </div>
+    </div>
+  );
+}
+
+/* ===== 게임 기능 카탈로그 다중선택 위젯 =====
+ * - 카테고리별 그리드. 카테고리 헤더 클릭 → 카테고리 내 전체 선택/해제 토글.
+ * - 각 chip 은 체크박스 + 라벨 + (호버 시) 설명 툴팁.
+ * - 정렬: 카탈로그 정의 순서 그대로 (이미 priority 우선순위에 맞춰 정렬돼 있음).
+ */
+function FeatureCatalogPicker({ catalog, selected, onToggle }) {
+  const isSelected = (id) => selected.includes(id);
+  const toggleCategory = (cat) => {
+    const ids = cat.features.map(f => f.id);
+    const allSelected = ids.every(id => selected.includes(id));
+    // 모두 선택돼 있으면 모두 해제, 아니면 미선택분만 추가 선택
+    ids.forEach(id => {
+      const has = selected.includes(id);
+      if (allSelected && has) onToggle(id);
+      else if (!allSelected && !has) onToggle(id);
+    });
+  };
+
+  return (
+    <div className="cb-feat-catalog">
+      {catalog.map(cat => {
+        const catSelectedCount = cat.features.filter(f => selected.includes(f.id)).length;
+        const allSelected = catSelectedCount === cat.features.length && cat.features.length > 0;
+        return (
+          <div className="cb-feat-cat" key={cat.id}>
+            <div className="cb-feat-cat-head">
+              <span className="cb-feat-cat-icon">{cat.icon}</span>
+              <span className="cb-feat-cat-label">{cat.label}</span>
+              <span className="cb-feat-cat-count">{catSelectedCount}/{cat.features.length}</span>
+              <button
+                className={'cb-feat-cat-all ' + (allSelected ? 'on' : '')}
+                onClick={() => toggleCategory(cat)}
+                title={allSelected ? '카테고리 전체 해제' : '카테고리 전체 선택'}
+              >
+                {allSelected ? '전체 해제' : '전체 선택'}
+              </button>
+            </div>
+            <div className="cb-feat-chip-grid">
+              {cat.features.map(f => {
+                const on = isSelected(f.id);
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    className={'cb-feat-chip ' + (on ? 'on' : '')}
+                    onClick={() => onToggle(f.id)}
+                    title={f.desc}
+                  >
+                    <span className="cb-feat-chip-check" aria-hidden>{on ? '✓' : '+'}</span>
+                    <span className="cb-feat-chip-label">{f.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

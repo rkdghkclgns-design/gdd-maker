@@ -2233,8 +2233,8 @@ function App({ onStateChange }) {
     setShowBrief(true);
   };
 
-  /* Concept brief — richer payload with theme/team/author */
-  const handleConceptBriefSubmit = async ({ idea, team, author, bgGradient, palette, theme, attachments, mode }) => {
+  /* Concept brief — richer payload with theme/team/author + 필수 포함 기능 */
+  const handleConceptBriefSubmit = async ({ idea, team, author, bgGradient, palette, theme, attachments, mode, mustHaveFeatures }) => {
     commitNow('AI 컨셉 생성');
     setShowBrief(false);
     setGenerationMode(mode);
@@ -2251,11 +2251,14 @@ function App({ onStateChange }) {
           ...window.CONCEPT_BLANK(),
           title: '랜덤 컨셉',
           subtitle: idea ? idea.slice(0, 60) : '한 줄 부제',
+          // 데모 모드에서도 선택한 기능은 보존 — 사용자가 후속 작업 시 참조 가능.
+          mustHaveFeatures: Array.isArray(mustHaveFeatures) ? mustHaveFeatures.slice() : [],
         };
         setConceptGenProgress({ stage: 'done', message: '완료', percent: 100 });
       } else {
         result = await aiGenerateConcept(command, attachments, {
           onProgress: (p) => setConceptGenProgress(p),
+          mustHaveFeatures: Array.isArray(mustHaveFeatures) ? mustHaveFeatures : [],
         });
       }
       // Apply user-provided team/author/theme overrides

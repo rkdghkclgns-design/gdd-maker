@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-27T09:52:24.070Z
+   생성 시각: 2026-05-27T10:01:28.955Z
 */
 
 // ============================================================
@@ -9326,6 +9326,16 @@ function App({ onStateChange }) {
     window.gddToast = toast;
     return () => { if (window.gddToast === toast) delete window.gddToast; };
   }, [toast]);
+  // aiEditGdd 같은 외부 함수가 현재 컨셉의 visual.prompt / palette / genre 를
+  // 이미지 생성 base 로 사용할 수 있도록 글로벌 노출. 컨셉이 바뀌면 자동 갱신.
+  useEffect(() => {
+    const c = state.concepts?.find(c => c.id === (state.selection?.type === 'concept' ? state.selection.id : null))
+           || (project ? state.concepts?.find(c => (c.recommendedPlans || []).some(rp => rp.linkedGddId === project.id)) : null)
+           || state.concepts?.[0]
+           || null;
+    window.gddCurrentConcept = c;
+    return () => { if (window.gddCurrentConcept === c) delete window.gddCurrentConcept; };
+  }, [state.concepts, state.selection, project]);
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
 
   /* Apply theme accent CSS vars */
@@ -10857,11 +10867,12 @@ function App({ onStateChange }) {
               const parentConcept = state.concepts?.find(c => c.id === project.conceptId);
               const projectPalette = parentConcept?.palette;
               try {
+                const synOpt = { concept: parentConcept || null };
                 for (const { s, idx } of targets) {
-                  let p = s.data?.imagePrompt;
-                  if (!p || !p.trim()) {
-                    p = synthesizeImagePrompt(s, { title: project.title, subtitle: project.subtitle });
-                  }
+                  const raw = s.data?.imagePrompt;
+                  let p = raw && raw.trim()
+                    ? sanitizeImagePromptForGen(raw, s, synOpt)
+                    : synthesizeImagePrompt(s, { title: project.title, subtitle: project.subtitle }, synOpt);
                   if (!p) { fail++; continue; }
                   try {
                     const src = await window.gemini.generateImage(p, { palette: projectPalette });
@@ -11286,15 +11297,31 @@ async function aiGenerateGddTwoStage(command, existingTitles, attachments, conte
  * prompt 에 "widescreen 16:9", "no letterboxing", "fill the frame edge to edge"
  * 등을 반복 명시해 모델이 정확한 비율로 생성하도록 유도한다.
  */
-function synthesizeImagePrompt(slide, parsedRoot) {
+/** 한글·CJK 문자를 제거하고 ASCII 라틴 문자만 남김 — nano-banana 가 한글 토큰 처리 못해서
+ *  의도와 다른 이미지 생성하는 케이스 방어. 가능하면 호출 측에서 영문 base 를 미리 마련하는 게 우선. */
+function stripKoreanKeepLatin(s) {
+  return String(s || '')
+    .replace(/[가-힣ㄱ-ㅎㅏ-ㅣ]+/g, ' ')        // 한글 (완성형 + 자모)
+    .replace(/[　-〿＀-￯]+/g, ' ') // 한중일 punctuation·전각
+    .replace(/[一-鿿]+/g, ' ')           // 한자
+    .replace(/[぀-ヿ]+/g, ' ')           // 일본어 가나
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** 컨셉 + 슬라이드 → 영문 nano-banana 프롬프트.
+ * 우선순위:
+ *  1. concept.visual.prompt (영문 컨셉 아트 묘사 — 이미 영문) 를 base 로 사용
+ *  2. concept.palette / overview.genre 를 보조 키워드로 첨부
+ *  3. 슬라이드 자체의 영문 imagePrompt / 영문 fields 를 subject 로
+ *  4. 한글만 있으면 stripKoreanKeepLatin 후 안전 fallback
+ */
+function synthesizeImagePrompt(slide, parsedRoot, contextOpt) {
   if (!slide) return '';
   const d = slide.data || {};
+  const concept = (contextOpt && contextOpt.concept) || null;
   const root = parsedRoot || {};
-  const topic = [d.title, d.caption, d.subtitle, root.title, root.subtitle]
-    .filter(s => typeof s === 'string' && s.trim())
-    .slice(0, 3)
-    .join(', ');
-  if (!topic) return '';
+
   const styleByType = {
     'cover': 'cinematic key art cover, dramatic lighting, ultra-detailed, bold composition',
     'section-divider': 'atmospheric chapter concept art, moody lighting, dark background with negative space for text',
@@ -11302,9 +11329,64 @@ function synthesizeImagePrompt(slide, parsedRoot) {
     'image-embed': 'high-detail concept art reference, painterly digital art, cinematic lighting',
   };
   const style = styleByType[slide.type] || styleByType['image-embed'];
-  // 비율/프레임 제약 — 핵심 제약을 끝에 배치 (모델이 마지막 지시를 우선시함)
-  const frameConstraint = 'WIDESCREEN 16:9 aspect ratio, fill frame edge to edge, no letterboxing, no borders, no negative space outside subject';
-  return `Game design reference image: ${topic}. Style: ${style}, professional game art, vivid colors, high contrast. ${frameConstraint}.`;
+  const frameConstraint = 'WIDESCREEN 16:9 aspect ratio, fill frame edge to edge, no letterboxing, no borders, no Korean text in image';
+
+  // (1) 컨셉 비주얼 base — 영문이라 그대로 사용
+  const conceptBase = concept?.visual?.prompt && /^[\x00-\x7F\s\W]*[a-zA-Z]/.test(concept.visual.prompt)
+    ? concept.visual.prompt.trim()
+    : '';
+
+  // (2) 컨셉 보조 키워드
+  const conceptHints = [];
+  if (concept?.overview?.genre) conceptHints.push(`genre: ${stripKoreanKeepLatin(concept.overview.genre) || concept.overview.genre}`);
+  if (Array.isArray(concept?.palette) && concept.palette.length > 0) {
+    const hexes = concept.palette.map(p => p.hex).filter(h => /^#[0-9a-f]{3,8}$/i.test(h)).slice(0, 4);
+    if (hexes.length) conceptHints.push(`palette: ${hexes.join(' ')}`);
+  }
+
+  // (3) Subject — 우선 영문, 없으면 한글 strip 후 사용
+  const englishSubjectCandidates = [d.englishTopic, d.subject]
+    .filter(s => typeof s === 'string' && s.trim() && !/[가-힣]/.test(s));
+  let subject = englishSubjectCandidates[0] || '';
+  if (!subject) {
+    const topic = [d.title, d.caption, d.subtitle, root.title, root.subtitle]
+      .filter(s => typeof s === 'string' && s.trim())
+      .slice(0, 3)
+      .join(', ');
+    const cleaned = stripKoreanKeepLatin(topic);
+    // 한글 strip 후 라틴 문자가 거의 안 남으면 generic 한 서브젝트로 폴백
+    if (cleaned.replace(/[\s,]/g, '').length >= 3) {
+      subject = cleaned;
+    } else {
+      // 슬라이드 종류 별 generic
+      const kind = slide.type;
+      subject = kind === 'cover' ? 'a dramatic game key art scene'
+              : kind === 'section-divider' ? 'a moody chapter divider scene'
+              : kind === 'ui-design' ? 'a sci-fi game user interface mockup'
+              : 'a game concept art reference';
+    }
+  }
+
+  // (4) 조합 — concept base 가 있으면 그것을 메인 무드로
+  const parts = [];
+  if (conceptBase) parts.push(conceptBase);
+  parts.push(`Subject: ${subject}`);
+  if (conceptHints.length) parts.push(conceptHints.join(', '));
+  parts.push(`Style: ${style}, professional game art, vivid colors, high contrast`);
+  parts.push(frameConstraint);
+  return parts.join('. ');
+}
+
+/** 사용자/AI 가 입력한 imagePrompt 가 한글을 포함하면 strip + 영문 보강.
+ * nano-banana 입력 직전에 호출 — 슬라이드 데이터의 imagePrompt 는 그대로 두고 송신 값만 정제. */
+function sanitizeImagePromptForGen(prompt, slide, context) {
+  if (!prompt) return synthesizeImagePrompt(slide, null, context);
+  const hasCjk = /[가-힣ㄱ-ㅎ一-鿿぀-ヿ]/.test(prompt);
+  if (!hasCjk) return prompt;
+  // 한글이 일부만 섞인 경우 — strip 후 너무 짧아지면 synthesizeImagePrompt 로 대체
+  const stripped = stripKoreanKeepLatin(prompt);
+  if (stripped.replace(/[\s,]/g, '').length >= 20) return stripped + '. WIDESCREEN 16:9.';
+  return synthesizeImagePrompt(slide, null, context);
 }
 
 /* === AI generation via window.gemini.complete === */
@@ -11369,9 +11451,15 @@ async function aiGenerateGdd(command, existingTitles, attachments, context) {
   const imageJobs = [];
   // 컨텍스트(부모 컨셉)에서 팔레트 추출 — 모든 이미지 생성에 적용
   const ctxPalette = context?.concept?.palette;
+  // synthesizeImagePrompt 에 넘길 옵션 — concept 전체를 base 로 사용해 컨셉 정합성 ↑
+  const synOpt = { concept: context?.concept || null };
   const coverIdx = slides.findIndex(s => s.type === 'cover');
   if (coverIdx >= 0) {
-    const coverPrompt = parsed.coverImagePrompt || synthesizeImagePrompt(slides[coverIdx], parsed);
+    // coverImagePrompt 가 한글일 수 있어 sanitize. 없으면 synthesize (컨셉 base).
+    const rawCover = parsed.coverImagePrompt || '';
+    const coverPrompt = rawCover
+      ? sanitizeImagePromptForGen(rawCover, slides[coverIdx], synOpt)
+      : synthesizeImagePrompt(slides[coverIdx], parsed, synOpt);
     if (coverPrompt) {
       imageJobs.push((async () => {
         try {
@@ -11384,14 +11472,14 @@ async function aiGenerateGdd(command, existingTitles, attachments, context) {
   slides.forEach((s, idx) => {
     if (s.type === 'cover') return; // 위에서 처리됨
     if (!['ui-design', 'section-divider', 'image-embed'].includes(s.type)) return;
-    // imagePrompt 가 비어있으면 폴백 합성 — 이미지 누락 방지
-    let p = s.data?.imagePrompt;
-    if (!p || !p.trim()) {
-      p = synthesizeImagePrompt(s, parsed);
-      if (!p) return;
-      // 합성된 프롬프트도 slide.data 에 저장해서 UI 에서 보이도록
-      slides[idx].data = { ...slides[idx].data, imagePrompt: p };
-    }
+    // imagePrompt 가 한글 포함이거나 비어있으면 sanitize 거쳐 영문 합성으로 폴백.
+    const raw = s.data?.imagePrompt;
+    let p = raw && raw.trim()
+      ? sanitizeImagePromptForGen(raw, s, synOpt)
+      : synthesizeImagePrompt(s, parsed, synOpt);
+    if (!p) return;
+    // 합성된 프롬프트도 slide.data 에 저장 (UI 가시화 + 다음 호출 캐시)
+    slides[idx].data = { ...slides[idx].data, imagePrompt: p };
     imageJobs.push((async () => {
       try {
         const src = await window.gemini.generateImage(p, { palette: ctxPalette });
@@ -11546,12 +11634,17 @@ async function aiEditGdd(currentProject, command, attachments, palette) {
   // 2) 새/변경 슬라이드 중 이미지 대상에 대해 nano-banana 로 이미지 생성.
   //    imagePrompt 가 비어있으면 synthesizeImagePrompt 로 폴백 합성 — 이미지 누락 방지.
   //    id 기반으로 트래킹 → 이후 ops 가 같은 슬라이드를 다시 교체해도 race 가 안 생긴다.
+  // aiEditGdd 컨텍스트는 currentProject 까지만 — 부모 컨셉은 호출 측에서 주입되지 않으므로
+  // window.gddCurrentConcept 등의 hint 가 있으면 활용 (없으면 슬라이드 데이터만으로 합성).
+  const editSynOpt = { concept: (typeof window !== 'undefined' && window.gddCurrentConcept) || null };
   const imageTargets = newOrChanged
     .filter(s => ['cover', 'ui-design', 'section-divider', 'image-embed'].includes(s.type))
     .map(s => {
-      let p = s.data?.imagePrompt;
-      if (!p || !p.trim()) p = synthesizeImagePrompt(s, currentProject || {});
-      return p ? { id: s.id, prompt: p, synthesized: !s.data?.imagePrompt } : null;
+      const raw = s.data?.imagePrompt;
+      const p = raw && raw.trim()
+        ? sanitizeImagePromptForGen(raw, s, editSynOpt)
+        : synthesizeImagePrompt(s, currentProject || {}, editSynOpt);
+      return p ? { id: s.id, prompt: p, synthesized: !raw || !raw.trim() } : null;
     })
     .filter(Boolean);
   if (imageTargets.length > 0) {

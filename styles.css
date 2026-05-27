@@ -1036,9 +1036,11 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .slide.cover { background: linear-gradient(135deg, #0a0d12 0%, #1a2230 100%); color: #e6edf3; padding: 0; }
 .slide.cover .cover-bg-img {
   position: absolute; inset: 0;
-  background-size: cover;
+  /* contain — 이미지 전체가 항상 보이도록. 빈 공간은 슬라이드 배경(#0a0d12)이 채움. */
+  background-size: contain;
   background-position: center;
   background-repeat: no-repeat;
+  background-color: #0a0d12;
   filter: saturate(1.05);
 }
 .slide.cover .cover-shade {
@@ -1124,9 +1126,11 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .slide.section-divider { background: #0a0d12; color: #e6edf3; }
 .slide.section-divider .sd-bg-img {
   position: absolute; inset: 0;
-  background-size: cover;
+  /* contain — 이미지 전체 표시. 빈 영역은 슬라이드 배경(#0a0d12)이 자연 매칭. */
+  background-size: contain;
   background-position: center;
   background-repeat: no-repeat;
+  background-color: #0a0d12;
   filter: saturate(1.05) brightness(0.9);
   z-index: 0;
   pointer-events: none;
@@ -4748,7 +4752,8 @@ input, textarea, select { font-family: inherit; color: inherit; }
   transition: border-color 0.15s;
 }
 .sc-visual-image:hover { border-color: rgba(136, 223, 176, 0.3); }
-.sc-visual-image img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* 컨셉 비주얼 이미지 — 전체 보이도록 contain (잘림 방지). 빈 영역은 박스 배경. */
+.sc-visual-image img { width: 100%; height: 100%; object-fit: contain; display: block; background: #0e1d18; }
 .sc-visual-image .empty {
   text-align: center;
   display: flex; flex-direction: column; align-items: center; gap: 8px;

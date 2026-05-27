@@ -195,6 +195,64 @@
     return { ...slide, data };
   }
 
+  /** 오늘 날짜를 'YY.MM.DD' 한국식 짧은 형식으로 반환 (history 슬라이드용). */
+  function todayShortYYMMDD() {
+    const d = new Date();
+    const yy = String(d.getFullYear()).slice(-2);
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yy}.${mm}.${dd}`;
+  }
+
+  /** AI 가 학습 데이터의 가짜 날짜('26.02.25' 등)로 채운 history rows[].date 와 cover.date 를
+   *  실제 작업 시점(오늘) 으로 교체. AI 생성/편집 직후에 호출.
+   *
+   *  교체 대상:
+   *   - slide.type === 'cover' 의 data.date
+   *   - slide.type === 'history' 의 data.rows[*].date 중 '비어있거나/명백히 가짜인' 것
+   *
+   *  보존: 사용자가 명시적으로 수정한 날짜는 변경 안 함 (값이 있고 오늘과 가까우면 유지).
+   *  단, '갓 생성된' 직후 흐름에서는 모든 가짜 날짜를 강제로 오늘로 덮어씀(opts.force).
+   */
+  function injectRealDates(gdd, opts) {
+    if (!isObj(gdd) || !isArr(gdd.slides)) return gdd;
+    opts = opts || {};
+    const today = todayShortYYMMDD();
+    // AI 학습 데이터 빈도 높은 가짜 날짜 패턴 — 이런 값은 무조건 오늘로 교체.
+    // YY.MM.DD 형식의 임의 날짜는 사용자가 수정한 값일 수 있으므로 force 옵션이 없으면 보존.
+    const isFakePlaceholder = (s) => {
+      if (!s || typeof s !== 'string') return true;
+      const t = s.trim();
+      if (!t) return true;
+      if (/^[.…]+$/.test(t)) return true; // "...", "..." 등
+      if (/^(TBD|TODO|미정|추후)/i.test(t)) return true;
+      return false;
+    };
+    const newSlides = gdd.slides.map(slide => {
+      if (!slide || !slide.data) return slide;
+      // cover.date
+      if (slide.type === 'cover') {
+        const d = slide.data;
+        if (opts.force || isFakePlaceholder(d.date)) {
+          return { ...slide, data: { ...d, date: today } };
+        }
+      }
+      // history.rows[].date
+      if (slide.type === 'history' && isArr(slide.data.rows)) {
+        const rows = slide.data.rows.map(r => {
+          if (!isObj(r)) return r;
+          if (opts.force || isFakePlaceholder(r.date)) {
+            return { ...r, date: today };
+          }
+          return r;
+        });
+        return { ...slide, data: { ...slide.data, rows } };
+      }
+      return slide;
+    });
+    return { ...gdd, slides: newSlides };
+  }
+
   /** GDD 전체 검증 + 보정 */
   function validateGdd(gdd) {
     const fixes = [];
@@ -291,4 +349,6 @@
     const fixes = [];
     return { slide: validateSlide(s, fixes), fixes };
   };
+  window.injectRealDates = injectRealDates;
+  window.todayShortYYMMDD = todayShortYYMMDD;
 })();

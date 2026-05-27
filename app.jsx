@@ -1983,6 +1983,8 @@ function App({ onStateChange }) {
           onChunk,
         });
       }
+      // AI 가 채운 history rows[].date, cover.date 의 가짜 날짜를 실 작업 시점(오늘) 으로 교체
+      if (window.injectRealDates) result = window.injectRealDates(result, { force: true });
       // 메타 마무리
       const historyEntry = {
         ts: new Date().toISOString().slice(0, 16).replace('T', ' '),
@@ -2130,6 +2132,8 @@ function App({ onStateChange }) {
           });
           // 스트리밍에서 이미 setState 로 모두 반영했으니 메타만 마무리
         }
+        // AI 가 채운 history rows[].date, cover.date 의 가짜 날짜를 실 작업 시점(오늘) 으로 교체
+        if (window.injectRealDates) result = window.injectRealDates(result, { force: true });
         const historyEntry = {
           ts: new Date().toISOString().slice(0, 16).replace('T', ' '),
           cmd: text,
@@ -2153,11 +2157,12 @@ function App({ onStateChange }) {
           });
           setCurrentIdx(0);
         } else {
-          // streaming 모드 — 이미 등록된 project 의 history/attachments 만 추가
+          // streaming 모드 — 스트리밍 단계에서 등록된 slides 도 date 보정해서 덮어씀
           setState(s => ({
             ...s,
             projects: s.projects.map(p => p.id === result.id ? {
               ...p,
+              slides: result.slides, // injectRealDates 결과로 갱신
               history: [historyEntry],
               attachments: attachments?.length ? attachments : (p.attachments || []),
             } : p),
@@ -3812,6 +3817,33 @@ async function aiEditGdd(currentProject, command, attachments, palette) {
 
   // 4) 갱신된 project 반환
   const summary = (parsed.summary && String(parsed.summary).slice(0, 200)) || `${ops.length}개 변경 적용`;
+
+  // 4-1) history 슬라이드(`type === 'history'`) 의 rows 에도 자동 행 추가 — 실 작업 시점 기록.
+  // 사용자가 수정한 행은 보존하고, AI 가 채운 가짜 날짜는 오늘로 교체.
+  const todayShort = window.todayShortYYMMDD ? window.todayShortYYMMDD()
+    : (() => { const d = new Date(); return `${String(d.getFullYear()).slice(-2)}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; })();
+  const rowsByHistoryIdx = finalSlides.findIndex(s => s.type === 'history');
+  if (rowsByHistoryIdx >= 0) {
+    const hist = finalSlides[rowsByHistoryIdx];
+    const existingRows = Array.isArray(hist.data?.rows) ? hist.data.rows : [];
+    // 새 버전 번호: 마지막 ver 의 숫자 + 1
+    const lastVer = existingRows.length > 0 ? existingRows[existingRows.length - 1].ver : 'Ver00';
+    const verMatch = /^Ver(\d+)$/i.exec(String(lastVer || ''));
+    const nextVerNum = verMatch ? parseInt(verMatch[1], 10) + 1 : existingRows.length + 1;
+    const nextVer = `Ver${String(nextVerNum).padStart(2, '0')}`;
+    const newRow = {
+      ver: nextVer,
+      date: todayShort,
+      page: '-',
+      content: summary,
+      author: currentProject.author || '김기획',
+    };
+    finalSlides = finalSlides.map((s, i) => i === rowsByHistoryIdx
+      ? { ...s, data: { ...s.data, rows: [...existingRows, newRow] } }
+      : s
+    );
+  }
+
   const updatedProject = {
     ...currentProject,
     ...metaUpdate,

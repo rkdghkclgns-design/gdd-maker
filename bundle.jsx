@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-26T23:55:16.931Z
+   생성 시각: 2026-05-27T00:04:43.160Z
 */
 
 // ============================================================
@@ -6199,6 +6199,50 @@ function blobToDataUrl(blob) {
   });
 }
 
+/** PptxGenJS v3.12 알려진 버그 해결 — 생성된 PPTX 의 중복 <a:pPr> 제거.
+ *
+ *  PptxGenJS 는 addText 를 배열 형태(text run 배열)로 호출하면 같은 <a:p> 안에
+ *  <a:pPr> 를 각 run 앞에 중복 출력. OOXML 스키마상 <a:pPr> 는 paragraph 시작에 1번만 허용.
+ *  PowerPoint 가 "내용에 문제가 있습니다 · 복구" 다이얼로그를 띄우는 원인.
+ *
+ *  Post-processing: ZIP 해제 → 각 slide XML 내 <a:p>...</a:p> 블록의 두 번째 이후 <a:pPr> 제거 → 재압축.
+ *  JSZip 이 필수 (index.html 에 CDN 로드됨).
+ */
+async function sanitizePptxBlob(blob) {
+  if (!window.JSZip) return blob; // JSZip 미로드 시 원본 그대로 (실패 시 보존이 우선)
+  try {
+    const zip = await window.JSZip.loadAsync(blob);
+    let fixCount = 0;
+    // ppt/slides/*.xml 만 처리 (master/layout/theme 은 PptxGenJS 가 안전하게 생성)
+    const slideFiles = Object.keys(zip.files).filter(p => /^ppt\/slides\/slide\d+\.xml$/.test(p));
+    for (const path of slideFiles) {
+      const xml = await zip.files[path].async('string');
+      // 각 <a:p>...</a:p> 블록 내부에서 2번째 이후 <a:pPr ... /> 또는 <a:pPr ...>...</a:pPr> 제거
+      const fixed = xml.replace(/<a:p>([\s\S]*?)<\/a:p>/g, (match, body) => {
+        // 첫 번째 <a:pPr ...>...</a:pPr> 또는 <a:pPr .../> 은 보존, 이후는 제거
+        let firstSeen = false;
+        const newBody = body.replace(/<a:pPr\b[^>]*(?:\/>|>[\s\S]*?<\/a:pPr>)/g, (pprMatch) => {
+          if (!firstSeen) { firstSeen = true; return pprMatch; }
+          fixCount++;
+          return '';
+        });
+        return `<a:p>${newBody}</a:p>`;
+      });
+      if (fixed !== xml) {
+        zip.file(path, fixed);
+      }
+    }
+    if (fixCount > 0 && window.gddToast) {
+      // 토스트는 비차단으로 — 사용자에게 정보만 전달
+      try { window.gddToast(`PPTX 호환성 보정: ${fixCount}개 중복 단락 속성 제거`, ''); } catch (_) {}
+    }
+    return await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
+  } catch (e) {
+    // post-process 실패 시 원본 반환 — 사용자에게 빈 파일 주지 않기 위해
+    return blob;
+  }
+}
+
 /** 엄격한 data:image URL 검증.
  *  PptxGenJS 가 손상된 base64 / 알 수 없는 MIME 을 받으면 OOXML 무결성이 깨져 PowerPoint 가 복구를 요구.
  *  허용 MIME: png/jpeg/jpg/gif/webp/bmp. 그 외는 변환 후 null 반환.
@@ -7030,11 +7074,21 @@ async function exportPptx(project, opts) {
     }
   }
 
-  // returnBlob 옵션 ON → Blob 반환 (호출자가 ZIP 패키징/대기열 처리 가능)
+  // 1. PptxGenJS 가 blob 생성 → 2. 중복 <a:pPr> 제거 (PowerPoint 복구 다이얼로그 방지) → 3. 다운로드/반환
+  let rawBlob = await pptx.write({ outputType: 'blob' });
+  const sanitizedBlob = await sanitizePptxBlob(rawBlob);
+
   if (opts.returnBlob) {
-    return await pptx.write({ outputType: 'blob' });
+    return sanitizedBlob;
   }
-  await pptx.writeFile({ fileName: `${project.title || 'GDD'}.pptx` });
+  // 직접 다운로드 (writeFile 경로 대신 sanitize 후 트리거)
+  const url = URL.createObjectURL(sanitizedBlob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${project.title || 'GDD'}.pptx`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
 }
 
 /**

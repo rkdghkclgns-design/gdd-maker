@@ -533,29 +533,64 @@ async function sanitizePptxBlob(blob) {
   if (!window.JSZip) return blob; // JSZip 미로드 시 원본 그대로 (실패 시 보존이 우선)
   try {
     const zip = await window.JSZip.loadAsync(blob);
-    let fixCount = 0;
+    let pprFix = 0, dimFix = 0;
     // ppt/slides/*.xml 만 처리 (master/layout/theme 은 PptxGenJS 가 안전하게 생성)
     const slideFiles = Object.keys(zip.files).filter(p => /^ppt\/slides\/slide\d+\.xml$/.test(p));
     for (const path of slideFiles) {
-      const xml = await zip.files[path].async('string');
-      // 각 <a:p>...</a:p> 블록 내부에서 2번째 이후 <a:pPr ... /> 또는 <a:pPr ...>...</a:pPr> 제거
-      const fixed = xml.replace(/<a:p>([\s\S]*?)<\/a:p>/g, (match, body) => {
-        // 첫 번째 <a:pPr ...>...</a:pPr> 또는 <a:pPr .../> 은 보존, 이후는 제거
+      let xml = await zip.files[path].async('string');
+      const origXml = xml;
+
+      // [1] 중복 <a:pPr> 제거 — 각 <a:p>...</a:p> 안에서 2번째 이후 제거
+      xml = xml.replace(/<a:p>([\s\S]*?)<\/a:p>/g, (match, body) => {
         let firstSeen = false;
         const newBody = body.replace(/<a:pPr\b[^>]*(?:\/>|>[\s\S]*?<\/a:pPr>)/g, (pprMatch) => {
           if (!firstSeen) { firstSeen = true; return pprMatch; }
-          fixCount++;
+          pprFix++;
           return '';
         });
         return `<a:p>${newBody}</a:p>`;
       });
-      if (fixed !== xml) {
-        zip.file(path, fixed);
+
+      // [2] 음수 차원 차단 — <a:ext cx="N" cy="M"/> 의 cx/cy 가 음수면 최소값으로 클램프.
+      //     PowerPoint 가 음수 dimensions 을 만나면 "내용에 문제가 있습니다" 오류 발생.
+      //     914400 EMU = 1 inch. 최소 1 inch (914400) 미만은 보장.
+      xml = xml.replace(/<a:ext\s+cx="(-?\d+)"\s+cy="(-?\d+)"\s*\/>/g, (m, cx, cy) => {
+        const cxN = parseInt(cx, 10);
+        const cyN = parseInt(cy, 10);
+        if (cxN < 0 || cyN < 0) {
+          dimFix++;
+          // 음수면 최소 1 EMU 로 클램프 (PowerPoint 가 거부하지 않을 작은 양수)
+          const safeCx = Math.max(1, cxN);
+          const safeCy = Math.max(1, cyN);
+          return `<a:ext cx="${safeCx}" cy="${safeCy}"/>`;
+        }
+        return m;
+      });
+
+      // [3] <a:off x="N" y="M"/> 도 동일 — x/y 는 음수도 유효하지만, 너무 큰 음수는 차단
+      //     (실수로 -2147483648 같은 값이 출력되는 경우)
+      xml = xml.replace(/<a:off\s+x="(-?\d+)"\s+y="(-?\d+)"\s*\/>/g, (m, x, y) => {
+        const xN = parseInt(x, 10);
+        const yN = parseInt(y, 10);
+        if (xN < -1000000000 || yN < -1000000000) {
+          dimFix++;
+          return `<a:off x="0" y="0"/>`;
+        }
+        return m;
+      });
+
+      if (xml !== origXml) {
+        zip.file(path, xml);
       }
     }
-    if (fixCount > 0 && window.gddToast) {
-      // 토스트는 비차단으로 — 사용자에게 정보만 전달
-      try { window.gddToast(`PPTX 호환성 보정: ${fixCount}개 중복 단락 속성 제거`, ''); } catch (_) {}
+    const totalFix = pprFix + dimFix;
+    if (totalFix > 0 && window.gddToast) {
+      try {
+        const parts = [];
+        if (pprFix > 0) parts.push(`중복 단락속성 ${pprFix}`);
+        if (dimFix > 0) parts.push(`음수 좌표 ${dimFix}`);
+        window.gddToast(`PPTX 호환성 보정: ${parts.join(' · ')} 개 수정`, '');
+      } catch (_) {}
     }
     return await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
   } catch (e) {
@@ -1314,12 +1349,14 @@ async function exportPptx(project, opts) {
           const attrText = attrs.map(a => ({ text: a, options: {} }));
           slide.addText(attrText, { x: l.x + 0.1, y: l.y + 0.6, w: l.w - 0.2, h: Math.min(0.7, attrs.length * 0.2), fontSize: 9, fontFace: MONO, color: TEXT, paraSpaceAfter: 1 });
         }
-        // methods
+        // methods — 높이 계산이 음수가 되지 않도록 가드 (PowerPoint OOXML 무결성)
         const methods = c.methods || [];
         if (methods.length) {
           const methStart = l.y + 0.6 + Math.min(0.7, attrs.length * 0.2) + 0.05;
           const methText = methods.map(m => ({ text: m, options: {} }));
-          slide.addText(methText, { x: l.x + 0.1, y: methStart, w: l.w - 0.2, h: l.h - (methStart - l.y) - 0.05, fontSize: 9, fontFace: MONO, color: TEXT, paraSpaceAfter: 1 });
+          // 음수 차단 — attrs 많을 때 methStart > l.y + l.h 가능. 최소 0.3" 보장.
+          const methH = Math.max(0.3, l.h - (methStart - l.y) - 0.05);
+          slide.addText(methText, { x: l.x + 0.1, y: methStart, w: l.w - 0.2, h: methH, fontSize: 9, fontFace: MONO, color: TEXT, paraSpaceAfter: 1 });
         }
       });
     } else if (s.type === 'diagram') {

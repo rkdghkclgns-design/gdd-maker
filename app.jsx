@@ -1657,15 +1657,9 @@ function App({ onStateChange }) {
     return () => { if (window.gddToast === toast) delete window.gddToast; };
   }, [toast]);
   // aiEditGdd 같은 외부 함수가 현재 컨셉의 visual.prompt / palette / genre 를
-  // 이미지 생성 base 로 사용할 수 있도록 글로벌 노출. 컨셉이 바뀌면 자동 갱신.
-  useEffect(() => {
-    const c = state.concepts?.find(c => c.id === (state.selection?.type === 'concept' ? state.selection.id : null))
-           || (project ? state.concepts?.find(c => (c.recommendedPlans || []).some(rp => rp.linkedGddId === project.id)) : null)
-           || state.concepts?.[0]
-           || null;
-    window.gddCurrentConcept = c;
-    return () => { if (window.gddCurrentConcept === c) delete window.gddCurrentConcept; };
-  }, [state.concepts, state.selection, project]);
+  /* window.gddCurrentConcept 글로벌 노출은 아래쪽 project 변수 선언 이후에 useEffect 로 처리.
+   * 여기서 project 를 참조하면 TDZ (Temporal Dead Zone) 에러 발생 — const 변수는 같은 함수
+   * 스코프 안이라도 선언 라인 이전에는 참조할 수 없음. */
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
 
   /* Apply theme accent CSS vars */
@@ -1696,6 +1690,17 @@ function App({ onStateChange }) {
   const selection = state.selection || { type: 'concept', id: state.concepts?.[0]?.id };
   const project = selection.type === 'gdd' ? state.projects.find(p => p.id === selection.id) : null;
   const concept = selection.type === 'concept' ? state.concepts.find(c => c.id === selection.id) : null;
+
+  // aiEditGdd 같은 외부 함수가 현재 컨셉의 visual.prompt / palette / genre 를
+  // 이미지 생성 base 로 사용할 수 있도록 글로벌 노출. 컨셉이 바뀌면 자동 갱신.
+  useEffect(() => {
+    const c = concept
+      || (project ? state.concepts?.find(c => (c.recommendedPlans || []).some(rp => rp.linkedGddId === project.id)) : null)
+      || state.concepts?.[0]
+      || null;
+    window.gddCurrentConcept = c;
+    return () => { if (window.gddCurrentConcept === c) delete window.gddCurrentConcept; };
+  }, [state.concepts, concept, project]);
 
   // 현재 활성 팔레트를 window 에 노출 — slides.jsx 등 컴포넌트에서 prop 없이 접근 가능.
   // 컨셉 선택 시 그 컨셉의 팔레트, GDD 선택 시 부모 컨셉의 팔레트.

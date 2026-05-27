@@ -128,6 +128,15 @@
 ### CKPT-015. `useEffect` deps 에 미포함된 외부 의존성
 **재발 방지**: ESLint 의 react-hooks/exhaustive-deps 룰이 없으므로 수동 점검. 특히 `ref.current` 사용 시 ref 자체는 deps 에 넣을 필요 없지만 외부 prop/state 는 반드시 포함.
 
+### CKPT-016. `useEffect` 안에서 `project`/`concept` 같은 `const` 변수를 선언 이전에 참조 → TDZ
+**증상**: `ReferenceError: Cannot access 'project' before initialization` 페이지 전체가 ErrorBoundary 로 뜸.
+**원인**: React 함수 컴포넌트 내부에서 `useEffect(() => { ... project ... }, [project])` 를 `const project = ...` 선언 라인보다 위에 배치하면, JS const 의 Temporal Dead Zone 위반.
+**재발 방지**:
+- 새 `useEffect` 추가 시 그 안에서 참조하는 모든 변수가 **선언 라인 이후**인지 확인.
+- 의존성 배열의 변수도 같은 규칙 적용 (deps 에 들어가는 값은 호출 시점에 평가됨).
+- React 함수 컴포넌트의 일반 패턴: ① 상수/state → ② derived 값(`const project = ...`) → ③ useEffect/콜백 순서로 배치.
+- 빌드 시 자동 검증 어렵지만, 새 useEffect 가 추가될 때 그 deps 가 컴포넌트 본문 위쪽에 선언됐는지 한 번 더 확인.
+
 ---
 
 ## 🛠 작업 시 체크리스트

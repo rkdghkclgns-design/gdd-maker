@@ -3714,14 +3714,40 @@ function synthesizeImagePrompt(slide, parsedRoot, contextOpt) {
 
 /** 사용자/AI 가 입력한 imagePrompt 가 한글을 포함하면 strip + 영문 보강.
  * nano-banana 입력 직전에 호출 — 슬라이드 데이터의 imagePrompt 는 그대로 두고 송신 값만 정제. */
+/** 슬라이드 imagePrompt 를 nano-banana 호출 직전에 정제 + 컨셉 톤 결합.
+ * 영문/한글 무관하게 concept.visual.prompt 가 있으면 dominant anchor 로 prepend 하여
+ * 모든 이미지가 통일된 톤앤매너 유지. 한글 부분은 strip + 너무 짧으면 합성으로 대체.
+ */
 function sanitizeImagePromptForGen(prompt, slide, context) {
   if (!prompt) return synthesizeImagePrompt(slide, null, context);
+
+  // 한글 처리 — 일부면 strip, 대부분이면 재합성
   const hasCjk = /[가-힣ㄱ-ㅎ一-鿿぀-ヿ]/.test(prompt);
-  if (!hasCjk) return prompt;
-  // 한글이 일부만 섞인 경우 — strip 후 너무 짧아지면 synthesizeImagePrompt 로 대체
-  const stripped = stripKoreanKeepLatin(prompt);
-  if (stripped.replace(/[\s,]/g, '').length >= 20) return stripped + '. WIDESCREEN 16:9.';
-  return synthesizeImagePrompt(slide, null, context);
+  let cleaned = prompt;
+  if (hasCjk) {
+    const stripped = stripKoreanKeepLatin(prompt);
+    if (stripped.replace(/[\s,]/g, '').length < 20) {
+      // 한글 strip 후 라틴 글자가 거의 안 남음 → 컨셉 base + slide topic 으로 완전 재합성
+      return synthesizeImagePrompt(slide, null, context);
+    }
+    cleaned = stripped;
+  }
+
+  // 컨셉 톤 anchor 를 항상 앞에 — AI 가 만든 영문 prompt 가 컨셉을 무시하던 문제 해결.
+  const concept = context && context.concept;
+  if (concept && concept.visual && concept.visual.prompt && /[a-zA-Z]/.test(concept.visual.prompt)) {
+    const tone = String(concept.visual.prompt).trim().replace(/[\s,.]+$/, '');
+    const paletteHexes = (concept.palette || [])
+      .map(p => p && p.hex)
+      .filter(h => typeof h === 'string' && /^#[0-9a-f]{3,8}$/i.test(h))
+      .slice(0, 4);
+    const paletteHint = paletteHexes.length ? ` Color palette: ${paletteHexes.join(', ')}.` : '';
+    const genre = (concept.overview && concept.overview.genre) ? ` Genre: ${stripKoreanKeepLatin(concept.overview.genre) || ''}.` : '';
+    return `${tone}.${paletteHint}${genre} STRICTLY FOLLOW THE ABOVE ART STYLE AND TONE. Subject: ${cleaned}. WIDESCREEN 16:9, no Korean text in image.`;
+  }
+
+  // 컨셉 톤 없으면 기존 처리
+  return cleaned + '. WIDESCREEN 16:9, no Korean text in image.';
 }
 
 /* === AI generation via window.gemini.complete === */

@@ -1584,6 +1584,7 @@ input, textarea, select { font-family: inherit; color: inherit; }
 }
 .flow-dir-toggle .mini-btn.dir:hover:not(.on),
 .flow-lines-toggle .mini-btn.dir:hover:not(.on) { color: var(--text); }
+/* === Flow chart 노드 — 표준 도형 (시작/끝 = pill, 처리 = 사각형, 분기 = 다이아몬드) === */
 .flow-node {
   background: white;
   border: 2px solid #303a45;
@@ -1595,16 +1596,96 @@ input, textarea, select { font-family: inherit; color: inherit; }
   min-width: 220px;
   text-align: center;
   box-shadow: 0 2px 0 #303a45;
+  position: relative;
 }
-.flow-node.start { background: var(--accent); color: #061018; border-color: transparent; box-shadow: 0 2px 0 var(--accent-2); }
-.flow-node.end { background: #1c222b; color: #e6edf3; border-color: transparent; box-shadow: 0 2px 0 #000; }
+/* start / end — 알약(pill) 모양: 양쪽이 둥근 직사각형 */
+.flow-node.start,
+.flow-node.end {
+  border-radius: 999px;
+  padding: 14px 36px;
+}
+.flow-node.start {
+  background: var(--accent);
+  color: #061018;
+  border-color: transparent;
+  box-shadow: 0 2px 0 var(--accent-2);
+}
+.flow-node.start::before {
+  content: 'START';
+  position: absolute;
+  top: -14px; left: 50%; transform: translateX(-50%);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: var(--accent-2, #2b88c4);
+  background: white;
+  padding: 1px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+}
+.flow-node.end {
+  background: #1c222b;
+  color: #e6edf3;
+  border-color: transparent;
+  box-shadow: 0 2px 0 #000;
+}
+.flow-node.end::before {
+  content: 'END';
+  position: absolute;
+  bottom: -14px; left: 50%; transform: translateX(-50%);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: #1c222b;
+  background: white;
+  padding: 1px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+  border: 1px solid #1c222b;
+}
+/* decision — 다이아몬드(◆) 모양: 45도 회전 사각형 + 내용은 역회전으로 가독성 유지 */
 .flow-node.decision {
   background: #fff8dc;
-  border-color: #d29922;
+  border: 2px solid #d29922;
   box-shadow: 0 2px 0 #d29922;
-  transform: rotate(-1deg);
-  padding: 12px 32px;
+  /* 다이아몬드 모양 — 노드 자체를 45도 회전 */
+  transform: rotate(45deg);
+  border-radius: 6px;
+  width: 180px;
+  height: 180px;
+  min-width: 180px;
+  max-width: 180px;
+  padding: 0;
+  display: grid;
+  place-items: center;
 }
+.flow-node.decision > * {
+  /* 내용은 역회전으로 사용자 시점에서 정상 표시 */
+  transform: rotate(-45deg);
+  width: 160px;
+  font-size: 12.5px;
+  line-height: 1.35;
+  word-break: keep-all;
+  text-align: center;
+}
+.flow-node.decision::before {
+  content: '?';
+  position: absolute;
+  top: 6px; left: 8px;
+  transform: rotate(-45deg);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 18px;
+  font-weight: 800;
+  color: #d29922;
+  pointer-events: none;
+}
+/* horizontal 모드에서 decision 은 동일하지만 화살표가 우측으로 향함 — 회전 차이 없음 */
+.flow-chart.flow-dir-horizontal .flow-node.decision { margin: 30px 22px; /* 회전된 다이아몬드 주변 여백 */ }
+.flow-chart.flow-dir-vertical .flow-node.decision { margin: 24px 0; }
+.flow-chart.flow-dir-grid .flow-node.decision { margin: 24px; }
+/* service / data 같은 보조 종류 (diagram.jsx 의 diagram-node 와는 별개) */
+.flow-node.service { background: #ecf3ff; border-color: #58a6ff; box-shadow: 0 2px 0 #58a6ff; }
+.flow-node.data { background: #f0f9eb; border-color: #3fb950; box-shadow: 0 2px 0 #3fb950; }
 .flow-arrow {
   width: 2px; height: 24px;
   background: #303a45;

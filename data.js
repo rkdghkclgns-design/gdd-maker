@@ -910,7 +910,13 @@ ${contextBlock}
 - **terms.rows**: term은 영문 약어 가능, def는 역할/단위/제약을 30~60자, note는 상태 전이 조건이나 다른 용어와의 관계를 명시.
 - **rules.blocks**: items 는 정적 규칙/상수/임계치만 (예: "최대 레벨: 10", "강화 비용: 파편 ×(현재레벨×100)+카드 1장"). 절차적 로직은 flow 슬라이드로 보낼 것. blocks 는 2~3개로 제한하고, 동일 시스템의 절차는 별도의 flow/sequence-diagram 슬라이드로 표현한다.
 - **data-table**: 실제 동작 가능한 스키마. field 영문 snake_case, type 명확(uuid/int/float/enum/string/datetime/json), req에 Y/N, desc에 단위·범위·예시값·외래키 표시 (예: "0~9999, FK→user.user_id"). **⚠ 절대 rows를 비우지 말 것 — columns만 정의하고 rows를 빈 배열로 두는 실수 금지. 최소 6개 이상의 실제 예시 row를 채워서 출력하라.** 컬럼 키와 row 키는 정확히 일치해야 한다 (예: columns에 key:"field"가 있으면 rows의 각 객체에 "field" 키가 반드시 있어야 함).
-- **flow.nodes**: decision 노드는 분기 조건을 label에 직접 포함 ("HP ≤ 0 ?", "타이머 = 300s ?", "재화 카드 보유?"). 정상 흐름 외에 실패/취소/네트워크 단절 경로도 1개 이상.
+- **flow.nodes**: 표준 순서도 도형 규칙을 반드시 따른다.
+  - 첫 노드는 \`kind: "start"\`, 마지막 노드는 \`kind: "end"\` (각각 알약/pill 모양으로 렌더).
+  - 분기(if/else, true/false, 성공/실패) 가 있으면 \`kind: "decision"\` (다이아몬드 모양). label 은 반드시 **물음표로 끝나는 짧은 조건문** ("HP ≤ 0 ?", "타이머 만료?", "재화 보유?").
+  - decision 다음 두 노드의 label 시작부에 \`예 → \` 또는 \`아니오 → \` 를 명시해 가지를 구분 (예: "예 → 사망 처리", "아니오 → 다음 단계 진행").
+  - 일반 처리 단계는 \`kind: "process"\`. 외부 서비스 호출이면 \`kind: "service"\`, DB/저장소면 \`kind: "data"\`.
+  - 정상 흐름 외에 **decision 2개 이상**과 실패/취소/네트워크 단절 경로 1개 이상.
+  - **금지**: decision 노드를 일반 직사각형 라벨로 만들지 말 것. 분기점이 있으면 반드시 decision.
 - **flow.direction / flow.lines**: 노드 수에 맞춰 두 필드를 함께 출력.
   - \`direction\`: \`vertical\` | \`horizontal\` | \`grid\`. 단조로운 vertical 만 쓰지 말 것. 6단계 이상은 horizontal 또는 grid 권장.
   - \`lines\`: 1 또는 2. 가로/세로 한 줄에 들어가는 노드 수가 너무 많으면(8개 이상) \`lines: 2\` 로 두 줄에 나누어 가독성 확보.

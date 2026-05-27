@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-27T09:38:16.585Z
+   생성 시각: 2026-05-27T09:46:03.312Z
 */
 
 // ============================================================
@@ -8860,7 +8860,7 @@ function SettingsModal({ onClose, onSaved }) {
 }
 
 /* === Sidebar === */
-function Sidebar({ concepts, projects, selection, onSelect, onNewBlank, onOpenConceptBrief, onOpenGddBrief, onDelete }) {
+function Sidebar({ concepts, projects, selection, onSelect, onNewBlank, onOpenConceptBrief, onOpenGddBrief, onDelete, onDeleteAllGdds, onDeleteAllConcepts }) {
   const handleDelete = (e, type, item) => {
     e.stopPropagation();
     if (confirm(`"${item.title}" 을(를) 삭제할까요?`)) onDelete(type, item.id);
@@ -8875,7 +8875,16 @@ function Sidebar({ concepts, projects, selection, onSelect, onNewBlank, onOpenCo
       </button>
 
       <div className="concept-list-section">
-        <div className="section-label">컨셉 기획 <span style={{ float: 'right', color: 'var(--text-4)' }}>{(concepts || []).length}</span></div>
+        <div className="section-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>컨셉 기획 <span style={{ color: 'var(--text-4)' }}>{(concepts || []).length}</span></span>
+          {(concepts || []).length > 1 && onDeleteAllConcepts && (
+            <button
+              className="sidebar-bulk-del"
+              onClick={onDeleteAllConcepts}
+              title={`컨셉 ${concepts.length}개 모두 삭제 (Undo 가능)`}
+            >🗑 모두</button>
+          )}
+        </div>
         {(concepts || []).map(c => {
           const linkedCount = (c.recommendedPlans || []).filter(rp => rp.linkedGddId).length;
           const totalCount = (c.recommendedPlans || []).length;
@@ -8897,6 +8906,13 @@ function Sidebar({ concepts, projects, selection, onSelect, onNewBlank, onOpenCo
 
       <div className="section-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span>세부 기획서 <span style={{ color: 'var(--text-4)' }}>{projects.length}</span></span>
+        {projects.length > 1 && onDeleteAllGdds && (
+          <button
+            className="sidebar-bulk-del"
+            onClick={onDeleteAllGdds}
+            title={`기획서 ${projects.length}개 모두 삭제 (Undo 가능)`}
+          >🗑 모두</button>
+        )}
       </div>
       <button className="new-doc-btn" onClick={onOpenGddBrief}>
         <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)' }}>✦</span> AI로 기획서 추가
@@ -10132,6 +10148,65 @@ function App({ onStateChange }) {
     toast('삭제됨', 'ok');
   };
 
+  /** 모든 기획서(GDD) 일괄 삭제 — 컨셉은 유지, 컨셉 안의 linkedGddId 만 정리.
+   * 2단계 확인: 개수 표시 confirm + "삭제" 텍스트 확인. commitNow 로 Undo 보존. */
+  const deleteAllGdds = () => {
+    const count = (state.projects || []).length;
+    if (count === 0) {
+      toast('삭제할 기획서가 없습니다.', '');
+      return;
+    }
+    if (!confirm(`현재 ${count}개의 기획서를 모두 삭제합니다.\n\n` +
+                 `• 컨셉은 그대로 유지됩니다 (링크만 해제)\n` +
+                 `• Undo(Ctrl+Z) 로 복구 가능합니다\n\n계속하시겠습니까?`)) {
+      return;
+    }
+    const typed = prompt(`확인을 위해 "삭제" 를 정확히 입력해주세요:`);
+    if (typed !== '삭제') {
+      toast('취소됨 — 입력이 일치하지 않음', '');
+      return;
+    }
+    commitNow(`기획서 ${count}개 일괄 삭제`);
+    // 컨셉의 모든 linkedGddId 를 null 로 reset
+    const concepts = (state.concepts || []).map(c => ({
+      ...c,
+      recommendedPlans: (c.recommendedPlans || []).map(rp => ({ ...rp, linkedGddId: null })),
+    }));
+    const nextSelection = concepts[0]
+      ? { type: 'concept', id: concepts[0].id }
+      : { type: 'concept', id: null };
+    setState({ ...state, projects: [], concepts, selection: nextSelection });
+    setCurrentIdx(0);
+    toast(`${count}개 기획서 모두 삭제 — Ctrl+Z 로 복구 가능`, 'ok');
+  };
+
+  /** 모든 컨셉 일괄 삭제 — 기획서는 유지 (단, recommendedPlans 정보는 컨셉에만 있으므로
+   * 기획서 자체는 남고 컨셉-기획서 링크는 사라짐). 2단계 확인. */
+  const deleteAllConcepts = () => {
+    const count = (state.concepts || []).length;
+    if (count === 0) {
+      toast('삭제할 컨셉이 없습니다.', '');
+      return;
+    }
+    if (!confirm(`현재 ${count}개의 컨셉을 모두 삭제합니다.\n\n` +
+                 `• 기획서는 그대로 유지됩니다\n` +
+                 `• Undo(Ctrl+Z) 로 복구 가능합니다\n\n계속하시겠습니까?`)) {
+      return;
+    }
+    const typed = prompt(`확인을 위해 "삭제" 를 정확히 입력해주세요:`);
+    if (typed !== '삭제') {
+      toast('취소됨 — 입력이 일치하지 않음', '');
+      return;
+    }
+    commitNow(`컨셉 ${count}개 일괄 삭제`);
+    const nextSelection = (state.projects || [])[0]
+      ? { type: 'gdd', id: state.projects[0].id }
+      : { type: 'concept', id: null };
+    setState({ ...state, concepts: [], selection: nextSelection });
+    setCurrentIdx(0);
+    toast(`${count}개 컨셉 모두 삭제 — Ctrl+Z 로 복구 가능`, 'ok');
+  };
+
   /* Esc + arrow keys + Ctrl+C/V/X */
   useEffect(() => {
     const isTypingTarget = (el) => {
@@ -10494,6 +10569,8 @@ function App({ onStateChange }) {
         onOpenConceptBrief={openBriefForConcept}
         onOpenGddBrief={openBriefForGdd}
         onDelete={deleteItem}
+        onDeleteAllGdds={deleteAllGdds}
+        onDeleteAllConcepts={deleteAllConcepts}
       />
 
       <div className="canvas">
@@ -10816,6 +10893,8 @@ function App({ onStateChange }) {
               setShowConsistency(true);
             }},
             { id: 'stats', title: '📊 작업 통계 대시보드', sub: '활동/도메인/AI 사용량', shortcut: 'CMD', keywords: ['stats', '통계', 'dashboard', '대시보드'], run: () => setShowStats(true) },
+            { id: 'delete-all-gdds', title: `🗑 모든 기획서 삭제 (${(state.projects || []).length}개)`, sub: '컨셉은 유지 · Undo 가능', shortcut: 'CMD', keywords: ['삭제', '일괄', '전체', 'delete all', 'clear', '모두', 'gdd'], run: deleteAllGdds },
+            { id: 'delete-all-concepts', title: `🗑 모든 컨셉 삭제 (${(state.concepts || []).length}개)`, sub: '기획서는 유지 · Undo 가능', shortcut: 'CMD', keywords: ['삭제', '일괄', '전체', 'delete all', 'clear', '모두', 'concept', '컨셉'], run: deleteAllConcepts },
             { id: 'quality-gate', title: '🎯 품질 점수 확인', sub: '7개 차원 점수표 + 보강 권장', shortcut: 'CMD', keywords: ['quality', '품질', 'score', '점수', '게이트'], run: () => {
               if (!project) { toast('기획서를 선택하세요', 'err'); return; }
               setShowQualityGate(true);

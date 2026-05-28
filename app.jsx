@@ -16,6 +16,30 @@ const LEGACY_STORAGE_KEY = 'gdd-maker-state-v2';
  * 불변성 유지: 원본 state 는 건드리지 않고 새 객체를 반환.
  * 안전성: state 또는 하위 배열이 없어도 비-throw.
  */
+/** 보안: IDB/localStorage 로 복원된 state 는 신뢰 경계 밖 (사용자가 DevTools 로 수정 가능).
+ * 모든 projects/concepts 를 validator 통과시켜 imageSrc 스킴 검사 등을 적용. */
+function sanitizeRestoredState(state) {
+  if (!state || typeof state !== 'object') return state;
+  // projects: validateGdd 가 슬라이드별 imageSrc/visual.src 등을 sanitize
+  if (Array.isArray(state.projects) && typeof window.validateGdd === 'function') {
+    state.projects = state.projects.map(p => {
+      try {
+        const r = window.validateGdd(p);
+        return r && r.gdd ? r.gdd : p;
+      } catch { return p; }
+    });
+  }
+  if (Array.isArray(state.concepts) && typeof window.validateConcept === 'function') {
+    state.concepts = state.concepts.map(c => {
+      try {
+        const r = window.validateConcept(c);
+        return r && r.concept ? r.concept : c;
+      } catch { return c; }
+    });
+  }
+  return state;
+}
+
 function migrateLegacyValues(state) {
   if (!state || typeof state !== 'object') return state;
   const STALE_BADGES = new Set(['TEAM', 'TEAM_7', 'TEAM_?', 'AI', 'MVP']);
@@ -94,6 +118,9 @@ function migrateLegacyValues(state) {
 }
 
 async function loadStateAsync() {
+  // 복원 직후 sanitize — IDB/localStorage 는 신뢰 경계 밖이므로 validator 통과 필수.
+  // migrate + sanitize 를 하나의 헬퍼로 합쳐 모든 경로 일관 처리.
+  const restore = (raw) => sanitizeRestoredState(migrateLegacyValues(raw));
   // 1) emergency 슬롯 — 비정상 종료 시 보존된 상태
   if (window.gddStorage) {
     try {
@@ -103,19 +130,19 @@ async function loadStateAsync() {
         if (recover) {
           const em = await window.gddStorage.loadEmergency();
           await window.gddStorage.clearEmergency();
-          if (em) return migrateLegacyValues(em);
+          if (em) return restore(em);
         } else {
           await window.gddStorage.clearEmergency();
         }
       }
       // 2) main 슬롯 (IndexedDB)
       const main = await window.gddStorage.loadState('main');
-      if (main && main.projects) return migrateLegacyValues(main);
+      if (main && main.projects) return restore(main);
       // 3) legacy localStorage 마이그레이션 (한 번만)
       const migrated = await window.gddStorage.migrateFromLocalStorage();
       if (migrated) {
         const loaded = await window.gddStorage.loadState('main');
-        return migrateLegacyValues(loaded);
+        return restore(loaded);
       }
     } catch (e) {
       // IndexedDB 실패 — localStorage 폴백이 아래에서 처리. 프로덕션 console 금지(CLAUDE.md).
@@ -126,7 +153,7 @@ async function loadStateAsync() {
     const raw = localStorage.getItem(LEGACY_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && parsed.projects) return migrateLegacyValues(parsed);
+      if (parsed && parsed.projects) return restore(parsed);
     }
   } catch (e) {}
   return null;

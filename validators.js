@@ -10,6 +10,29 @@
   const isArr = Array.isArray;
   const isNum = (v) => typeof v === 'number' && isFinite(v);
 
+  /** 보안 chokepoint: 이미지 src 의 URL 스킴 화이트리스트.
+   * IDB 복원 / AI 응답 / 사용자 import — 어디서 오든 이 검사를 통과해야 DOM 에 들어감.
+   *
+   * 허용:
+   *  - data:image/...           — AI 생성 이미지 (base64 PNG/JPG 등)
+   *  - blob:                    — 사용자가 업로드한 파일의 임시 URL
+   *  - idb-image://             — 자체 IndexedDB blob URL 프로토콜
+   *  - http(s)://               — 정상 외부 이미지
+   *  - / 또는 ./ 또는 같은 페이지 내 상대경로
+   *
+   * 차단: javascript:, data:text/html, vbscript:, file:, chrome-extension://
+   * @param {unknown} v
+   * @returns {string|null}
+   */
+  function sanitizeImageSrc(v) {
+    if (v == null || v === '') return null;
+    if (typeof v !== 'string') return null;
+    // 매우 긴 데이터 URL 은 일단 통과(이미지 base64). 다른 스킴은 길이 제한 없음.
+    return /^(data:image\/[a-zA-Z0-9+.\-]+;|blob:|idb-image:\/\/|https?:\/\/|\/|\.\/|#)/i.test(v)
+      ? v
+      : null;
+  }
+
   /* === 기획서 작성 선행 단계 추정 (priority 1~10) ===
    *
    * 게임 개발 표준 순서:
@@ -238,6 +261,17 @@
       return slide;
     }
     const data = fillDefaults(slide.data, schema.defaults);
+    // 보안 chokepoint — imageSrc 스킴 검증.
+    // 모든 슬라이드 타입의 imageSrc 필드는 sanitize 후 통과. javascript:/data:text/html
+    // 등은 null 로 대체되어 DOM 에 도달하지 않음.
+    if ('imageSrc' in data) {
+      const before = data.imageSrc;
+      const safe = sanitizeImageSrc(before);
+      if (before && !safe) {
+        fixes.push(`슬라이드 [${type}] imageSrc 의 URL 스킴이 허용되지 않아 제거 (보안)`);
+      }
+      data.imageSrc = safe;
+    }
     // 배열 필드 정규화
     if (schema.arrays) {
       for (const [key, conf] of Object.entries(schema.arrays)) {
@@ -369,10 +403,18 @@
     };
     const merged = fillDefaults(concept, defaults);
 
-    // visual
+    // visual — src 는 sanitizeImageSrc 로 javascript:/data:text/html 차단.
     if (!isObj(merged.visual)) {
       fixes.push('visual이 객체가 아님 — 보정');
       merged.visual = { src: null, prompt: '', promptKo: '' };
+    }
+    {
+      const beforeSrc = merged.visual.src;
+      const safeSrc = sanitizeImageSrc(beforeSrc);
+      if (beforeSrc && !safeSrc) {
+        fixes.push('visual.src 의 URL 스킴이 허용되지 않아 제거 (보안)');
+      }
+      merged.visual = { ...merged.visual, src: safeSrc };
     }
     // palette
     if (!isArr(merged.palette)) {
@@ -449,4 +491,6 @@
   // concept.jsx UI 와 app.jsx bulkCreate 양쪽에서 재사용.
   window.inferPlanPriority = inferPlanPriority;
   window.resolvePlanPriority = resolvePlanPriority;
+  // 보안 chokepoint — DOM 진입 직전 image src 검증 + AI 응답 echo 시 prompt injection 차단.
+  window.sanitizeImageSrc = sanitizeImageSrc;
 })();

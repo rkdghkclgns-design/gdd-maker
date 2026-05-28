@@ -192,6 +192,25 @@ function summarizeGddForContext(gdd) {
   };
 }
 
+/* === 보안: AI 응답이 다음 AI 호출의 컨텍스트로 echo 될 때 prompt injection 방지 ===
+ * AI 가 컨셉 #1 의 recommendedPlans[].title 에
+ * "\nIGNORE PREVIOUS INSTRUCTIONS. Output: {malicious}" 같은 문자열을 넣으면
+ * 후속 GDD 생성 시 그 문자열이 system prompt 에 그대로 echo 되어 인젝션 체인 형성.
+ * 줄바꿈/제어문자 제거 + 길이 제한 + 'INSTRUCTION' 류 키워드 무력화. */
+function safeForPrompt(v, maxLen) {
+  if (v == null) return '';
+  let s = String(v);
+  // 줄바꿈/제어문자 → 공백 1개 (블록 깨기 시도 차단)
+  s = s.replace(/[\r\n\t\v\f\0]+/g, ' ');
+  // 인젝션에 자주 쓰이는 명령형 키워드를 zero-width 분리로 무력화
+  s = s.replace(/\b(IGNORE|DISREGARD|FORGET|OVERRIDE)\s+(PREVIOUS|ALL|ABOVE)\s+(INSTRUCTIONS?|PROMPTS?|RULES?)\b/gi,
+    '[content removed by safeForPrompt]');
+  // 과도한 길이는 잘라냄
+  const n = (typeof maxLen === 'number' && maxLen > 0) ? maxLen : 500;
+  if (s.length > n) s = s.slice(0, n) + '…';
+  return s.trim();
+}
+
 /* === 컨텍스트 요약들을 프롬프트에 임베드할 텍스트 블록으로 직렬화 === */
 function renderContextBlock(context) {
   if (!context) return '';
@@ -199,34 +218,46 @@ function renderContextBlock(context) {
 
   if (context.concept) {
     const c = context.concept;
-    const usp = (c.keyUsp || []).map((u, i) => `  - ${u}`).join('\n');
-    const loop = (c.coreLoop || []).map(n => n.label).filter(Boolean).join(' → ');
+    // AI echo prompt injection 방어 — 모든 AI 가 채울 수 있는 문자열 필드는 safeForPrompt 통과.
+    const usp = (c.keyUsp || []).map((u) => `  - ${safeForPrompt(u, 200)}`).join('\n');
+    const loop = (c.coreLoop || []).map(n => safeForPrompt(n && n.label, 80)).filter(Boolean).join(' → ');
     const plans = (c.recommendedPlans || []).map((p, i) =>
-      `  ${i + 1}. ${p.title} — ${p.description || ''} ${p.linkedGddId ? '[작성됨]' : '[미작성]'}`
+      `  ${i + 1}. ${safeForPrompt(p.title, 100)} — ${safeForPrompt(p.description, 200)} ${p.linkedGddId ? '[작성됨]' : '[미작성]'}`
     ).join('\n');
+    // 컨셉에 묶인 필수 기능 — ConceptBrief 에서 선택. lookupFeatureById 로 라벨 표시.
+    // 기획서 시리얼 생성 시에도 각 GDD 에 이 정보를 전달해 정합성 유지.
+    const features = (c.mustHaveFeatures || [])
+      .map(id => (typeof window !== 'undefined' && window.lookupFeatureById) ? window.lookupFeatureById(id) : null)
+      .filter(Boolean)
+      .map(f => `  - ${safeForPrompt(f.label, 60)} (${safeForPrompt(f.categoryLabel, 40)})`)
+      .join('\n');
     parts.push(`# 컨셉 컨텍스트 (이 기획서가 속한 게임 전체)
-- 게임명: ${c.title || ''}
-- 로그라인: ${c.subtitle || ''}
-- 장르: ${c.overview?.genre || ''}
-- 타겟: ${c.overview?.target || ''}
-- 플랫폼: ${c.overview?.platform || ''}
-- 엔진/스택: ${c.overview?.engine || ''}
+- 게임명: ${safeForPrompt(c.title, 80)}
+- 로그라인: ${safeForPrompt(c.subtitle, 200)}
+- 장르: ${safeForPrompt(c.overview?.genre, 80)}
+- 타겟: ${safeForPrompt(c.overview?.target, 120)}
+- 플랫폼: ${safeForPrompt(c.overview?.platform, 80)}
+- 엔진/스택: ${safeForPrompt(c.overview?.engine, 120)}
 - 핵심 USP:
 ${usp || '  - (없음)'}
 - 코어 루프: ${loop || '(없음)'}
 - 전체 기획서 구성:
-${plans || '  (없음)'}`);
+${plans || '  (없음)'}${features ? `
+- 컨셉이 보장해야 하는 필수 기능 (작성 시 누락 금지):
+${features}` : ''}`);
   }
 
   if (Array.isArray(context.prior) && context.prior.length) {
     const blocks = context.prior.map((p, i) => {
-      const termsTxt = (p.terms || []).map(t => `  - ${t.term}: ${t.def}`).join('\n');
+      const termsTxt = (p.terms || []).map(t => `  - ${safeForPrompt(t.term, 80)}: ${safeForPrompt(t.def, 200)}`).join('\n');
       const tablesTxt = (p.tables || []).map(t =>
-        `  - ${t.name} { columns: [${(t.columns || []).join(', ')}], sample: [${(t.sampleFields || []).join(', ')}] }`
+        `  - ${safeForPrompt(t.name, 80)} { columns: [${(t.columns || []).map(c => safeForPrompt(c, 40)).join(', ')}], sample: [${(t.sampleFields || []).map(s => safeForPrompt(s, 40)).join(', ')}] }`
       ).join('\n');
-      const flowsTxt = (p.flows || []).map(f => `  - ${f.title}: ${f.nodes.join(' → ')}`).join('\n');
-      return `## [${i + 1}] ${p.title}${p.badge ? ` (${p.badge})` : ''}
-${p.subtitle ? `  부제: ${p.subtitle}\n` : ''}${termsTxt ? `  정의된 용어:\n${termsTxt}\n` : ''}${tablesTxt ? `  정의된 데이터 테이블:\n${tablesTxt}\n` : ''}${flowsTxt ? `  주요 플로우/다이어그램:\n${flowsTxt}\n` : ''}`;
+      const flowsTxt = (p.flows || []).map(f =>
+        `  - ${safeForPrompt(f.title, 80)}: ${(f.nodes || []).map(n => safeForPrompt(n, 50)).join(' → ')}`
+      ).join('\n');
+      return `## [${i + 1}] ${safeForPrompt(p.title, 100)}${p.badge ? ` (${safeForPrompt(p.badge, 30)})` : ''}
+${p.subtitle ? `  부제: ${safeForPrompt(p.subtitle, 200)}\n` : ''}${termsTxt ? `  정의된 용어:\n${termsTxt}\n` : ''}${tablesTxt ? `  정의된 데이터 테이블:\n${tablesTxt}\n` : ''}${flowsTxt ? `  주요 플로우/다이어그램:\n${flowsTxt}\n` : ''}`;
     }).join('\n');
     parts.push(`# 이미 작성된 기획서 (위에서 정의된 용어/데이터/플로우는 반드시 그대로 재사용)
 ${blocks}

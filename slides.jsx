@@ -4,6 +4,16 @@
 
 const E = (tag, props, ...children) => React.createElement(tag, props, ...children);
 
+/* 보안 defense-in-depth: 렌더 직전 image src 스킴 재검증.
+ * validator 가 이미 load/AI-gen 시점에 sanitize 하지만, 어떤 경로(직접 patch 등)로든
+ * 위험 src 가 DOM 에 도달하지 않도록 <img>/CSS url() 사용처에서 한 번 더 거른다.
+ * window.sanitizeImageSrc 가 없으면(로드 순서 문제) data:/blob:/idb:/http(s) 만 통과. */
+function safeImgSrc(v) {
+  if (window.sanitizeImageSrc) return window.sanitizeImageSrc(v);
+  if (typeof v !== 'string' || !v) return null;
+  return /^(data:image\/|blob:|idb-image:\/\/|https?:\/\/|\/|\.\/)/i.test(v) ? v : null;
+}
+
 /* ====== Inline Markdown 파서 ======
  * 지원: **bold**, *italic*, _italic_, `code`, ~~strike~~, [text](url)
  * 한 줄 단위로 토큰화 후 React node 트리로 변환. 중첩은 미지원(단순/안전).
@@ -233,7 +243,7 @@ function CoverSlide({ data, patch, page, totalPages }) {
   return (
     <div className="slide cover">
       {data.imageSrc ? (
-        <div className="cover-bg-img" style={{ backgroundImage: `url(${data.imageSrc})` }}></div>
+        <div className="cover-bg-img" style={{ backgroundImage: `url(${safeImgSrc(data.imageSrc) || ''})` }}></div>
       ) : (
         <div className="bg-grid"></div>
       )}
@@ -494,7 +504,7 @@ function SectionDividerSlide({ data, patch, page, totalPages, slides, slideIndex
   return (
     <div className={'slide section-divider elegant-divider ' + (data.imageSrc ? 'has-bg' : '')}>
       {data.imageSrc && (
-        <div className="sd-bg-img" style={{ backgroundImage: `url(${data.imageSrc})` }}></div>
+        <div className="sd-bg-img" style={{ backgroundImage: `url(${safeImgSrc(data.imageSrc) || ''})` }}></div>
       )}
       <div className="sd-elegant-head">PART · {String(idx).padStart(2, '0')} / {romanTotal}</div>
       <div className="sd-elegant-body">
@@ -695,7 +705,7 @@ function ImageEmbedSlide({ data, patch, page, totalPages }) {
         ) : data.imageSrc ? (
           <>
             <img
-              src={data.imageSrc}
+              src={safeImgSrc(data.imageSrc) || undefined}
               alt="reference"
               draggable={false}
               onMouseDown={startDrag}
@@ -1150,7 +1160,7 @@ function UiDesignSlide({ data, patch, page, totalPages }) {
                   willChange: 'transform',
                 }}
               >
-                <img src={data.imageSrc} alt="UI mockup" className="ui-mockup-img" draggable={false} />
+                <img src={safeImgSrc(data.imageSrc) || undefined} alt="UI mockup" className="ui-mockup-img" draggable={false} />
                 {/* 콜아웃 넘버링 배지 — 이미지와 함께 transform 됨 (정합성 유지) */}
                 {rawCallouts.map((c, originalIdx) => (
                   <div

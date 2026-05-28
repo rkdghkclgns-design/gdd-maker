@@ -763,7 +763,7 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, onB
                   <div>나노바나나로 이미지 생성 중…</div>
                 </div>
               ) : concept.visual?.src ? (
-                <img src={concept.visual.src} alt="concept" onClick={() => fileInputRef.current?.click()} style={{ cursor: 'pointer' }} />
+                <img src={(window.sanitizeImageSrc ? window.sanitizeImageSrc(concept.visual.src) : concept.visual.src) || undefined} alt="concept" onClick={() => fileInputRef.current?.click()} style={{ cursor: 'pointer' }} />
               ) : (
                 <div className="empty" onClick={() => fileInputRef.current?.click()} style={{ cursor: 'pointer' }}>
                   <div className="icon">⊡</div>

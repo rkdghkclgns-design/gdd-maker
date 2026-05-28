@@ -2384,11 +2384,23 @@ function App({ onStateChange }) {
           .filter(Boolean)
           .map(g => window.summarizeGddForContext(g));
         const ctx = { concept, prior, plan };
-        // 2단계 파이프라인으로 — 단일 호출은 분량 잘림 위험
-        const result = await aiGenerateGddTwoStage(text, knownProjects.map(p => p.title), null, ctx, {
-          selfCritique: false,
-          onProgress: ({ stage, message }) => { try { toast(`(${i+1}/${pending.length}) [${stage}] ${message}`, ''); } catch {} },
-        });
+        // 2단계 파이프라인으로 — 단일 호출은 분량 잘림 위험.
+        // transient 실패(네트워크/rate-limit) 는 1회 백오프 재시도 — 일괄 생성 중
+        // 일시 오류로 영구 실패 처리되는 것을 방지. 영구 오류는 1회 후 그대로 throw.
+        let result;
+        try {
+          result = await aiGenerateGddTwoStage(text, knownProjects.map(p => p.title), null, ctx, {
+            selfCritique: false,
+            onProgress: ({ stage, message }) => { try { toast(`(${i+1}/${pending.length}) [${stage}] ${message}`, ''); } catch {} },
+          });
+        } catch (firstErr) {
+          toast(`(${i + 1}/${pending.length}) 일시 오류 — 3초 후 재시도…`, '');
+          await new Promise(r => setTimeout(r, 3000));
+          result = await aiGenerateGddTwoStage(text, knownProjects.map(p => p.title), null, ctx, {
+            selfCritique: false,
+            onProgress: ({ stage, message }) => { try { toast(`(${i+1}/${pending.length}) [재시도][${stage}] ${message}`, ''); } catch {} },
+          });
+        }
         if (conceptBadge) result.team = conceptBadge;
         result.history = [{
           ts: new Date().toISOString().slice(0, 16).replace('T', ' '),

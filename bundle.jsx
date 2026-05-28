@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-28T23:15:33.680Z
+   생성 시각: 2026-05-28T23:25:21.912Z
 */
 
 // ============================================================
@@ -586,6 +586,16 @@ Object.assign(window, {
 
 const E = (tag, props, ...children) => React.createElement(tag, props, ...children);
 
+/* 보안 defense-in-depth: 렌더 직전 image src 스킴 재검증.
+ * validator 가 이미 load/AI-gen 시점에 sanitize 하지만, 어떤 경로(직접 patch 등)로든
+ * 위험 src 가 DOM 에 도달하지 않도록 <img>/CSS url() 사용처에서 한 번 더 거른다.
+ * window.sanitizeImageSrc 가 없으면(로드 순서 문제) data:/blob:/idb:/http(s) 만 통과. */
+function safeImgSrc(v) {
+  if (window.sanitizeImageSrc) return window.sanitizeImageSrc(v);
+  if (typeof v !== 'string' || !v) return null;
+  return /^(data:image\/|blob:|idb-image:\/\/|https?:\/\/|\/|\.\/)/i.test(v) ? v : null;
+}
+
 /* ====== Inline Markdown 파서 ======
  * 지원: **bold**, *italic*, _italic_, `code`, ~~strike~~, [text](url)
  * 한 줄 단위로 토큰화 후 React node 트리로 변환. 중첩은 미지원(단순/안전).
@@ -815,7 +825,7 @@ function CoverSlide({ data, patch, page, totalPages }) {
   return (
     <div className="slide cover">
       {data.imageSrc ? (
-        <div className="cover-bg-img" style={{ backgroundImage: `url(${data.imageSrc})` }}></div>
+        <div className="cover-bg-img" style={{ backgroundImage: `url(${safeImgSrc(data.imageSrc) || ''})` }}></div>
       ) : (
         <div className="bg-grid"></div>
       )}
@@ -1076,7 +1086,7 @@ function SectionDividerSlide({ data, patch, page, totalPages, slides, slideIndex
   return (
     <div className={'slide section-divider elegant-divider ' + (data.imageSrc ? 'has-bg' : '')}>
       {data.imageSrc && (
-        <div className="sd-bg-img" style={{ backgroundImage: `url(${data.imageSrc})` }}></div>
+        <div className="sd-bg-img" style={{ backgroundImage: `url(${safeImgSrc(data.imageSrc) || ''})` }}></div>
       )}
       <div className="sd-elegant-head">PART · {String(idx).padStart(2, '0')} / {romanTotal}</div>
       <div className="sd-elegant-body">
@@ -1277,7 +1287,7 @@ function ImageEmbedSlide({ data, patch, page, totalPages }) {
         ) : data.imageSrc ? (
           <>
             <img
-              src={data.imageSrc}
+              src={safeImgSrc(data.imageSrc) || undefined}
               alt="reference"
               draggable={false}
               onMouseDown={startDrag}
@@ -1732,7 +1742,7 @@ function UiDesignSlide({ data, patch, page, totalPages }) {
                   willChange: 'transform',
                 }}
               >
-                <img src={data.imageSrc} alt="UI mockup" className="ui-mockup-img" draggable={false} />
+                <img src={safeImgSrc(data.imageSrc) || undefined} alt="UI mockup" className="ui-mockup-img" draggable={false} />
                 {/* 콜아웃 넘버링 배지 — 이미지와 함께 transform 됨 (정합성 유지) */}
                 {rawCallouts.map((c, originalIdx) => (
                   <div
@@ -4936,7 +4946,7 @@ function ConceptView({ concept, patch, onCreateGdd, onOpenGdd, onBulkCreate, onB
                   <div>나노바나나로 이미지 생성 중…</div>
                 </div>
               ) : concept.visual?.src ? (
-                <img src={concept.visual.src} alt="concept" onClick={() => fileInputRef.current?.click()} style={{ cursor: 'pointer' }} />
+                <img src={(window.sanitizeImageSrc ? window.sanitizeImageSrc(concept.visual.src) : concept.visual.src) || undefined} alt="concept" onClick={() => fileInputRef.current?.click()} style={{ cursor: 'pointer' }} />
               ) : (
                 <div className="empty" onClick={() => fileInputRef.current?.click()} style={{ cursor: 'pointer' }}>
                   <div className="icon">⊡</div>
@@ -10422,11 +10432,23 @@ function App({ onStateChange }) {
           .filter(Boolean)
           .map(g => window.summarizeGddForContext(g));
         const ctx = { concept, prior, plan };
-        // 2단계 파이프라인으로 — 단일 호출은 분량 잘림 위험
-        const result = await aiGenerateGddTwoStage(text, knownProjects.map(p => p.title), null, ctx, {
-          selfCritique: false,
-          onProgress: ({ stage, message }) => { try { toast(`(${i+1}/${pending.length}) [${stage}] ${message}`, ''); } catch {} },
-        });
+        // 2단계 파이프라인으로 — 단일 호출은 분량 잘림 위험.
+        // transient 실패(네트워크/rate-limit) 는 1회 백오프 재시도 — 일괄 생성 중
+        // 일시 오류로 영구 실패 처리되는 것을 방지. 영구 오류는 1회 후 그대로 throw.
+        let result;
+        try {
+          result = await aiGenerateGddTwoStage(text, knownProjects.map(p => p.title), null, ctx, {
+            selfCritique: false,
+            onProgress: ({ stage, message }) => { try { toast(`(${i+1}/${pending.length}) [${stage}] ${message}`, ''); } catch {} },
+          });
+        } catch (firstErr) {
+          toast(`(${i + 1}/${pending.length}) 일시 오류 — 3초 후 재시도…`, '');
+          await new Promise(r => setTimeout(r, 3000));
+          result = await aiGenerateGddTwoStage(text, knownProjects.map(p => p.title), null, ctx, {
+            selfCritique: false,
+            onProgress: ({ stage, message }) => { try { toast(`(${i+1}/${pending.length}) [재시도][${stage}] ${message}`, ''); } catch {} },
+          });
+        }
         if (conceptBadge) result.team = conceptBadge;
         result.history = [{
           ts: new Date().toISOString().slice(0, 16).replace('T', ' '),

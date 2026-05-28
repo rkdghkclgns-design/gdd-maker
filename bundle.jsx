@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-28T00:53:56.283Z
+   생성 시각: 2026-05-28T23:15:33.680Z
 */
 
 // ============================================================
@@ -11748,26 +11748,43 @@ function synthesizeImagePrompt(slide, parsedRoot, contextOpt) {
     if (hexes.length) conceptHints.push(`palette: ${hexes.join(' ')}`);
   }
 
-  // (3) Subject — 우선 영문, 없으면 한글 strip 후 사용
+  // (3) Subject — 우선 영문 필드, 없으면 한글 strip, 그래도 부족하면 generic.
+  //     슬라이드 콘텐츠를 더 적극 활용: title + subtitle + 슬라이드 특수 필드(callouts/cards/blocks)
+  //     까지 동원해 의미 있는 영문 키워드 추출.
   const englishSubjectCandidates = [d.englishTopic, d.subject]
     .filter(s => typeof s === 'string' && s.trim() && !/[가-힣]/.test(s));
   let subject = englishSubjectCandidates[0] || '';
   if (!subject) {
-    const topic = [d.title, d.caption, d.subtitle, root.title, root.subtitle]
+    // 슬라이드 타입별 추가 콘텐츠 필드 수집 — concept-image 정합성 향상
+    const extras = [];
+    if (slide.type === 'cover' && d.product) extras.push(d.product);
+    if (slide.type === 'section-divider' && d.num) extras.push(`chapter ${d.num}`);
+    if (slide.type === 'ui-design' && Array.isArray(d.callouts)) {
+      extras.push(...d.callouts.slice(0, 3).map(c => c && c.name).filter(Boolean));
+    }
+    if (slide.type === 'intent' && Array.isArray(d.cards)) {
+      extras.push(...d.cards.slice(0, 2).map(c => c && c.head).filter(Boolean));
+    }
+    if (slide.type === 'image-embed' && d.caption) extras.push(d.caption);
+    const topic = [d.title, d.subtitle, d.caption, ...extras, root.title, root.subtitle]
       .filter(s => typeof s === 'string' && s.trim())
-      .slice(0, 3)
+      .slice(0, 5)
       .join(', ');
     const cleaned = stripKoreanKeepLatin(topic);
     // 한글 strip 후 라틴 문자가 거의 안 남으면 generic 한 서브젝트로 폴백
     if (cleaned.replace(/[\s,]/g, '').length >= 3) {
       subject = cleaned;
     } else {
-      // 슬라이드 종류 별 generic
+      // 슬라이드 종류 별 generic — concept 의 장르를 반영해 더 구체적으로
       const kind = slide.type;
-      subject = kind === 'cover' ? 'a dramatic game key art scene'
-              : kind === 'section-divider' ? 'a moody chapter divider scene'
-              : kind === 'ui-design' ? 'a sci-fi game user interface mockup'
-              : 'a game concept art reference';
+      const genreHint = (concept?.overview?.genre)
+        ? stripKoreanKeepLatin(concept.overview.genre)
+        : '';
+      const baseGeneric = kind === 'cover' ? 'a dramatic game key art scene'
+                       : kind === 'section-divider' ? 'a moody chapter divider scene'
+                       : kind === 'ui-design' ? 'a clean game user interface mockup'
+                       : 'a high-detail game concept art reference';
+      subject = genreHint ? `${baseGeneric} for a ${genreHint} game` : baseGeneric;
     }
   }
 
@@ -11781,15 +11798,65 @@ function synthesizeImagePrompt(slide, parsedRoot, contextOpt) {
   return parts.join('. ');
 }
 
+/** AI 가 imagePrompt 필드에 placeholder/junk 문자열을 채운 경우 감지.
+ * 이런 prompt 는 nano-banana 에 그대로 보내면 무관한 이미지가 생성되므로 재합성 트리거.
+ *
+ * 차단 패턴:
+ *  - "이미지 placeholder", "placeholder", "image placeholder", "TBD", "추후" 등
+ *  - 너무 짧음 (8자 미만)
+ *  - 슬라이드 콘텐츠와 0% 키워드 겹침 (의미 단어 기준)
+ */
+function isLowQualityImagePrompt(prompt, slide) {
+  if (!prompt || typeof prompt !== 'string') return true;
+  const t = prompt.trim();
+  if (t.length < 8) return true;
+  // 명시적 placeholder 패턴
+  if (/^(이미지|image|컨셉\s*아트|concept\s*art)?\s*placeholder/i.test(t)) return true;
+  if (/^(TBD|TODO|미정|추후|N\/A|none|null)\s*$/i.test(t)) return true;
+  // "참고 이미지", "이미지" 만 있는 경우
+  if (/^(참고\s*)?이미지\s*$/i.test(t)) return true;
+  if (/^(reference\s*)?image\s*$/i.test(t)) return true;
+  // 슬라이드 콘텐츠와 의미 단어 겹침 검사 — 시멘틱 정합성 안전망
+  if (slide && slide.data) {
+    const d = slide.data;
+    const slideTopic = [d.title, d.subtitle, d.caption, d.product].filter(Boolean).join(' ').toLowerCase();
+    const promptLow = t.toLowerCase();
+    // 의미 있는 단어(2자 이상 한글, 4자 이상 영문)만 추출
+    const slideKeywords = new Set(
+      (slideTopic.match(/[가-힣]{2,}|[a-z]{4,}/g) || []).filter(w => !COMMON_NOISE_WORDS.has(w))
+    );
+    if (slideKeywords.size >= 3) {
+      // 슬라이드에서 3개 이상의 의미 단어가 있는데 prompt 가 하나도 안 겹치면 무관 prompt 로 판단
+      const hits = Array.from(slideKeywords).filter(w => promptLow.includes(w)).length;
+      // 단, 영문 prompt 이고 슬라이드는 한글인 경우는 통과 (의미 매칭 불가)
+      const slideHasKorean = /[가-힣]/.test(slideTopic);
+      const promptHasKorean = /[가-힣]/.test(t);
+      if (slideHasKorean === promptHasKorean && hits === 0) return true;
+    }
+  }
+  return false;
+}
+
+/** 영어 stop words + 게임 도메인 흔한 단어 — 키워드 매칭에서 노이즈로 제외 */
+const COMMON_NOISE_WORDS = new Set([
+  'this', 'that', 'with', 'from', 'have', 'will', 'been', 'were', 'they', 'them',
+  'game', ' player', 'player', 'system', 'feature', 'scene', 'shot', 'view', 'image',
+  '게임', '플레이어', '시스템', '기능', '장면', '이미지', '참고',
+]);
+
 /** 슬라이드 imagePrompt 를 nano-banana 호출 직전에 정제 + 컨셉 톤 결합.
  * - 영문/한글 무관하게 concept.visual.prompt 가 있으면 dominant anchor 로 prepend 하여
  *   모든 이미지가 통일된 톤앤매너 유지.
+ * - 저품질 prompt (placeholder/슬라이드와 무관) 는 자동 재합성.
  * - 한글 부분은 strip 후 라틴 글자가 너무 적으면 synthesizeImagePrompt 로 재합성.
  * - 슬라이드 데이터의 imagePrompt 는 그대로 두고 송신 값만 정제. */
 function sanitizeImagePromptForGen(prompt, slide, context) {
-  if (!prompt) return synthesizeImagePrompt(slide, null, context);
+  // 1) 빈 / 저품질 prompt → 슬라이드 콘텐츠 기반 재합성
+  if (!prompt || isLowQualityImagePrompt(prompt, slide)) {
+    return synthesizeImagePrompt(slide, null, context);
+  }
 
-  // 한글 처리 — 일부면 strip, 대부분이면 재합성
+  // 2) 한글 처리 — 일부면 strip, 대부분이면 재합성
   const hasCjk = /[가-힣ㄱ-ㅎ一-鿿぀-ヿ]/.test(prompt);
   let cleaned = prompt;
   if (hasCjk) {
@@ -11801,7 +11868,8 @@ function sanitizeImagePromptForGen(prompt, slide, context) {
     cleaned = stripped;
   }
 
-  // 컨셉 톤 anchor 를 항상 앞에 — AI 가 만든 영문 prompt 가 컨셉을 무시하던 문제 해결.
+  // 3) 컨셉 톤 anchor 를 항상 앞에 — AI 가 만든 영문 prompt 가 컨셉을 무시하던 문제 해결.
+  //    STRICT 모드: 톤/색/장르를 dominant 로 만들고, AI prompt 는 subject 로 보조 역할.
   const concept = context && context.concept;
   if (concept && concept.visual && concept.visual.prompt && /[a-zA-Z]/.test(concept.visual.prompt)) {
     const tone = String(concept.visual.prompt).trim().replace(/[\s,.]+$/, '');
@@ -11811,7 +11879,14 @@ function sanitizeImagePromptForGen(prompt, slide, context) {
       .slice(0, 4);
     const paletteHint = paletteHexes.length ? ` Color palette: ${paletteHexes.join(', ')}.` : '';
     const genre = (concept.overview && concept.overview.genre) ? ` Genre: ${stripKoreanKeepLatin(concept.overview.genre) || ''}.` : '';
-    return `${tone}.${paletteHint}${genre} STRICTLY FOLLOW THE ABOVE ART STYLE AND TONE. Subject: ${cleaned}. WIDESCREEN 16:9, no Korean text in image.`;
+    // 슬라이드 종류별 짧은 layout hint — cover/section-divider/image-embed 의 화면 비율을 분명히
+    const layoutHint = {
+      'cover': ' Composition: dramatic key art, central focal subject, room for title overlay.',
+      'section-divider': ' Composition: atmospheric scene with negative space for text overlay.',
+      'image-embed': ' Composition: high-detail reference shot.',
+      'ui-design': ' Composition: clean UI mockup screen.',
+    }[slide && slide.type] || '';
+    return `${tone}.${paletteHint}${genre}${layoutHint} STRICTLY follow the above ART STYLE, COLOR PALETTE, and TONE — these are the dominant constraints. Subject to depict: ${cleaned}. The subject must respect the established style, not introduce new aesthetics. WIDESCREEN 16:9, fill frame edge-to-edge, no letterboxing, no Korean text in image.`;
   }
 
   // 컨셉 톤 없으면 기존 처리

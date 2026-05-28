@@ -33,6 +33,11 @@
     'roadmap': { field: 'phases', max: 4 },       // 5 → 4 (가로 컬럼)
     'state-machine': { field: 'transitions', max: 3 }, // 4 → 3 (transitions 표 row ~32px × 3 = ~96px + 헤더 = ~130px)
     'behavior-tree': { field: 'nodes', max: 18 }, // 한 슬라이드 노드 18개 정도 fit (row ~32px × 18 = ~576px)
+    // === 다이어그램 4종 추가 — 노드/메시지/클래스 많을 때 자동 분할 ===
+    'flow': { field: 'nodes', max: 10 },          // vertical 10단계 ~ horizontal 2줄 10개
+    'diagram': { field: 'nodes', max: 12 },       // 3×4 grid 까지 한 슬라이드, 그 이상은 분할
+    'sequence-diagram': { field: 'messages', max: 10 }, // 메시지 표 row 10 = ~360px
+    'class-diagram': { field: 'classes', max: 6 },      // 클래스 박스 6개 (2×3 grid)
     // api-contract 은 특수 — errors 길이가 길거나 request/response 가 크면 분할
   };
 
@@ -54,6 +59,11 @@
     'balance-table': ['formula', 'curve'],
     'roadmap': [],
     'state-machine': ['states'],
+    // 다이어그램 4종 — 메타 필드 보존
+    'flow': ['direction', 'lines'],
+    'diagram': ['edges'],   // edges 는 후속 슬라이드도 참조 가능하도록 복사
+    'sequence-diagram': ['participants', 'notes'],
+    'class-diagram': ['relations'],
   };
 
   function copyMeta(srcData, destData, type) {

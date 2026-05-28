@@ -989,6 +989,7 @@ ${contextBlock}
   }
 - **모든 imagePrompt**: 반드시 영문, 구체적 시각 묘사. 카메라 앵글·조명·재질·분위기 포함. 한국어 임시 텍스트 금지.
 - **⚠ imagePrompt 누락 절대 금지**: cover / section-divider / ui-design / image-embed 4가지 슬라이드 타입의 imagePrompt 는 반드시 채워라. 비어있으면 자동 폴백되지만 일반 묘사가 되어 품질이 떨어지므로 명시 권장. 영문 30~80 단어. nano-banana 가 16:9 컨셉 아트로 잘 생성할 수 있게 명료한 시각 키워드(주제 / 분위기 / 조명 / 색감 / 스타일) 모두 포함.
+- **⚠ imagePrompt 의 슬라이드 정합성**: imagePrompt 는 반드시 해당 슬라이드의 title/subtitle/caption 의 주제와 직결되는 시각 묘사여야 한다. 예: 슬라이드 제목이 "전투 보스: 화염 골렘" 이면 imagePrompt 도 "fire golem boss" 가 중심. 슬라이드와 무관한 generic 풍경/캐릭터를 채우지 말 것. **placeholder 문자열 금지**: "placeholder", "이미지 placeholder", "image", "참고 이미지", "TBD", "추후" 같은 의미 없는 값은 자동 감지되어 재합성되므로 처음부터 적지 말 것.
 
 # 운영 관점 반영
 - 네트워크 단절·재접속·서버 장애 시 동작이 관련된 시스템이면 rules에 1블록 이상 할당.

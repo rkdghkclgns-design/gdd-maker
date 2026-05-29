@@ -149,7 +149,7 @@
         direction: 'vertical', lines: 1, nodes: [],
       },
       arrays: {
-        nodes: { item: { id: 'n1', label: '단계', kind: 'process' } },
+        nodes: { item: { id: 'n1', label: '단계', kind: 'process', edgeLabel: '' } },
       },
     },
     'sequence-diagram': {

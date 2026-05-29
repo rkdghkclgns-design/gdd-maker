@@ -535,11 +535,30 @@ function EnhancedFlowSlide({ data, patch, page, totalPages }) {
                           <option value="decision">decision</option>
                           <option value="end">end</option>
                         </select>
+                        {/* 다음 화살표 분기 라벨 — decision 노드일 때 노출 (Yes/No/조건명) */}
+                        {!isLastInLine && (
+                          <input
+                            className="flow-edge-input"
+                            type="text"
+                            value={n.edgeLabel || ''}
+                            placeholder={n.kind === 'decision' ? 'Yes/No' : '분기'}
+                            onChange={e => updateNode(i, 'edgeLabel', e.target.value)}
+                            title="다음 단계로 가는 화살표에 표시할 분기 라벨"
+                          />
+                        )}
                         <button className="del" onClick={() => removeNode(i)} title="삭제">✕</button>
                       </div>
                     </div>
                     {showArrow && (
                       <div className={'flow-arrow-wrap flow-arrow-' + direction}>
+                        {/* 분기 라벨(yes/no 등) — decision 노드에서 나가는 화살표에 조건 결과를 표기.
+                            n.edgeLabel 이 있으면 항상 노출. decision 인데 라벨이 없으면 'Yes' 기본값. */}
+                        {(() => {
+                          const el = (n.edgeLabel != null && String(n.edgeLabel).trim())
+                            ? String(n.edgeLabel).trim()
+                            : (n.kind === 'decision' ? 'Yes' : '');
+                          return el ? <div className="flow-edge-label" title="분기 조건 결과">{el}</div> : null;
+                        })()}
                         <div className="flow-arrow"></div>
                         <div className="flow-arrow-add">
                           <button onClick={() => insertNodeAt(i + 1)} title="중간에 단계 추가">+</button>
@@ -578,7 +597,7 @@ async function aiGenerateFlow(prompt) {
 # 출력 형식 (JSON만, 코드블록 금지)
 {
   "nodes": [
-    { "kind": "start|process|decision|end", "label": "노드 라벨" }
+    { "kind": "start|process|decision|end", "label": "노드 라벨", "edgeLabel": "다음 화살표 분기 라벨(선택)" }
   ]
 }
 
@@ -586,6 +605,7 @@ async function aiGenerateFlow(prompt) {
 - 노드 6~10개. 첫 노드 kind="start", 마지막 kind="end".
 - 정상 흐름만 늘어놓지 말고, decision 노드를 1~2개 포함해 분기(실패/예외/취소)를 표현.
 - decision 라벨은 조건을 직접 명시 ("HP ≤ 0 ?", "타이머 = 300s ?", "재시도 가능 ?" 처럼).
+- **edgeLabel**: 각 노드에서 다음 노드로 가는 화살표에 붙일 분기 라벨. decision 노드에는 반드시 채워라 (조건 참일 때 "Yes", 거짓일 때 다음 분기는 별도 노드로). process/start 의 edgeLabel 은 보통 빈 문자열. 예: decision "HP ≤ 0 ?" → edgeLabel "Yes" (사망 처리로 진행).
 - process 라벨은 "동사+목적어" 형태로 구체적 ("입력 차단·충돌 비활성화", "사망 카메라 전환" 등).
 - 라벨은 18자 이내, 약어 활용 가능.
 - 시스템 간 책임 경계가 있으면 라벨에 표기 (예: "클라:애니재생", "서버:HP갱신").`;

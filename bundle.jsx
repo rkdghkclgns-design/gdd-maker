@@ -1,7 +1,7 @@
 /* === GDD 메이커 — 자동 생성 번들 ===
    9개 .jsx 파일을 단일 컴파일 단위로 합침.
    수정은 원본 .jsx 파일에서. 빌드: node build.js
-   생성 시각: 2026-05-28T23:25:21.912Z
+   생성 시각: 2026-05-29T07:24:10.570Z
 */
 
 // ============================================================
@@ -1742,24 +1742,29 @@ function UiDesignSlide({ data, patch, page, totalPages }) {
                   willChange: 'transform',
                 }}
               >
-                <img src={safeImgSrc(data.imageSrc) || undefined} alt="UI mockup" className="ui-mockup-img" draggable={false} />
-                {/* 콜아웃 넘버링 배지 — 이미지와 함께 transform 됨 (정합성 유지) */}
-                {rawCallouts.map((c, originalIdx) => (
-                  <div
-                    key={originalIdx}
-                    className="ui-callout-badge"
-                    style={{
-                      left: `${rawPositions[originalIdx].x}%`,
-                      top: `${rawPositions[originalIdx].y}%`,
-                      /* 배지 크기는 scale 의 역수로 보정 → 줌해도 배지는 일정 크기 유지 */
-                      transform: `translate(-50%, -50%) scale(${1 / transform.scale})`,
-                    }}
-                    title={c.name}
-                    onMouseDown={(e) => e.stopPropagation()}
-                  >
-                    {displayNumByOriginal.get(originalIdx)}
-                  </div>
-                ))}
+                {/* 이미지 box — 이미지의 실제 렌더 영역에 딱 맞게 감싼다.
+                    배지 좌표(%)가 캔버스가 아닌 '이미지 콘텐츠' 기준이 되도록 하여
+                    object-fit:contain 레터박스로 인한 위치 어긋남을 제거. (넘버링 정합성) */}
+                <div className="ui-mockup-imgbox">
+                  <img src={safeImgSrc(data.imageSrc) || undefined} alt="UI mockup" className="ui-mockup-img" draggable={false} />
+                  {/* 콜아웃 넘버링 배지 — 이미지 box 기준 % 배치 → 정확히 정렬 */}
+                  {rawCallouts.map((c, originalIdx) => (
+                    <div
+                      key={originalIdx}
+                      className="ui-callout-badge"
+                      style={{
+                        left: `${rawPositions[originalIdx].x}%`,
+                        top: `${rawPositions[originalIdx].y}%`,
+                        /* 배지 크기는 scale 의 역수로 보정 → 줌해도 배지는 일정 크기 유지 */
+                        transform: `translate(-50%, -50%) scale(${1 / transform.scale})`,
+                      }}
+                      title={c.name}
+                      onMouseDown={(e) => e.stopPropagation()}
+                    >
+                      {displayNumByOriginal.get(originalIdx)}
+                    </div>
+                  ))}
+                </div>
               </div>
             ) : (
               <>
@@ -3236,11 +3241,30 @@ function EnhancedFlowSlide({ data, patch, page, totalPages }) {
                           <option value="decision">decision</option>
                           <option value="end">end</option>
                         </select>
+                        {/* 다음 화살표 분기 라벨 — decision 노드일 때 노출 (Yes/No/조건명) */}
+                        {!isLastInLine && (
+                          <input
+                            className="flow-edge-input"
+                            type="text"
+                            value={n.edgeLabel || ''}
+                            placeholder={n.kind === 'decision' ? 'Yes/No' : '분기'}
+                            onChange={e => updateNode(i, 'edgeLabel', e.target.value)}
+                            title="다음 단계로 가는 화살표에 표시할 분기 라벨"
+                          />
+                        )}
                         <button className="del" onClick={() => removeNode(i)} title="삭제">✕</button>
                       </div>
                     </div>
                     {showArrow && (
                       <div className={'flow-arrow-wrap flow-arrow-' + direction}>
+                        {/* 분기 라벨(yes/no 등) — decision 노드에서 나가는 화살표에 조건 결과를 표기.
+                            n.edgeLabel 이 있으면 항상 노출. decision 인데 라벨이 없으면 'Yes' 기본값. */}
+                        {(() => {
+                          const el = (n.edgeLabel != null && String(n.edgeLabel).trim())
+                            ? String(n.edgeLabel).trim()
+                            : (n.kind === 'decision' ? 'Yes' : '');
+                          return el ? <div className="flow-edge-label" title="분기 조건 결과">{el}</div> : null;
+                        })()}
                         <div className="flow-arrow"></div>
                         <div className="flow-arrow-add">
                           <button onClick={() => insertNodeAt(i + 1)} title="중간에 단계 추가">+</button>
@@ -3279,7 +3303,7 @@ async function aiGenerateFlow(prompt) {
 # 출력 형식 (JSON만, 코드블록 금지)
 {
   "nodes": [
-    { "kind": "start|process|decision|end", "label": "노드 라벨" }
+    { "kind": "start|process|decision|end", "label": "노드 라벨", "edgeLabel": "다음 화살표 분기 라벨(선택)" }
   ]
 }
 
@@ -3287,6 +3311,7 @@ async function aiGenerateFlow(prompt) {
 - 노드 6~10개. 첫 노드 kind="start", 마지막 kind="end".
 - 정상 흐름만 늘어놓지 말고, decision 노드를 1~2개 포함해 분기(실패/예외/취소)를 표현.
 - decision 라벨은 조건을 직접 명시 ("HP ≤ 0 ?", "타이머 = 300s ?", "재시도 가능 ?" 처럼).
+- **edgeLabel**: 각 노드에서 다음 노드로 가는 화살표에 붙일 분기 라벨. decision 노드에는 반드시 채워라 (조건 참일 때 "Yes", 거짓일 때 다음 분기는 별도 노드로). process/start 의 edgeLabel 은 보통 빈 문자열. 예: decision "HP ≤ 0 ?" → edgeLabel "Yes" (사망 처리로 진행).
 - process 라벨은 "동사+목적어" 형태로 구체적 ("입력 차단·충돌 비활성화", "사망 카메라 전환" 등).
 - 라벨은 18자 이내, 약어 활용 가능.
 - 시스템 간 책임 경계가 있으면 라벨에 표기 (예: "클라:애니재생", "서버:HP갱신").`;
@@ -7264,15 +7289,17 @@ async function exportPptx(project, opts) {
       }
     } else if (s.type === 'ui-design') {
       // 좌측: UI 시안 박스 (실제 이미지 또는 placeholder), 우측: 콜아웃 리스트
-      const imgX = PAD_X, imgY = 1.6, imgW = 6.5, imgH = 4.6;
+      // 박스를 16:9 로 맞춰 이미지(16:9 생성)가 레터박스 없이 가득 차고, 배지 % 좌표가 정확히 정렬되도록.
+      const imgX = PAD_X, imgW = 6.5, imgH = +(imgW * 9 / 16).toFixed(3); // = 3.656
+      const imgY = 1.6 + Math.max(0, (4.6 - imgH) / 2); // 기존 영역(높이 4.6) 안에서 수직 중앙
       slide.addShape('roundRect', { x: imgX, y: imgY, w: imgW, h: imgH, fill: { color: '0A0D12' }, line: { color: '0A0D12' }, rectRadius: 0.1 });
       const hasImage = isValidImageDataUrl(d.imageSrc);
       if (hasImage) {
-        // 실제 UI 디자인 이미지 inline 삽입 (contain 으로 비율 유지)
-        slide.addImage({ data: d.imageSrc, x: imgX + 0.05, y: imgY + 0.05, w: imgW - 0.1, h: imgH - 0.1, sizing: { type: 'contain', w: imgW - 0.1, h: imgH - 0.1 } });
+        // 16:9 박스에 16:9 이미지 → contain=cover, 레터박스 없음. 배지 좌표 정합.
+        slide.addImage({ data: d.imageSrc, x: imgX, y: imgY, w: imgW, h: imgH, sizing: { type: 'cover', w: imgW, h: imgH } });
       } else {
-        slide.addText('UI MOCKUP', { x: imgX + 1, y: imgY + 1.9, w: imgW - 2, h: 0.4, fontSize: 14, fontFace: MONO, color: ACCENT, align: 'center', charSpacing: 1.6 });
-        slide.addText('화면 시안 placeholder', { x: imgX + 1, y: imgY + 2.3, w: imgW - 2, h: 0.4, fontSize: 12, fontFace: FONT, color: 'B1BAC4', align: 'center' });
+        slide.addText('UI MOCKUP', { x: imgX + 1, y: imgY + imgH / 2 - 0.3, w: imgW - 2, h: 0.4, fontSize: 14, fontFace: MONO, color: ACCENT, align: 'center', charSpacing: 1.6 });
+        slide.addText('화면 시안 placeholder', { x: imgX + 1, y: imgY + imgH / 2 + 0.1, w: imgW - 2, h: 0.4, fontSize: 12, fontFace: FONT, color: 'B1BAC4', align: 'center' });
       }
       // 화면 표시와 동일하게 (y, x) 시각 읽기 순서로 정렬 — 배지·리스트 번호 일치
       const callouts = [...(d.callouts || [])]
@@ -8095,6 +8122,52 @@ function migrateLegacyValues(state) {
   const cleanBadge = (b) => (STALE_BADGES.has(String(b || '').trim()) ? '' : b);
   const cleanAuthor = (a) => (STALE_AUTHORS.has(String(a || '').trim()) ? '김기획' : a);
 
+  /* === AI 가 환각으로 채운 옛 날짜를 오늘로 교체 (cover.date / history rows[].date) ===
+   * 휴리스틱: 날짜의 연도가 현재 연도 기준 ±1년 범위를 벗어나면 AI 환각으로 간주.
+   * (GDD 메이커는 생성 시점에 문서를 만들므로 날짜는 항상 "지금" 근처여야 함.
+   *  2년 이상 차이나는 날짜는 사용자가 의도한 게 아니라 AI 학습 데이터의 잔재.)
+   * YY.MM.DD / YYYY-MM-DD / YYYY.MM.DD 등 다양한 포맷의 연도를 모두 인식. */
+  const todayShort = (typeof window !== 'undefined' && window.todayShortYYMMDD)
+    ? window.todayShortYYMMDD()
+    : (() => { const d = new Date(); return `${String(d.getFullYear()).slice(-2)}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; })();
+  const curYear = new Date().getFullYear();
+  const isStaleAiDate = (s) => {
+    if (!s || typeof s !== 'string') return false;
+    const t = s.trim();
+    if (!t) return false;
+    // 4자리 연도 추출 (2024-07-29, 2024.07.29 등)
+    let m = t.match(/\b(20\d{2})\b/);
+    let year = m ? parseInt(m[1], 10) : null;
+    // 2자리 연도 (26.05.29 → 2026) — 맨 앞 2자리를 연도로 가정
+    if (year == null) {
+      const m2 = t.match(/^(\d{2})[.\-/]/);
+      if (m2) year = 2000 + parseInt(m2[1], 10);
+    }
+    if (year == null) return false; // 연도 파싱 실패 — 건드리지 않음
+    return Math.abs(year - curYear) > 1; // ±1년 초과 = 환각
+  };
+  const fixDates = (slides) => {
+    if (!Array.isArray(slides)) return slides;
+    return slides.map((s) => {
+      if (!s || !s.data) return s;
+      if (s.type === 'cover' && isStaleAiDate(s.data.date)) {
+        return { ...s, data: { ...s.data, date: todayShort } };
+      }
+      if (s.type === 'history' && Array.isArray(s.data.rows)) {
+        let changed = false;
+        const rows = s.data.rows.map((r) => {
+          if (r && typeof r === 'object' && isStaleAiDate(r.date)) {
+            changed = true;
+            return { ...r, date: todayShort };
+          }
+          return r;
+        });
+        return changed ? { ...s, data: { ...s.data, rows } } : s;
+      }
+      return s;
+    });
+  };
+
   const next = { ...state };
 
   if (Array.isArray(state.concepts)) {
@@ -8143,6 +8216,7 @@ function migrateLegacyValues(state) {
       if (Array.isArray(p.slides) && p.slides.length > 0) {
         try {
           nextSlides = cleanTocSlides(nextSlides);
+          nextSlides = fixDates(nextSlides); // AI 환각 날짜 → 오늘
           if (splitter) {
             const before = nextSlides.length;
             const split = splitter.splitAllOverflowing(nextSlides);
@@ -10130,11 +10204,13 @@ function App({ onStateChange }) {
         });
         setCurrentIdx(0);
       } else {
-        // 스트리밍에서 이미 등록 — history/attachments 만 추가
+        // 스트리밍 단계에서 등록된 slides 는 injectRealDates 전 상태(가짜 날짜) 이므로
+        // 날짜 보정된 result.slides 로 덮어쓴다. (history/attachments 도 함께 반영)
         setState(s => ({
           ...s,
           projects: s.projects.map(p => p.id === result.id ? {
             ...p,
+            slides: result.slides, // injectRealDates(force) 결과 — cover/history 날짜 보정 반영
             history: [historyEntry],
             attachments: attachments?.length ? attachments : (p.attachments || []),
           } : p),

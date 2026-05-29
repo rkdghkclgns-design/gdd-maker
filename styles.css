@@ -1036,8 +1036,9 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .slide.cover { background: linear-gradient(135deg, #0a0d12 0%, #1a2230 100%); color: #e6edf3; padding: 0; }
 .slide.cover .cover-bg-img {
   position: absolute; inset: 0;
-  /* contain — 이미지 전체가 항상 보이도록. 빈 공간은 슬라이드 배경(#0a0d12)이 채움. */
-  background-size: contain;
+  /* cover — 이미지가 슬라이드 전체를 가득 채움. AI 가 16:9 로 생성하므로 크롭 거의 없음.
+     (사용자 요구: 표지 이미지는 전체 화면. contain 은 가운데 작게 보이는 문제 발생) */
+  background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
   background-color: #0a0d12;
@@ -1552,6 +1553,44 @@ input, textarea, select { font-family: inherit; color: inherit; }
   width: 0; height: 0;
   left: auto;
 }
+/* === 분기 라벨 (yes/no 등) — decision 노드 화살표 위에 표기 === */
+.flow-edge-label {
+  position: absolute;
+  z-index: 3;
+  background: var(--accent, #4cc2ff);
+  color: #061018;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 3px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  pointer-events: none;
+}
+/* 세로 화살표 → 라벨을 화살표 오른쪽에 */
+.flow-arrow-wrap.flow-arrow-vertical .flow-edge-label {
+  left: 50%; top: 50%;
+  transform: translate(8px, -50%);
+}
+/* 가로 화살표 → 라벨을 화살표 위에 */
+.flow-arrow-wrap.flow-arrow-horizontal .flow-edge-label {
+  left: 50%; top: 50%;
+  transform: translate(-50%, -16px);
+}
+/* 분기 라벨 편집 input — 노드 컨트롤 바 안에 */
+.flow-edge-input {
+  width: 56px;
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 1px 4px;
+  border: 1px solid var(--border, #d0d7de);
+  border-radius: 3px;
+  background: #fff;
+  color: #1c222b;
+}
+.flow-edge-input::placeholder { color: #9aa4ae; }
 
 /* === 방향 / 줄수 토글 버튼 === */
 .flow-dir-toggle,
@@ -1724,16 +1763,33 @@ input, textarea, select { font-family: inherit; color: inherit; }
 .ui-mockup .mock-canvas .placeholder { padding: 16px 24px; border: 1px dashed #3a414d; border-radius: 6px; text-align: center; }
 .ui-mockup .mock-canvas .placeholder .lbl { color: var(--accent); font-size: 11px; letter-spacing: 0.08em; }
 .ui-mockup .mock-canvas .placeholder .desc { color: #b1bac4; margin-top: 6px; font-family: 'Pretendard', sans-serif; font-size: 13px; }
-.ui-mockup .mock-canvas .ui-mockup-img { width: 100%; height: 100%; object-fit: contain; display: block; border-radius: 8px; }
+/* 이미지는 image-box 안에서 box 를 가득 채움. box 자체가 이미지 비율로 사이징되므로
+   object-fit:fill 로 해도 왜곡 없음. 단, contain 으로 두면 box 와 이미지 영역이 어긋날 수
+   있으므로, box 를 이미지 비율에 맞춰 사이징하고 이미지는 100%×100% 채우기. */
+.ui-mockup .mock-canvas .ui-mockup-img { display: block; width: 100%; height: 100%; object-fit: contain; border-radius: 8px; }
 
 /* === pan/zoom transform 그룹 ===
-   이미지와 콜아웃을 함께 묶어 transform 적용 → 줌/이동 시 콜아웃이 이미지에 부착됨. */
+   이미지와 콜아웃을 함께 묶어 transform 적용 → 줌/이동 시 콜아웃이 이미지에 부착됨.
+   transform 그룹은 캔버스를 채우고 가운데 정렬 → 안쪽 image-box 가 이미지 비율로 사이징. */
 .ui-mockup .mock-canvas .ui-mockup-transform {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   user-select: none;
+  display: grid;
+  place-items: center;
+}
+/* image-box — 이미지의 실제 렌더 영역에 딱 맞는 컨테이너.
+   배지(%)가 이 box 기준이 되어 이미지 콘텐츠와 정확히 정렬됨.
+   aspect-ratio 16/9 + max 100% 로 캔버스 안에 레터박스 없이 들어감. */
+.ui-mockup .mock-canvas .ui-mockup-imgbox {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  max-width: 100%;
+  max-height: 100%;
+  width: 100%;
+  line-height: 0;
 }
 .ui-mockup .mock-canvas.has-image { cursor: grab; user-select: none; }
 .ui-mockup .mock-canvas.has-image.dragging { cursor: grabbing; }

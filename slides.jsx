@@ -1160,24 +1160,29 @@ function UiDesignSlide({ data, patch, page, totalPages }) {
                   willChange: 'transform',
                 }}
               >
-                <img src={safeImgSrc(data.imageSrc) || undefined} alt="UI mockup" className="ui-mockup-img" draggable={false} />
-                {/* 콜아웃 넘버링 배지 — 이미지와 함께 transform 됨 (정합성 유지) */}
-                {rawCallouts.map((c, originalIdx) => (
-                  <div
-                    key={originalIdx}
-                    className="ui-callout-badge"
-                    style={{
-                      left: `${rawPositions[originalIdx].x}%`,
-                      top: `${rawPositions[originalIdx].y}%`,
-                      /* 배지 크기는 scale 의 역수로 보정 → 줌해도 배지는 일정 크기 유지 */
-                      transform: `translate(-50%, -50%) scale(${1 / transform.scale})`,
-                    }}
-                    title={c.name}
-                    onMouseDown={(e) => e.stopPropagation()}
-                  >
-                    {displayNumByOriginal.get(originalIdx)}
-                  </div>
-                ))}
+                {/* 이미지 box — 이미지의 실제 렌더 영역에 딱 맞게 감싼다.
+                    배지 좌표(%)가 캔버스가 아닌 '이미지 콘텐츠' 기준이 되도록 하여
+                    object-fit:contain 레터박스로 인한 위치 어긋남을 제거. (넘버링 정합성) */}
+                <div className="ui-mockup-imgbox">
+                  <img src={safeImgSrc(data.imageSrc) || undefined} alt="UI mockup" className="ui-mockup-img" draggable={false} />
+                  {/* 콜아웃 넘버링 배지 — 이미지 box 기준 % 배치 → 정확히 정렬 */}
+                  {rawCallouts.map((c, originalIdx) => (
+                    <div
+                      key={originalIdx}
+                      className="ui-callout-badge"
+                      style={{
+                        left: `${rawPositions[originalIdx].x}%`,
+                        top: `${rawPositions[originalIdx].y}%`,
+                        /* 배지 크기는 scale 의 역수로 보정 → 줌해도 배지는 일정 크기 유지 */
+                        transform: `translate(-50%, -50%) scale(${1 / transform.scale})`,
+                      }}
+                      title={c.name}
+                      onMouseDown={(e) => e.stopPropagation()}
+                    >
+                      {displayNumByOriginal.get(originalIdx)}
+                    </div>
+                  ))}
+                </div>
               </div>
             ) : (
               <>

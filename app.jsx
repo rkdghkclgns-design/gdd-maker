@@ -47,6 +47,52 @@ function migrateLegacyValues(state) {
   const cleanBadge = (b) => (STALE_BADGES.has(String(b || '').trim()) ? '' : b);
   const cleanAuthor = (a) => (STALE_AUTHORS.has(String(a || '').trim()) ? '김기획' : a);
 
+  /* === AI 가 환각으로 채운 옛 날짜를 오늘로 교체 (cover.date / history rows[].date) ===
+   * 휴리스틱: 날짜의 연도가 현재 연도 기준 ±1년 범위를 벗어나면 AI 환각으로 간주.
+   * (GDD 메이커는 생성 시점에 문서를 만들므로 날짜는 항상 "지금" 근처여야 함.
+   *  2년 이상 차이나는 날짜는 사용자가 의도한 게 아니라 AI 학습 데이터의 잔재.)
+   * YY.MM.DD / YYYY-MM-DD / YYYY.MM.DD 등 다양한 포맷의 연도를 모두 인식. */
+  const todayShort = (typeof window !== 'undefined' && window.todayShortYYMMDD)
+    ? window.todayShortYYMMDD()
+    : (() => { const d = new Date(); return `${String(d.getFullYear()).slice(-2)}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; })();
+  const curYear = new Date().getFullYear();
+  const isStaleAiDate = (s) => {
+    if (!s || typeof s !== 'string') return false;
+    const t = s.trim();
+    if (!t) return false;
+    // 4자리 연도 추출 (2024-07-29, 2024.07.29 등)
+    let m = t.match(/\b(20\d{2})\b/);
+    let year = m ? parseInt(m[1], 10) : null;
+    // 2자리 연도 (26.05.29 → 2026) — 맨 앞 2자리를 연도로 가정
+    if (year == null) {
+      const m2 = t.match(/^(\d{2})[.\-/]/);
+      if (m2) year = 2000 + parseInt(m2[1], 10);
+    }
+    if (year == null) return false; // 연도 파싱 실패 — 건드리지 않음
+    return Math.abs(year - curYear) > 1; // ±1년 초과 = 환각
+  };
+  const fixDates = (slides) => {
+    if (!Array.isArray(slides)) return slides;
+    return slides.map((s) => {
+      if (!s || !s.data) return s;
+      if (s.type === 'cover' && isStaleAiDate(s.data.date)) {
+        return { ...s, data: { ...s.data, date: todayShort } };
+      }
+      if (s.type === 'history' && Array.isArray(s.data.rows)) {
+        let changed = false;
+        const rows = s.data.rows.map((r) => {
+          if (r && typeof r === 'object' && isStaleAiDate(r.date)) {
+            changed = true;
+            return { ...r, date: todayShort };
+          }
+          return r;
+        });
+        return changed ? { ...s, data: { ...s.data, rows } } : s;
+      }
+      return s;
+    });
+  };
+
   const next = { ...state };
 
   if (Array.isArray(state.concepts)) {
@@ -95,6 +141,7 @@ function migrateLegacyValues(state) {
       if (Array.isArray(p.slides) && p.slides.length > 0) {
         try {
           nextSlides = cleanTocSlides(nextSlides);
+          nextSlides = fixDates(nextSlides); // AI 환각 날짜 → 오늘
           if (splitter) {
             const before = nextSlides.length;
             const split = splitter.splitAllOverflowing(nextSlides);
@@ -2082,11 +2129,13 @@ function App({ onStateChange }) {
         });
         setCurrentIdx(0);
       } else {
-        // 스트리밍에서 이미 등록 — history/attachments 만 추가
+        // 스트리밍 단계에서 등록된 slides 는 injectRealDates 전 상태(가짜 날짜) 이므로
+        // 날짜 보정된 result.slides 로 덮어쓴다. (history/attachments 도 함께 반영)
         setState(s => ({
           ...s,
           projects: s.projects.map(p => p.id === result.id ? {
             ...p,
+            slides: result.slides, // injectRealDates(force) 결과 — cover/history 날짜 보정 반영
             history: [historyEntry],
             attachments: attachments?.length ? attachments : (p.attachments || []),
           } : p),

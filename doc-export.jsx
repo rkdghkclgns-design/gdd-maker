@@ -999,15 +999,17 @@ async function exportPptx(project, opts) {
       }
     } else if (s.type === 'ui-design') {
       // 좌측: UI 시안 박스 (실제 이미지 또는 placeholder), 우측: 콜아웃 리스트
-      const imgX = PAD_X, imgY = 1.6, imgW = 6.5, imgH = 4.6;
+      // 박스를 16:9 로 맞춰 이미지(16:9 생성)가 레터박스 없이 가득 차고, 배지 % 좌표가 정확히 정렬되도록.
+      const imgX = PAD_X, imgW = 6.5, imgH = +(imgW * 9 / 16).toFixed(3); // = 3.656
+      const imgY = 1.6 + Math.max(0, (4.6 - imgH) / 2); // 기존 영역(높이 4.6) 안에서 수직 중앙
       slide.addShape('roundRect', { x: imgX, y: imgY, w: imgW, h: imgH, fill: { color: '0A0D12' }, line: { color: '0A0D12' }, rectRadius: 0.1 });
       const hasImage = isValidImageDataUrl(d.imageSrc);
       if (hasImage) {
-        // 실제 UI 디자인 이미지 inline 삽입 (contain 으로 비율 유지)
-        slide.addImage({ data: d.imageSrc, x: imgX + 0.05, y: imgY + 0.05, w: imgW - 0.1, h: imgH - 0.1, sizing: { type: 'contain', w: imgW - 0.1, h: imgH - 0.1 } });
+        // 16:9 박스에 16:9 이미지 → contain=cover, 레터박스 없음. 배지 좌표 정합.
+        slide.addImage({ data: d.imageSrc, x: imgX, y: imgY, w: imgW, h: imgH, sizing: { type: 'cover', w: imgW, h: imgH } });
       } else {
-        slide.addText('UI MOCKUP', { x: imgX + 1, y: imgY + 1.9, w: imgW - 2, h: 0.4, fontSize: 14, fontFace: MONO, color: ACCENT, align: 'center', charSpacing: 1.6 });
-        slide.addText('화면 시안 placeholder', { x: imgX + 1, y: imgY + 2.3, w: imgW - 2, h: 0.4, fontSize: 12, fontFace: FONT, color: 'B1BAC4', align: 'center' });
+        slide.addText('UI MOCKUP', { x: imgX + 1, y: imgY + imgH / 2 - 0.3, w: imgW - 2, h: 0.4, fontSize: 14, fontFace: MONO, color: ACCENT, align: 'center', charSpacing: 1.6 });
+        slide.addText('화면 시안 placeholder', { x: imgX + 1, y: imgY + imgH / 2 + 0.1, w: imgW - 2, h: 0.4, fontSize: 12, fontFace: FONT, color: 'B1BAC4', align: 'center' });
       }
       // 화면 표시와 동일하게 (y, x) 시각 읽기 순서로 정렬 — 배지·리스트 번호 일치
       const callouts = [...(d.callouts || [])]
